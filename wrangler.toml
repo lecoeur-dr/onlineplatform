@@ -1,4 +1,4 @@
-name = "online-gyomusil"
+name = "onlineplatform"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 
@@ -16,6 +16,8 @@ migrations_dir = "migrations"
 
 [vars]
 SCHOOL_NAME = "서부초등학교"
+# 로그인 없이 메인화면(대시보드)을 읽기 전용으로 공개. 끄려면 "0"
+PUBLIC_DASHBOARD = "1"
 # 아래 4개는 Cloudflare 대시보드의 '변수 및 비밀'에 '비밀(Secret)'로 등록 (docs/02_배포_가이드.md)
 #   ADMIN_EMAILS         관리자 Gmail (쉼표로 여러 명). 이 주소로 로그인하면 항상 관리자
 #   GOOGLE_CLIENT_ID     구글 로그인 클라이언트 ID

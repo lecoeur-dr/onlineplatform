@@ -11,16 +11,18 @@ import { adminView } from './views/admin.js';
 
 const app = document.getElementById('app');
 
+function savedYear() {
+  try { return Number(localStorage.getItem('gy_year')) || null; } catch { return null; }
+}
+
 async function boot() {
   try {
     const me = await api('/api/me');
     state.me = me.user;
     state.settings = me.settings;
-    let saved = null;
-    try { saved = Number(localStorage.getItem('gy_year')); } catch { /* 무시 */ }
-    state.year = saved || me.settings.currentYear;
+    state.year = savedYear() || me.settings.currentYear;
   } catch (e) {
-    if (e.status === 401) return loginScreen();
+    if (e.status === 401) return guestBoot();
     return clear(app, h('div', { class: 'center-box' }, h('p', {}, `연결 오류: ${e.message}`)));
   }
   if (!['admin', 'staff', 'viewer'].includes(state.me.role)) return pendingScreen();
@@ -29,13 +31,31 @@ async function boot() {
   route();
 }
 
+// 비로그인: 메인화면(대시보드)만 읽기 전용으로 보여 주고, 나머지는 로그인 탭으로 안내
+async function guestBoot() {
+  try {
+    const s = await api('/api/public/settings');
+    state.me = null;
+    state.settings = { ...s, lists: {} };
+    state.year = savedYear() || s.currentYear;
+  } catch {
+    return loginScreen();
+  }
+  document.title = `${state.settings.schoolName || ''} 온라인 교무실`.trim();
+  layout();
+  route();
+}
+
+function loginCard() {
+  return h('div', { class: 'login' },
+    h('div', { class: 'logo' }, '🏫'),
+    h('h1', {}, '온라인 교무실'),
+    h('p', { class: 'muted' }, '학교에서 승인한 구글 계정으로 로그인합니다.'),
+    h('a', { class: 'btn primary big', href: '/auth/login' }, 'Google 계정으로 로그인'));
+}
+
 function loginScreen() {
-  clear(app, h('div', { class: 'center-box' },
-    h('div', { class: 'login' },
-      h('div', { class: 'logo' }, '🏫'),
-      h('h1', {}, '온라인 교무실'),
-      h('p', { class: 'muted' }, '학교에서 승인한 구글 계정으로 로그인합니다.'),
-      h('a', { class: 'btn primary big', href: '/auth/login' }, 'Google 계정으로 로그인'))));
+  clear(app, h('div', { class: 'center-box' }, loginCard()));
 }
 
 function pendingScreen() {
@@ -62,12 +82,14 @@ function layout() {
   const years = [];
   for (let y = state.settings.currentYear - 2; y <= state.settings.currentYear + 1; y++) years.push(y);
   if (!years.includes(state.year)) years.push(state.year);
+  const guest = !state.me;
   nav = h('nav', { class: 'nav' },
-    MENU.map((m) => {
+    (guest ? MENU.filter((m) => m.id === 'dashboard') : MENU).map((m) => {
       const d = MODULES[m.id] || m;
       return h('a', { href: `#/${m.id}`, 'data-id': m.id }, h('span', { class: 'ico' }, d.icon), d.label);
     }),
-    isAdmin() ? h('a', { href: '#/admin', 'data-id': 'admin', class: 'admin-link' }, h('span', { class: 'ico' }, '⚙️'), '관리자') : null);
+    isAdmin() ? h('a', { href: '#/admin', 'data-id': 'admin', class: 'admin-link' }, h('span', { class: 'ico' }, '⚙️'), '관리자') : null,
+    guest ? h('a', { href: '#/login', 'data-id': 'login', class: 'admin-link' }, h('span', { class: 'ico' }, '🔑'), '로그인') : null);
   main = h('main', { class: 'main' });
   clear(app,
     h('header', { class: 'top' },
@@ -77,8 +99,9 @@ function layout() {
       h('label', { class: 'year' }, h('span', { class: 'year-label' }, '학년도 '),
         h('select', { onchange: (e) => { setYear(e.target.value); route(); } },
           years.sort().map((y) => h('option', { value: y, selected: y === state.year }, `${y}`)))),
-      h('span', { class: 'who', title: state.me.email }, state.me.name || state.me.email, h('span', { class: 'tag ghost' }, ROLES[state.me.role])),
-      h('button', { class: 'btn small', onclick: logout }, '로그아웃')),
+      guest ? h('a', { class: 'btn small primary', href: '#/login' }, '로그인') : [
+        h('span', { class: 'who', title: state.me.email }, state.me.name || state.me.email, h('span', { class: 'tag ghost' }, ROLES[state.me.role])),
+        h('button', { class: 'btn small', onclick: logout }, '로그아웃')]),
     h('div', { class: 'body' }, nav, main));
   nav.addEventListener('click', () => document.body.classList.remove('nav-open'));
 }
@@ -86,6 +109,12 @@ function layout() {
 async function route() {
   const id = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
   for (const a of nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.id === id);
+  if (!state.me && id !== 'dashboard' && id !== 'login') { location.hash = '#/login'; return; }
+  if (id === 'login') {
+    if (state.me) { location.hash = '#/dashboard'; return; }
+    clear(main, h('div', { class: 'content login-page' }, loginCard()));
+    return;
+  }
   const def = MODULES[id];
   const title = id === 'admin' ? '⚙️ 관리자' : id === 'dashboard' ? '🏠 대시보드' : def ? `${def.icon} ${def.label}` : '';
   const content = h('div', { class: 'content' });
@@ -101,7 +130,7 @@ async function route() {
     else if (def.view === 'openClasses') await openClassesView(content);
     else await tableView(content, id);
   } catch (e) {
-    if (e.status === 401) return loginScreen();
+    if (e.status === 401) { location.hash = '#/login'; return; }
     clear(content, h('p', { class: 'alert error' }, e.message));
     toast(e.message, 'error');
   }

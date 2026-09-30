@@ -75,9 +75,32 @@ async function listRecords(db, moduleId, year) {
   return rows.results.map(toClient);
 }
 
+// ---------- 비로그인 공개 (메인화면 미리보기) ----------
+// PUBLIC_DASHBOARD = "1" 일 때만, 대시보드에 쓰는 메뉴를 읽기 전용으로 공개
+const PUBLIC_MODULES = ['events', 'programs', 'trips', 'monthNotes', 'meetings', 'notices'];
+
+app.use('/api/public/*', async (c, next) => {
+  if (c.req.method !== 'GET') return c.json({ error: '잘못된 요청입니다.' }, 400);
+  if (c.env.PUBLIC_DASHBOARD !== '1') return c.json({ error: '로그인이 필요합니다.' }, 401);
+  return next();
+});
+
+app.get('/api/public/settings', async (c) => {
+  const s = await getSettings(c.env.DB);
+  return c.json({ currentYear: s.currentYear, schoolName: s.schoolName || c.env.SCHOOL_NAME || '' });
+});
+
+app.get('/api/public/bundle', async (c) => {
+  const year = Number(c.req.query('year')) || (await getSettings(c.env.DB)).currentYear;
+  const out = {};
+  for (const m of PUBLIC_MODULES) out[m] = await listRecords(c.env.DB, m, year);
+  return c.json(out);
+});
+
 // ---------- 인증 미들웨어 ----------
 
 app.use('/api/*', async (c, next) => {
+  if (c.req.path.startsWith('/api/public/')) return next();
   const user = await loadUser(c);
   if (!user) return c.json({ error: '로그인이 필요합니다.' }, 401);
   c.set('user', user);
