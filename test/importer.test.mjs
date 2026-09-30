@@ -33,7 +33,9 @@ test('행사 하나에 담당 여러 줄이면 모두 담당으로', () => {
 });
 
 test('공휴일 분류 추정', () => {
-  assert.equal(splitEvents('• 추석 연휴', '', '')[0].category, '공휴일');
+  assert.equal(splitEvents('• 추석 연휴', '', '')[0].category, '휴일·방학');
+  assert.equal(splitEvents('• 제75회 수영대회 (4학년 2명 출전)', '', '')[0].category, '대회출전');
+  assert.equal(splitEvents('• 평화수업(1~2교시 3-1)', '', '')[0].category, '학급수업');
   assert.equal(splitEvents('• SW·AI 수업(6학년)', '', '')[0].category, '특별수업');
 });
 
@@ -61,7 +63,9 @@ test('시트 가져오기: 월별 행사 · 날짜로 바뀐 학급명 복원 ·
   assert.equal(ev.data.date, '2026-09-01');
   assert.equal(ev.data.title, '월례회의');
   assert.equal(items.find((i) => i.module === 'trips').data.person, '홍길동');
-  const note = items.find((i) => i.module === 'monthNotes');
+  const note = items.find((i) => i.module === 'notices' && i.data.category === '월별 안내');
+  assert.equal(note.data.month, '2026-09');
+  assert.equal(note.data.pinned, true);
   assert.equal(note.data.schoolDays, '21일');
   assert.match(note.data.content, /정보공시/);
   const board = items.find((i) => i.module === 'boards');

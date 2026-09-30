@@ -121,13 +121,16 @@ function toNumber(v) {
   return null;
 }
 
-function eventCategory(title) {
-  if (HOLIDAY.test(title)) return '공휴일';
-  if (/재량휴업|휴업일/.test(title)) return '휴업일';
-  if (/SW·AI|SW ?AI|국악|무용|연극|뮤지컬|인형극|음악 줄넘기/.test(title)) return '특별수업';
-  if (/회의|협의회/.test(title)) return '회의';
-  if (/연수/.test(title)) return '연수';
-  return '행사';
+// 제목으로 학사일정 색 분류 추정 (docs/03_재구조화_설계.md 2장)
+export function eventCategory(title) {
+  if (HOLIDAY.test(title) || /재량휴업|휴업일|방학(?!식)/.test(title)) return '휴일·방학';
+  if (/대회|대표선발|출전/.test(title)) return '대회출전';
+  if (/수업공개|공개수업|자율장학|동료장학/.test(title)) return '동료장학';
+  if (/SW·AI|SW ?AI|국악|무용|연극|뮤지컬|인형극|음악 ?줄넘기/.test(title)) return '특별수업';
+  if (/회의|협의회|위원회/.test(title)) return '회의';
+  if (/연수|워크숍/.test(title)) return '연수';
+  if (/\d-\d/.test(title) && /교시/.test(title)) return '학급수업';
+  return '전체행사';
 }
 
 // ---------------- 시트별 변환기 ----------------
@@ -173,7 +176,7 @@ function parseMonthly(s, out) {
     const head = s.text(hr - 1, c, true);
     const content = [head.split('\n').slice(1).join('\n'), ...noteLines]
       .join('\n').split('\n').map((x) => x.trim()).filter((x) => x && x !== '-').join('\n');
-    if (content || schoolDays) out.push({ module: 'monthNotes', data: { date: `${ym.y}-${pad(ym.m)}-01`, content, schoolDays } });
+    if (content || schoolDays) out.push({ module: 'notices', data: { title: `${ym.m}월 교육과정 주요 안내`, category: '월별 안내', pinned: true, month: `${ym.y}-${pad(ym.m)}`, dept: '교무', content: content || '-', schoolDays } });
   }
   return blocks.length;
 }
@@ -214,8 +217,13 @@ function parseMeetings(s, out) {
   const h = s.findCell((t) => /회의\s*안건/.test(t));
   if (!h) return 0;
   s.get(h.r, h.c); s.get(h.r, h.c + 1);
-  // 머리글 위 제목 칸
-  for (let r = 0; r < h.r; r++) for (let c = 0; c <= s.maxC; c++) s.get(r, c);
+  // 머리글 위 제목 칸 → 회의명 (예: '서부초등학교 전체회의(안건 및 결과)' → 전체회의)
+  let meeting = '';
+  for (let r = 0; r < h.r; r++) for (let c = 0; c <= s.maxC; c++) {
+    const t = s.text(r, c);
+    const m = t.match(/(\S*회의)/);
+    if (m && !meeting) meeting = m[1].replace(/^.*(초등학교|학교)/, '') || '전체회의';
+  }
   let date = null;
   let n = 0;
   for (let r = h.r + 1; r <= s.maxR; r++) {
@@ -225,7 +233,7 @@ function parseMeetings(s, out) {
     const result = s.text(r, h.c + 1);
     if (!agenda && !result) continue;
     if (!date) continue;
-    out.push({ module: 'meetings', data: { date, agenda, result, status: /재논의/.test(result) ? '재논의' : '완료' } });
+    out.push({ module: 'meetings', data: { date, meeting: /월례회의/.test(agenda) ? '월례회의' : meeting || '전체회의', agenda, result, status: /재논의/.test(result) ? '재논의' : '완료' } });
     n++;
   }
   return n;
@@ -241,7 +249,9 @@ function collectLinks(s, out) {
       const t = s.text(r, c);
       let label = '';
       for (let cc = c - 1; cc >= 0 && !label; cc--) { if (!s.link(r, cc)) label = s.text(r, cc, true); }
-      out.push({ module: 'links', data: { title: [label.replace(/\n/g, ' '), t !== url ? t : ''].filter(Boolean).join(' ') || url, url } });
+      const title = [label.replace(/\n/g, ' '), t !== url ? t : ''].filter(Boolean).join(' ') || url;
+      const category = /폴더|drive\.google/.test(title + url) ? '업무 폴더' : /시트|설문|신청|forms|docs\.google/.test(title + url) ? '신청·설문' : /padlet|에듀|AI/i.test(title + url) ? '에듀테크' : '기타';
+      out.push({ module: 'links', data: { category, title, url } });
       n++;
     }
   }
@@ -277,7 +287,7 @@ function parseNotices(s, out, lists) {
       if (groups.length && !/^[-ㅇ•·*#]/.test(t) && t.length <= 12 && !t.includes('\n')) groups[groups.length - 1] += `\n${t}`;
       else groups.push(t);
     }
-    for (const content of groups) { out.push({ module: 'notices', data: { dept, content: dept === '전체' && head !== '전체' ? content : content } }); n++; }
+    for (const content of groups) { out.push({ module: 'notices', data: { title: content.split('\n')[0].replace(/^[-ㅇ•·*#\s]+/, '').slice(0, 40), category: dept === '전체' ? '일반' : '부서 안내', dept, content } }); n++; }
   }
   return n;
 }
@@ -305,12 +315,19 @@ function parseTimetables(s, out, sheetName) {
         periods.push(p);
         cells.push(days.map((_, k) => s.text(rr, c + 1 + k)));
       }
-      const kind = /^\d-\d$|반$/.test(title) ? '학급' : '전담';
+      const kind = timetableKind(title);
       out.push({ module: 'timetables', data: { title, kind, semester: '연간', grid: { days, periods, cells } } });
       n++;
     }
   }
   return n;
+}
+
+export function timetableKind(title) {
+  if (/^\d-\d$|^\d학년|반$/.test(title)) return '학급';
+  if (/국악|무용|연극|배달|강사|외부|방과후|프로그램|출강/.test(title)) return '외부강의';
+  if (/^(AI\s?교실|과학실|컴퓨터실|체육관|도서관|음악실|미술실|영어체험|특별실)/.test(title)) return '특별실';
+  return '전담';
 }
 
 // 달력 모양 일정표 (SW·AI, 예술): '📅 2026년 9월' 아래 요일 머리글 + 주별 칸
@@ -338,6 +355,8 @@ function parseCalendarPrograms(s, out, defaultProgram) {
           const day = parseInt(lines[0], 10);
           const content = lines.slice(1).map((x) => x.trim()).filter(Boolean).join('\n');
           if (!day || !content) continue;
+          // 휴일 표시(추석, 개천절 등)는 학사일정에 이미 있으므로 특별수업으로 넣지 않음
+          if ((HOLIDAY.test(content) || /휴업|휴일|방학|개천절|한글날|삼일절|현충일|석가|성탄/.test(content)) && !/\d-\d|교시/.test(content)) continue;
           const status = /변경/.test(content) ? '변경' : /취소/.test(content) ? '취소' : '예정';
           out.push({ module: 'programs', data: { program, date: `${y}-${pad(mo)}-${pad(day)}`, content, status } });
           n++;
@@ -439,7 +458,7 @@ function parsePurchases(s, out) {
         if (tx && !/^총금액$/.test(tx)) guide.push(tx);
       }
     }
-    if (guide.length) out.push({ module: 'notices', data: { dept: '전체', content: guide.join('\n') } });
+    if (guide.length) out.push({ module: 'notices', data: { title: `${budget || '물품'} 신청 안내`, category: '일반', dept: '정보', content: guide.join('\n') } });
   }
   let n = 0;
   for (let r = h.r + 1; r <= s.maxR; r++) {
@@ -536,7 +555,15 @@ function parseOpenClasses(s, out) {
       }
     }
   }
-  for (const d of recs) { delete d._m; out.push({ module: 'openClasses', data: d }); }
+  for (const d of recs) {
+    delete d._m;
+    // '9.22.(화) 2교시' → 날짜 + 교시 (연도는 가져오기 끝에서 채움)
+    const m = String(d.openDate || '').match(/(\d{1,2})\s*\.\s*(\d{1,2})/);
+    if (m) d._md = [Number(m[1]), Number(m[2])];
+    const p = String(d.openDate || '').match(/(\d)\s*교시/);
+    if (p) d.period = `${p[1]}교시`;
+    out.push({ module: 'openClasses', data: d });
+  }
   return recs.length;
 }
 
@@ -733,6 +760,14 @@ export function parseWorkbook(XLSX, wb, { lists }) {
       const mask = SENSITIVE.test(name);
       warnings.push({ sheet: name, cells: left.map((l) => ({ cell: l.cell, value: mask ? '(숨김)' : l.value })) });
     }
+  }
+  // 동료장학 공개일: 학사일정에서 추정한 연도로 날짜 완성
+  const year = guessYear(wb, items);
+  for (const it of items) {
+    if (it.module !== 'openClasses') continue;
+    const md = it.data._md;
+    delete it.data._md;
+    if (md) it.data.date = `${md[0] <= 2 ? year + 1 : year}-${pad(md[0])}-${pad(md[1])}`;
   }
   return { items, report, warnings };
 }

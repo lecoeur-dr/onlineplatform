@@ -285,6 +285,9 @@ app.post('/api/admin/import', async (c) => {
   const modules = [...new Set(items.map((i) => i.module))].filter((m) => MODULES[m]);
   const stmts = [];
   if (mode === 'replace') {
+    // 규격이 바뀌며 없어진 메뉴(예: v1 '월별 안내')의 기록 정리
+    const known = Object.keys(MODULES);
+    stmts.push(db.prepare(`DELETE FROM records WHERE module NOT IN (${known.map(() => '?').join(',')})`).bind(...known));
     for (const m of modules) {
       const w = scopeWhere(m, year);
       stmts.push(db.prepare(`DELETE FROM records WHERE ${w.sql}`).bind(...w.args));

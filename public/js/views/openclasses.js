@@ -1,5 +1,5 @@
 // 동료장학: 공개수업 목록 + 내 이름으로 참관 신청
-import { h, api, clear, toast } from '../ui.js';
+import { h, api, clear, toast, fmtDate } from '../ui.js';
 import { state, canEdit } from '../state.js';
 import { openRecordForm } from '../form.js';
 
@@ -12,6 +12,7 @@ function render(root, rows) {
   const reload = () => openClassesView(root);
   const me = state.me.name || state.me.email;
   const mine = rows.filter((r) => (r.data.observers || []).includes(me)).length;
+  rows.sort((a, b) => String(a.data.group || '').localeCompare(String(b.data.group || ''), 'ko', { numeric: true }) || String(a.data.date || '').localeCompare(String(b.data.date || '')));
   const groups = [...new Set(rows.map((r) => r.data.group || ''))];
 
   const toggle = async (r, on) => {
@@ -36,7 +37,7 @@ function render(root, rows) {
           const obs = r.data.observers || [];
           const on = obs.includes(me);
           return h('tr', { class: 'click', onclick: () => openRecordForm('openClasses', r, { onSaved: reload }) },
-            h('td', { class: 'nowrap' }, r.data.openDate || ''),
+            h('td', { class: 'nowrap' }, r.data.date ? `${fmtDate(r.data.date)} ${r.data.period || ''}` : ''),
             h('td', {}, r.data.className || ''),
             h('td', {}, r.data.teacher || ''),
             h('td', {}, r.data.subject || ''),

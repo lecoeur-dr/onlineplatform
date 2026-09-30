@@ -12,6 +12,8 @@ export function fieldInput(f, value) {
       return h('textarea', { ...common, rows: 3, value: value ?? '' });
     case 'date':
       return h('input', { ...common, type: 'date', value: value ?? '' });
+    case 'month':
+      return h('input', { ...common, type: 'month', value: value ?? '' });
     case 'money':
     case 'number':
       return h('input', { ...common, type: 'number', step: 'any', inputmode: 'decimal', value: value ?? '' });

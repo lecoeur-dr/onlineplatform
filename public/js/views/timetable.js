@@ -1,14 +1,48 @@
 // 시간표: 표 모양 그대로 보기/편집. 같은 시간에 같은 학급이 두 시간표에 있으면 표시
+import { TIMETABLE_KINDS } from '../modules.js';
 import { h, api, clear } from '../ui.js';
-import { state, canEdit } from '../state.js';
+import { state, canEdit, remember } from '../state.js';
 import { openRecordForm } from '../form.js';
 
-const DEFAULT_GRID = () => ({ days: ['월', '화', '수', '목', '금'], periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시'], cells: Array.from({ length: 6 }, () => Array(5).fill('')) });
-let kindFilter = '';
+export const DEFAULT_GRID = () => ({ days: ['월', '화', '수', '목', '금'], periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시'], cells: Array.from({ length: 6 }, () => Array(5).fill('')) });
+
+// 정렬: 학급(1학년부터, 설정의 학급 순서) → 전담 → 특별실 → 외부강의 → 기타
+export function sortTimetables(rows) {
+  const classes = state.settings?.lists?.classes || [];
+  const ci = (t) => { const i = classes.indexOf(t); return i < 0 ? 999 : i; };
+  return rows.slice().sort((a, b) => {
+    const k = TIMETABLE_KINDS.indexOf(a.data.kind || '기타') - TIMETABLE_KINDS.indexOf(b.data.kind || '기타');
+    if (k) return k;
+    if (a.data.kind === '학급') return ci(a.data.title) - ci(b.data.title) || String(a.data.title).localeCompare(String(b.data.title), 'ko', { numeric: true });
+    return (a.sort || 0) - (b.sort || 0);
+  });
+}
 
 export async function timetableView(root) {
   const rows = await api(`/api/records/timetables?year=${state.year}`);
-  render(root, rows);
+  render(root, sortTimetables(rows));
+}
+
+export function editTimetable(r, reload, defaults) {
+  return openRecordForm('timetables', r, { extra: gridEditor, onSaved: reload, defaults });
+}
+
+// 한눈에: 줄 = 시간표, 칸 = 요일×교시
+export function glanceTable(rows, { days = ['월', '화', '수', '목', '금'], onOpen, clash = new Set() } = {}) {
+  const periods = Math.max(6, ...rows.map((r) => r.data.grid?.periods?.length || 0));
+  return h('div', { class: 'table-wrap' }, h('table', { class: 'tt glance' },
+    h('thead', {},
+      h('tr', {}, h('th', { rowspan: 2, class: 'sticky-col' }, '시간표'), days.map((d) => h('th', { colspan: periods, class: 'day-sep' }, d))),
+      h('tr', {}, days.map(() => Array.from({ length: periods }, (_, i) => h('th', { class: i === 0 ? 'day-sep' : '' }, i + 1))))),
+    h('tbody', {}, rows.map((r) => {
+      const g = r.data.grid || DEFAULT_GRID();
+      return h('tr', {},
+        h('th', { class: 'sticky-col click', onclick: () => onOpen?.(r), title: r.data.note || '' }, r.data.title, h('span', { class: 'tag small' }, r.data.kind || '')),
+        days.map((d) => {
+          const di = g.days.indexOf(d);
+          return Array.from({ length: periods }, (_, pi) => h('td', { class: `${pi === 0 ? 'day-sep' : ''} ${clash.has(`${r.id}|${pi}|${di}`) ? 'clash' : ''}` }, di >= 0 ? g.cells[pi]?.[di] || '' : ''));
+        }));
+    }))));
 }
 
 // "3-1과" 처럼 칸에 적힌 학급 찾기 (전담 시간표끼리 겹침 확인용)
@@ -16,7 +50,7 @@ function classesIn(text) {
   return [...String(text).matchAll(/(\d)-(\d)/g)].map((m) => `${m[1]}-${m[2]}`);
 }
 
-function conflicts(rows) {
+export function conflicts(rows) {
   const seen = {};
   const out = new Set();
   for (const r of rows) {
@@ -59,15 +93,22 @@ function gridEditor(data, editable) {
 
 function render(root, rows) {
   const reload = () => timetableView(root);
-  const edit = (r) => openRecordForm('timetables', r, { extra: gridEditor, onSaved: reload });
+  const edit = (r) => editTimetable(r, reload);
   const clash = conflicts(rows);
-  const shown = rows.filter((r) => !kindFilter || r.data.kind === kindFilter);
+  const kind = remember('tt_kind') || '';
+  const mode = remember('tt_mode') || 'glance';
+  const shown = rows.filter((r) => !kind || (r.data.kind || '기타') === kind);
+  const set = (k, v) => { remember(k, v); render(root, rows); };
   clear(root,
     h('div', { class: 'toolbar' },
-      h('div', { class: 'seg' }, ['', '전담', '학급', '기타'].map((k) => h('button', { class: kindFilter === k ? 'on' : '', onclick: () => { kindFilter = k; render(root, rows); } }, k || '전체'))),
+      h('div', { class: 'seg' }, [['glance', '한눈에'], ['cards', '카드']].map(([v, l]) => h('button', { class: mode === v ? 'on' : '', onclick: () => set('tt_mode', v) }, l))),
+      h('div', { class: 'seg' }, ['', ...TIMETABLE_KINDS].map((k) => h('button', { class: kind === k ? 'on' : '', onclick: () => set('tt_kind', k) }, k || '전체',
+        h('span', { class: 'cnt' }, k ? rows.filter((r) => (r.data.kind || '기타') === k).length : rows.length)))),
       h('span', { class: 'grow' }),
-      canEdit('timetables') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('timetables', null, { defaults: { kind: '전담', semester: '연간' }, extra: gridEditor, onSaved: reload }) }, '+ 시간표') : null),
+      canEdit('timetables') ? h('button', { class: 'btn primary', onclick: () => editTimetable(null, reload, { kind: kind || '학급', semester: '연간' }) }, '+ 시간표') : null),
     clash.size ? h('p', { class: 'alert warn' }, '⚠ 빨간 칸: 같은 학기·요일·교시에 같은 학급이 두 전담 시간표에 들어 있습니다.') : null,
+    !shown.length ? h('p', { class: 'muted' }, '시간표가 없습니다.') :
+    mode === 'glance' ? [glanceTable(shown, { onOpen: edit, clash }), h('p', { class: 'hint' }, '시간표 이름을 누르면 수정합니다. 순서: 학급(1학년부터) → 전담 → 특별실 → 외부강의')] :
     h('div', { class: 'cards' }, shown.map((r) => {
       const g = r.data.grid || DEFAULT_GRID();
       return h('div', { class: 'card tt-card' },
@@ -79,5 +120,5 @@ function render(root, rows) {
           h('thead', {}, h('tr', {}, h('th', {}, ''), g.days.map((d) => h('th', {}, d)))),
           h('tbody', {}, g.periods.map((p, pi) => h('tr', {}, h('th', {}, p),
             g.days.map((_, di) => h('td', { class: `pre ${clash.has(`${r.id}|${pi}|${di}`) ? 'clash' : ''}` }, g.cells[pi]?.[di] || '')))))));
-    }), shown.length ? null : h('p', { class: 'muted' }, '시간표가 없습니다.')));
+    })));
 }

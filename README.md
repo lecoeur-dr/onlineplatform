@@ -14,6 +14,7 @@
 |---|---|
 | [docs/01_현황분석_및_설계안.md](docs/01_현황분석_및_설계안.md) | 기존 시트 분석, 설계 원칙, 결정 사항, 이관 결과 |
 | [docs/02_배포_가이드.md](docs/02_배포_가이드.md) | Cloudflare 배포, 구글 로그인 설정, 첫 가져오기 |
+| [docs/03_재구조화_설계.md](docs/03_재구조화_설계.md) | v2 화면 재구조화: 영역별 메뉴, 색 분류 달력, 예산 현황 |
 
 ## 구조
 
@@ -23,7 +24,7 @@ migrations/          D1 테이블
 public/
   js/modules.js      메뉴별 규격(칸 구성·드롭다운·권한) ← 칸 추가는 여기서
   js/importer.js     구글 시트(.xlsx) → 웹앱 기록 변환
-  js/views/          화면 (대시보드·달력·표·시간표·자유 표·동료장학·관리자)
+  js/views/          화면 — calendar(달력 부품) · schedule · classes · notices · money · info · dashboard(홈) · admin
 test/                가져오기·규격 테스트 (npm test)
 scripts/             가져오기 미리보기 (node scripts/try-import.mjs 파일.xlsx)
 ```

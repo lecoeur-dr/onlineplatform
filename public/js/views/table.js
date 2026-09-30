@@ -6,9 +6,11 @@ import { openRecordForm } from '../form.js';
 
 const queries = {};
 
-export async function tableView(root, moduleId) {
-  const rows = await api(`/api/records/${moduleId}?year=${state.year}`);
-  render(root, moduleId, rows);
+// opts.groupBy: 이 칸 값으로 묶어서 소계 표시 / opts.hide: 숨길 칸 / opts.rows: 미리 불러온 기록
+// opts.embed: 다른 화면 안에 넣을 때(검색창·CSV 생략) / opts.defaults: 추가할 때 기본값
+export async function tableView(root, moduleId, opts = {}) {
+  const rows = opts.rows || await api(`/api/records/${moduleId}?year=${state.year}`);
+  render(root, moduleId, rows, opts);
 }
 
 export function cellText(f, v, row) {
@@ -24,12 +26,14 @@ export function cellText(f, v, row) {
   }
 }
 
-function render(root, moduleId, rows) {
+function render(root, moduleId, rows, opts = {}) {
   const def = MODULES[moduleId];
-  const reload = () => tableView(root, moduleId);
+  const reload = opts.reload || (() => tableView(root, moduleId, { ...opts, rows: undefined }));
   const q = (queries[moduleId] || '').toLowerCase();
   const shown = q ? rows.filter((r) => JSON.stringify(r.data).toLowerCase().includes(q)) : rows;
-  const cols = def.fields.filter((f) => f.type !== 'names' || moduleId !== 'openClasses');
+  const hide = new Set(opts.hide || []);
+  if (opts.groupBy) hide.add(opts.groupBy);
+  const cols = def.fields.filter((f) => !hide.has(f.key) && (f.type !== 'names' || moduleId !== 'openClasses'));
   const editable = canEdit(moduleId);
 
   const cell = (f, r) => {
@@ -61,22 +65,40 @@ function render(root, moduleId, rows) {
   };
 
   const sums = cols.filter((f) => f.sum);
+  const total = (list, f) => list.reduce((a, r) => a + (Number(f.computed ? f.computed(r.data) : r.data[f.key]) || 0), 0);
   const foot = sums.length ? h('tfoot', {}, h('tr', {}, cols.map((f, i) => h('td', { class: f.sum ? 'num strong' : '' },
-    f.sum ? won(shown.reduce((a, r) => a + (Number(f.computed ? f.computed(r.data) : r.data[f.key]) || 0), 0)) : i === 0 ? `합계 (${shown.length}건)` : '')))) : null;
+    f.sum ? won(total(shown, f)) : i === 0 ? `합계 (${shown.length}건)` : '')))) : null;
+  const row = (r) => h('tr', { class: 'click', onclick: () => openRecordForm(moduleId, r, { onSaved: reload }) }, cols.map((f) => cell(f, r)));
+
+  let body;
+  if (!shown.length) body = h('tr', {}, h('td', { colspan: cols.length, class: 'muted center' }, '기록이 없습니다.'));
+  else if (opts.groupBy) {
+    const groups = new Map();
+    for (const r of shown) {
+      const k = r.data[opts.groupBy] || '(구분 없음)';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+    const gf = def.fields.find((f) => f.key === opts.groupBy);
+    body = [...groups].map(([k, list]) => [
+      h('tr', { class: 'group-row' }, h('td', { colspan: cols.length },
+        h('strong', {}, k), h('span', { class: 'muted' }, ` · ${list.length}건`),
+        sums.map((f) => h('span', { class: 'muted' }, ` · ${f.label} ${won(total(list, f))}`)),
+        editable && !opts.noGroupAdd ? h('button', { class: 'link-btn', onclick: () => openRecordForm(moduleId, null, { defaults: { ...(opts.defaults || {}), [opts.groupBy]: k === '(구분 없음)' ? '' : k }, onSaved: reload }) }, `+ 이 ${gf?.label || '묶음'}에 추가`) : null)),
+      list.map(row)]);
+  } else body = shown.map(row);
 
   clear(root,
     h('div', { class: 'toolbar' },
-      h('input', { type: 'search', placeholder: `${def.label} 검색`, value: queries[moduleId] || '', oninput: (e) => { queries[moduleId] = e.target.value; render(root, moduleId, rows); const s = root.querySelector('input[type=search]'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }),
+      h('input', { type: 'search', placeholder: `${def.label} 검색`, value: queries[moduleId] || '', oninput: (e) => { queries[moduleId] = e.target.value; render(root, moduleId, rows, opts); const s = root.querySelector('input[type=search]'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }),
       h('span', { class: 'muted' }, `${shown.length}건`),
       h('span', { class: 'grow' }),
-      h('button', { class: 'btn', onclick: () => exportCsv(def, shown) }, 'CSV 저장'),
-      editable ? h('button', { class: 'btn primary', onclick: () => openRecordForm(moduleId, null, { onSaved: reload }) }, `+ ${def.label}`) : null),
-    scopeNote(def),
+      opts.embed ? null : h('button', { class: 'btn', onclick: () => exportCsv(def, shown) }, 'CSV 저장'),
+      editable ? h('button', { class: 'btn primary', onclick: () => openRecordForm(moduleId, null, { defaults: opts.defaults, onSaved: reload }) }, `+ ${def.label}`) : null),
+    opts.embed ? null : scopeNote(def),
     h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
       h('thead', {}, h('tr', {}, cols.map((f) => h('th', {}, f.label)))),
-      h('tbody', {}, shown.length
-        ? shown.map((r) => h('tr', { class: 'click', onclick: () => openRecordForm(moduleId, r, { onSaved: reload }) }, cols.map((f) => cell(f, r))))
-        : h('tr', {}, h('td', { colspan: cols.length, class: 'muted center' }, '기록이 없습니다.'))),
+      h('tbody', {}, body),
       foot)));
 }
 
