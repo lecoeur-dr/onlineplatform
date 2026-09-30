@@ -1,0 +1,22 @@
+name = "online-gyomusil"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/auth/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gyomusil"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+SCHOOL_NAME = "서부초등학교"
+# 관리자 이메일(쉼표로 여러 명). 이 주소로 로그인하면 항상 관리자
+ADMIN_EMAILS = ""
+# 비밀값은 wrangler secret put 으로 등록 (docs/02_배포_가이드.md 참고)
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, DATA_KEY

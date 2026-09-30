@@ -1,0 +1,19 @@
+{
+  "name": "online-gyomusil",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init:local": "wrangler d1 migrations apply gyomusil --local",
+    "db:init:remote": "wrangler d1 migrations apply gyomusil --remote",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0",
+    "xlsx": "^0.18.5"
+  }
+}

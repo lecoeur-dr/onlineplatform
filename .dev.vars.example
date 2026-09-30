@@ -1,0 +1,8 @@
+# 로컬 개발용 (.dev.vars 로 복사해서 사용, 저장소에 올리지 않음)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# 32바이트 base64 — 생성: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+DATA_KEY=
+ADMIN_EMAILS=you@gmail.com
+# 로컬에서만: 구글 없이 /auth/dev?email=... 로 로그인 허용
+DEV_LOGIN=1
