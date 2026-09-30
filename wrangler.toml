@@ -16,7 +16,8 @@ migrations_dir = "migrations"
 
 [vars]
 SCHOOL_NAME = "서부초등학교"
-# 관리자 이메일(쉼표로 여러 명). 이 주소로 로그인하면 항상 관리자
-ADMIN_EMAILS = ""
-# 비밀값은 wrangler secret put 으로 등록 (docs/02_배포_가이드.md 참고)
-#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, DATA_KEY
+# 아래 4개는 Cloudflare 대시보드의 '변수 및 비밀'에 '비밀(Secret)'로 등록 (docs/02_배포_가이드.md)
+#   ADMIN_EMAILS         관리자 Gmail (쉼표로 여러 명). 이 주소로 로그인하면 항상 관리자
+#   GOOGLE_CLIENT_ID     구글 로그인 클라이언트 ID
+#   GOOGLE_CLIENT_SECRET 구글 로그인 클라이언트 보안 비밀번호
+#   DATA_KEY             비밀번호 암호화 키 (/keygen.html 에서 생성)
