@@ -46,7 +46,7 @@ async function encryptSecrets(env, moduleId, data, previous) {
 function toClient(row) {
   const data = JSON.parse(row.data);
   for (const k of secretKeys(row.module)) if (data[k]) data[k] = MASK;
-  return { id: row.id, year: row.year, date: row.date, sort: row.sort, data, updatedBy: row.updated_by, updatedAt: row.updated_at };
+  return { id: row.id, year: row.year, date: row.date, sort: row.sort, version: row.version, data, updatedBy: row.updated_by, updatedAt: row.updated_at };
 }
 
 // scope 에 맞는 year/date 컬럼 값
@@ -162,8 +162,13 @@ app.put('/api/records/:module/:id', async (c) => {
   const data = await encryptSecrets(c.env, m, normalizeData(m, body.data), JSON.parse(prev.data));
   const p = placement(m, data, prev.year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
-  await c.env.DB.prepare("UPDATE records SET data = ?, date = ?, updated_by = ?, updated_at = datetime('now') WHERE id = ?")
-    .bind(JSON.stringify(data), p.date, user.email, id).run();
+  // 버전이 다르면 그사이 다른 사람이 저장한 것 → 덮어쓰지 않음
+  const res = await c.env.DB.prepare("UPDATE records SET data = ?, date = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ? AND version = ?")
+    .bind(JSON.stringify(data), p.date, user.email, id, body.version ?? prev.version).run();
+  if (!res.meta.changes) {
+    const who = await c.env.DB.prepare('SELECT u.name, r.updated_by FROM records r LEFT JOIN users u ON u.email = r.updated_by WHERE r.id = ?').bind(id).first();
+    return c.json({ error: `그사이 ${who?.name || who?.updated_by || '다른 사용자'}님이 이 기록을 먼저 수정했습니다. 화면을 새로고침한 뒤 다시 수정해 주세요.`, conflict: true }, 409);
+  }
   await audit(c, 'update', m, id);
   const row = await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first();
   return c.json(toClient(row));
@@ -199,17 +204,23 @@ app.post('/api/records/openClasses/:id/observe', async (c) => {
   if (user.role === 'viewer') return c.json({ error: '권한이 없습니다.' }, 403);
   const { on } = await c.req.json();
   const id = c.req.param('id');
-  const row = await c.env.DB.prepare("SELECT * FROM records WHERE id = ? AND module = 'openClasses'").bind(id).first();
-  if (!row) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
-  const data = JSON.parse(row.data);
   const name = user.name || user.email;
-  const set = new Set(data.observers || []);
-  if (on) set.add(name); else set.delete(name);
-  data.observers = [...set];
-  await c.env.DB.prepare("UPDATE records SET data = ?, updated_by = ?, updated_at = datetime('now') WHERE id = ?")
-    .bind(JSON.stringify(data), user.email, id).run();
+  // 본인 이름만 넣고 빼므로, 여러 명이 동시에 눌러도 서로의 신청이 지워지지 않게 버전이 맞을 때만 저장하고 다시 시도
+  for (let attempt = 0; ; attempt++) {
+    const row = await c.env.DB.prepare("SELECT * FROM records WHERE id = ? AND module = 'openClasses'").bind(id).first();
+    if (!row) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
+    const data = JSON.parse(row.data);
+    const set = new Set(data.observers || []);
+    if (on) set.add(name); else set.delete(name);
+    data.observers = [...set];
+    const res = await c.env.DB.prepare("UPDATE records SET data = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ? AND version = ?")
+      .bind(JSON.stringify(data), user.email, id, row.version).run();
+    if (res.meta.changes) break;
+    if (attempt >= 4) return c.json({ error: '잠시 후 다시 시도해 주세요.' }, 409);
+  }
   await audit(c, on ? 'observe' : 'unobserve', 'openClasses', id);
-  return c.json(toClient({ ...row, data: JSON.stringify(data) }));
+  const saved = await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first();
+  return c.json(toClient(saved));
 });
 
 // ---------- 관리자 ----------

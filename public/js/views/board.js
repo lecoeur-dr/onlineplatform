@@ -63,7 +63,7 @@ function boardCard(root, list, b, editable, reload, startEditing) {
   const draw = () => {
     const snapshot = JSON.parse(JSON.stringify(b.data));
     const save = async () => {
-      try { await api(`/api/records/boards/${b.id}`, { method: 'PUT', body: { data: b.data } }); toast('저장했습니다.'); editing = false; draw(); }
+      try { Object.assign(b, await api(`/api/records/boards/${b.id}`, { method: 'PUT', body: { data: b.data, version: b.version } })); toast('저장했습니다.'); editing = false; draw(); }
       catch (e) { toast(e.message, 'error'); }
     };
     const rows = b.data.rows;

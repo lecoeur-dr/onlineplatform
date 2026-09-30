@@ -78,7 +78,7 @@ export function openRecordForm(moduleId, record, { defaults = {}, onSaved, extra
     for (const f of def.fields) if (f.required && !body[f.key] && !(f.type === 'secret' && record)) { toast(`${f.label}을(를) 입력해 주세요.`, 'error'); return; }
     try {
       const saved = record
-        ? await api(`/api/records/${moduleId}/${record.id}`, { method: 'PUT', body: { data: { ...record.data, ...body } } })
+        ? await api(`/api/records/${moduleId}/${record.id}`, { method: 'PUT', body: { data: { ...record.data, ...body }, version: record.version } })
         : await api(`/api/records/${moduleId}`, { method: 'POST', body: { data: body, year: state.year } });
       toast('저장했습니다.');
       close();

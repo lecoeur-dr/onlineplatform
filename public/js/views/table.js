@@ -39,7 +39,7 @@ function render(root, moduleId, rows) {
       return h('td', { class: 'center', onclick: (e) => e.stopPropagation() }, h('input', {
         type: 'checkbox', checked: !!v, 'aria-label': f.label,
         onchange: async (e) => {
-          try { await api(`/api/records/${moduleId}/${r.id}`, { method: 'PUT', body: { data: { ...r.data, [f.key]: e.target.checked } } }); r.data[f.key] = e.target.checked; }
+          try { Object.assign(r, await api(`/api/records/${moduleId}/${r.id}`, { method: 'PUT', body: { data: { ...r.data, [f.key]: e.target.checked }, version: r.version } })); }
           catch (err) { toast(err.message, 'error'); e.target.checked = !e.target.checked; }
         },
       }));
