@@ -11,7 +11,7 @@ run_worker_first = ["/api/*", "/auth/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "gyomusil"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "55c2d36e-4502-4d8e-9f15-9dab906d1e57"
 migrations_dir = "migrations"
 
 [vars]
