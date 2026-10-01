@@ -41,9 +41,11 @@ export function clear(el, ...children) {
 }
 
 // 지금 보고 있는 학교 (여러 학교에 속한 선생님) — 모든 요청에 실어 보냄
-export const apiCtx = { school: '' };
+export const apiCtx = { school: '', mock: null };
 
 export async function api(path, { method = 'GET', body } = {}) {
+  // 체험 모드: 서버 대신 브라우저 안의 가짜 서버
+  if (apiCtx.mock) return apiCtx.mock(path, { method, body: body === undefined ? undefined : JSON.parse(JSON.stringify(body)) });
   const res = await fetch(path, {
     method,
     headers: { 'content-type': 'application/json', 'x-requested-with': 'gyomusil', ...(apiCtx.school ? { 'x-school': apiCtx.school } : {}) },

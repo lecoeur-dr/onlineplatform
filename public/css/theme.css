@@ -311,3 +311,10 @@ button.card { text-align: left; font: inherit; color: inherit; cursor: pointer; 
   .att-note { width: 100%; }
 }
 .dash { align-items: start; }
+
+/* 체험 모드 */
+.demo-btn { margin-top: 8px; width: 100%; }
+.login .btn.primary.big { width: 100%; }
+.demo-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 18px; background: linear-gradient(90deg, #fff4d6, #ffe7b8); color: #6b4a00; font-size: 13px; border-bottom: 1px solid #f3d38a; }
+@media (prefers-color-scheme: dark) { .demo-bar { background: linear-gradient(90deg, #3a2e12, #43320f); color: #ffd98a; border-color: #5a4518; } }
+.demo-bar .btn.primary { box-shadow: none; }

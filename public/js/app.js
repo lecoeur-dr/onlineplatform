@@ -18,6 +18,7 @@ import { joinView, platformView, meView } from './views/account.js';
 import { bellButton, refreshBell } from './views/inbox.js';
 import { openRecordForm } from './form.js';
 import { loadNews, markSeen, paintBadges } from './news.js';
+import { isDemo, startDemo, exitDemo, resetDemo, demoApi } from './demo.js';
 
 // OnlineFlatform(학교) 영역/탭 → 화면
 const VIEWS = {
@@ -73,12 +74,18 @@ async function loadMe() {
     name: me.member?.name || me.user.name || '', role: me.member?.role || null, dept: me.member?.dept || '',
   };
   apiCtx.school = me.member?.schoolId || '';
-  if (me.member) remember('school', me.member.schoolId);
+  if (me.member && !isDemo()) remember('school', me.member.schoolId);
   document.title = state.member ? `${state.settings.schoolName} · ${APP_NAME}` : APP_NAME;
 }
 
 async function boot() {
-  apiCtx.school = remember('school') || '';
+  // 체험 링크(/?demo 또는 #/demo)로 들어오면 체험 모드 시작
+  if (/[?&]demo\b/.test(location.search) || location.hash === '#/demo') {
+    try { sessionStorage.setItem('gy_demo', '1'); } catch { /* 무시 */ }
+    history.replaceState(null, '', '/#/home/');
+  }
+  if (isDemo()) apiCtx.mock = demoApi;
+  apiCtx.school = isDemo() ? 'demo' : remember('school') || '';
   try {
     await loadMe();
     let saved = null;
@@ -101,6 +108,8 @@ function loginScreen() {
       h('h1', {}, APP_NAME),
       h('p', { class: 'muted' }, `학교 업무는 ${APP_NAME}, 내 학급·수업은 ${DESK_NAME}`),
       h('a', { class: 'btn primary big', href: '/auth/login' }, 'Google 계정으로 로그인'),
+      h('button', { class: 'btn big demo-btn', onclick: startDemo }, '👀 로그인 없이 둘러보기'),
+      h('p', { class: 'muted small' }, '가상 학교·가상 학급 데이터로 모든 메뉴를 체험합니다. 서버에 저장되지 않습니다.'),
       h('p', { class: 'muted small' }, '구글 계정이면 누구나 로그인할 수 있습니다. 학교 자료는 학교 관리자가 가입을 승인한 뒤 보입니다.'),
       remember('invite') ? h('p', { class: 'alert' }, '초대 링크로 들어왔습니다. 로그인하면 학교 가입 요청이 이어집니다.') : null,
       h('p', { class: 'muted small' }, h('a', { href: '/privacy/' }, '개인정보처리방침'), ' · ', h('a', { href: '/terms/' }, '이용약관')))));
@@ -147,6 +156,11 @@ function layout() {
       bellButton(),
       h('a', { class: 'who', href: '#/me', title: state.me.email }, state.me.name || state.me.email, state.me.role ? h('span', { class: 'tag ghost' }, ROLES[state.me.role]) : null),
       h('button', { class: 'btn small logout', onclick: logout }, '로그아웃')),
+    isDemo() ? h('div', { class: 'demo-bar' },
+      h('span', {}, '👀 ', h('strong', {}, '체험 모드'), ' · 가상 학교·가상 학생 데이터입니다. 바꾼 내용은 이 탭에만 잠시 남습니다.'),
+      h('span', { class: 'grow' }),
+      h('button', { class: 'btn small', onclick: resetDemo }, '처음 상태로'),
+      h('button', { class: 'btn small primary', onclick: () => { exitDemo(); } }, '로그인하고 시작하기')) : null,
     groupBar,
     h('div', { class: 'scrim', onclick: closeNav }),
     h('div', { class: 'body' }, nav, main),
