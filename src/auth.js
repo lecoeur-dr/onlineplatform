@@ -91,14 +91,14 @@ function decodeJwtPayload(jwt) {
 
 async function startSession(c, email, name, picture) {
   const db = c.env.DB;
-  const isAdmin = adminEmails(c.env).includes(email);
+  // 구글 계정이면 누구나 로그인(계정 생성). 학교 자료는 학교 관리자가 가입을 승인해야 보임
   const existing = await db.prepare('SELECT role, name FROM users WHERE email = ?').bind(email).first();
   if (!existing) {
-    await db.prepare('INSERT INTO users (email, name, role, picture, last_login) VALUES (?, ?, ?, ?, datetime(\'now\'))')
-      .bind(email, name, isAdmin ? 'admin' : 'pending', picture).run();
+    await db.prepare('INSERT INTO users (email, name, role, picture, last_login) VALUES (?, ?, \'user\', ?, datetime(\'now\'))')
+      .bind(email, name, picture).run();
   } else {
-    await db.prepare('UPDATE users SET last_login = datetime(\'now\'), picture = ?, role = ?, name = CASE WHEN name = \'\' THEN ? ELSE name END WHERE email = ?')
-      .bind(picture, isAdmin ? 'admin' : existing.role, name, email).run();
+    await db.prepare('UPDATE users SET last_login = datetime(\'now\'), picture = ?, name = CASE WHEN name = \'\' THEN ? ELSE name END WHERE email = ?')
+      .bind(picture, name, email).run();
   }
   const token = randomToken();
   const expires = Date.now() + SESSION_DAYS * 86400000;
@@ -115,6 +115,7 @@ export async function loadUser(c) {
     'SELECT u.email, u.name, u.role, u.dept, u.picture FROM sessions s JOIN users u ON u.email = s.email WHERE s.token = ? AND s.expires_at > ?'
   ).bind(token, Date.now()).first();
   if (!row) return null;
-  if (adminEmails(c.env).includes(row.email)) row.role = 'admin';
+  // ADMIN_EMAILS = 플랫폼 운영자 (새 학교 개설 승인). 학교 안 권한은 members 표
+  row.super = adminEmails(c.env).includes(row.email);
   return row;
 }

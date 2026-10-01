@@ -116,20 +116,20 @@ export function scheduleToEvents(rows) {
 }
 
 // 학사일정 동기화: 기존 '나이스' 일정을 지우고 새로 넣음. 직접 입력한 같은 날·같은 이름 일정이 있으면 건너뜀
-export async function syncSchedule(env, db, year, cfg, email, fetchImpl) {
+export async function syncSchedule(env, db, schoolId, year, cfg, email, fetchImpl) {
   if (!cfg?.atpt || !cfg?.code) throw new NeisError('관리자 → 설정 → 나이스 연동에서 학교를 먼저 선택해 주세요.');
   const { from, to } = yearRange(year);
   const rows = await neisFetch(env, 'SchoolSchedule', { ATPT_OFCDC_SC_CODE: cfg.atpt, SD_SCHUL_CODE: cfg.code, AA_FROM_YMD: compact(from), AA_TO_YMD: compact(to) }, fetchImpl);
   const events = scheduleToEvents(rows);
-  const existing = await db.prepare("SELECT date, data FROM records WHERE module = 'events' AND date BETWEEN ? AND ? AND COALESCE(json_extract(data, '$.source'), '') != '나이스'").bind(from, to).all();
+  const existing = await db.prepare("SELECT date, data FROM records WHERE module = 'events' AND school_id = ? AND date BETWEEN ? AND ? AND COALESCE(json_extract(data, '$.source'), '') != '나이스'").bind(schoolId, from, to).all();
   const manual = existing.results.map((r) => ({ date: r.date, t: norm(JSON.parse(r.data).title) }));
   const dup = (e) => manual.some((m) => m.date === e.date && m.t && (m.t.includes(norm(e.title)) || norm(e.title).includes(m.t)));
   const keep = events.filter((e) => !dup(e));
-  const stmts = [db.prepare("DELETE FROM records WHERE module = 'events' AND date BETWEEN ? AND ? AND json_extract(data, '$.source') = '나이스'").bind(from, to)];
+  const stmts = [db.prepare("DELETE FROM records WHERE module = 'events' AND school_id = ? AND date BETWEEN ? AND ? AND json_extract(data, '$.source') = '나이스'").bind(schoolId, from, to)];
   for (const e of keep) {
     const data = Object.fromEntries(Object.entries(e).filter(([, v]) => v));
-    stmts.push(db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by) VALUES (?, ?, NULL, ?, 0, ?, ?, ?)')
-      .bind(crypto.randomUUID().replace(/-/g, '').slice(0, 16), 'events', e.date, JSON.stringify(data), email, email));
+    stmts.push(db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by, school_id) VALUES (?, ?, NULL, ?, 0, ?, ?, ?, ?)')
+      .bind(crypto.randomUUID().replace(/-/g, '').slice(0, 16), 'events', e.date, JSON.stringify(data), email, email, schoolId));
   }
   for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80));
   return { fetched: rows.length, inserted: keep.length, skipped: events.length - keep.length };

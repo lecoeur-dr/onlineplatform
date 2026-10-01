@@ -68,7 +68,7 @@ export function conflicts(rows) {
   return out;
 }
 
-function gridEditor(data, editable) {
+export function gridEditor(data, editable) {
   const grid = data.grid ? JSON.parse(JSON.stringify(data.grid)) : DEFAULT_GRID();
   const wrap = h('div', { class: 'grid-editor' });
   const draw = () => {

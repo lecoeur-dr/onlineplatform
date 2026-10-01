@@ -40,10 +40,13 @@ export function clear(el, ...children) {
   return el;
 }
 
+// 지금 보고 있는 학교 (여러 학교에 속한 선생님) — 모든 요청에 실어 보냄
+export const apiCtx = { school: '' };
+
 export async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
     method,
-    headers: { 'content-type': 'application/json', 'x-requested-with': 'gyomusil' },
+    headers: { 'content-type': 'application/json', 'x-requested-with': 'gyomusil', ...(apiCtx.school ? { 'x-school': apiCtx.school } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: 'same-origin',
   });

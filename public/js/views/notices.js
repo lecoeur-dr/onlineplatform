@@ -1,5 +1,5 @@
 // 📢 공지·회의 영역: 한눈에 · 공지 · 회의록(같은 날·같은 회의 묶음)
-import { h, api, clear, fmtDate, today, addDays, toast } from '../ui.js';
+import { h, api, clear, fmtDate, today, addDays, toast, modal } from '../ui.js';
 import { state, canEdit, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { seg } from './schedule.js';
@@ -171,4 +171,34 @@ export async function collectionsView(root) {
       shown.length ? h('div', { class: 'cards' }, shown.map((r) => collectionCard(r, reload, toggle))) : h('p', { class: 'muted' }, '해당하는 수합이 없습니다.'));
   };
   draw();
+}
+
+// 📣 조례·종례 전달사항: 날짜별로 모아 보고, 담임은 그대로 읽어 줄 수 있게 크게 보기
+export async function briefingsView(root) {
+  const rows = await api(`/api/records/briefings?year=${state.year}`);
+  const reload = () => briefingsView(root);
+  const t = today();
+  const range = remember('brief_range') || 'upcoming';
+  const shown = rows.filter((r) => range === 'all' || r.data.date >= t).sort((a, b) => a.data.date.localeCompare(b.data.date));
+  const byDate = new Map();
+  for (const r of shown) { if (!byDate.has(r.data.date)) byDate.set(r.data.date, []); byDate.get(r.data.date).push(r); }
+  const editable = canEdit('briefings');
+  const big = (date, list) => modal(`📣 ${fmtDate(date)} 전달사항`, h('div', { class: 'brief-big' }, list.map((r) => h('div', { class: 'brief-item' },
+    h('div', { class: 'muted small' }, [r.data.kind, r.data.target, r.data.dept].filter(Boolean).join(' · ')),
+    h('div', { class: 'pre' }, r.data.content)))), [], { wide: true });
+  clear(root,
+    h('div', { class: 'toolbar' },
+      seg([['upcoming', '오늘부터'], ['all', '전체']], range, (v) => { remember('brief_range', v); reload(); }),
+      h('span', { class: 'grow' }),
+      editable ? h('button', { class: 'btn primary', onclick: () => openRecordForm('briefings', null, { defaults: { date: t, kind: '조례' }, onSaved: reload }) }, '+ 전달사항') : null),
+    byDate.size ? h('div', { class: 'cards' }, [...byDate].map(([date, list]) => h('div', { class: `card ${date === t ? 'mine' : ''}` },
+      h('div', { class: 'card-head' }, h('strong', {}, `${fmtDate(date)}${date === t ? ' · 오늘' : ''}`),
+        h('div', { class: 'row-actions' },
+          h('button', { class: 'link-btn', onclick: () => big(date, list) }, '크게 보기'),
+          editable ? h('button', { class: 'link-btn', onclick: () => openRecordForm('briefings', null, { defaults: { date, kind: '조례' }, onSaved: reload }) }, '+ 추가') : null)),
+      list.map((r) => h('div', { class: `brief-row click ${isNew('briefings', r) ? 'is-new' : ''}`, onclick: () => openRecordForm('briefings', r, { onSaved: reload }) },
+        r.data.kind ? h('span', { class: 'tag' }, r.data.kind) : null, r.data.target ? h('span', { class: 'tag ghost' }, r.data.target) : null,
+        h('div', { class: 'pre' }, r.data.content), r.data.dept ? h('div', { class: 'muted small' }, r.data.dept) : null))))) :
+      h('p', { class: 'muted' }, '전달사항이 없습니다.'),
+    h('p', { class: 'hint' }, '등록하면 학교 선생님들에게 알림이 갑니다. 홈과 Deskterior "내 책상"의 오늘 전달사항에도 나옵니다.'));
 }

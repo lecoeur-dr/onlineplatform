@@ -5,7 +5,7 @@ import { state } from '../state.js';
 import { parseWorkbook, guessYear } from '../importer.js';
 
 let tab = 'users';
-const TABS = { users: '사용자', settings: '설정', import: '엑셀 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
+const TABS = { users: '사용자·초대', settings: '설정', import: '엑셀 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
 
 export async function adminView(root, refreshApp) {
   const body = h('div', {});
@@ -37,10 +37,23 @@ async function users(root) {
   h('select', { name: 'role' }, ['staff', 'viewer', 'admin'].map((r) => h('option', { value: r }, ROLES[r]))),
   h('button', { class: 'btn primary' }, '미리 등록'));
 
+  const inv = await api('/api/admin/invite');
+  const link = `${location.origin}/#/join/${inv.code}`;
+  const approve = (u) => h('span', { class: 'nowrap' },
+    h('button', { class: 'btn small primary', onclick: async () => { await update(u.email, { role: 'staff' }); users(root); } }, '승인'),
+    h('button', { class: 'btn small danger ghost', onclick: async () => { if (await confirmBox(`${u.name || u.email}의 가입 요청을 거절할까요?`)) { await api(`/api/admin/users/${encodeURIComponent(u.email)}`, { method: 'DELETE' }); users(root); } } }, '거절'));
   clear(root,
-    h('div', { class: 'toolbar' }, h('span', { class: 'grow' }), h('button', { class: 'btn', onclick: showQr }, '📱 접속 QR')),
-    pending.length ? h('p', { class: 'alert warn' }, `승인 대기 ${pending.length}명 — 권한을 '교직원'으로 바꾸면 바로 사용할 수 있습니다.`) : null,
-    h('p', { class: 'hint' }, '선생님이 구글 계정으로 처음 로그인하면 "승인대기"로 등록됩니다. 미리 이메일을 등록해 두면 첫 로그인부터 바로 사용할 수 있습니다.'),
+    h('section', { class: 'card' },
+      h('h3', {}, '🔑 초대 링크'),
+      h('p', { class: 'muted small' }, '이 링크(또는 코드)를 교직원 단톡방 등에 보내면, 선생님이 구글 로그인 후 가입을 요청합니다. 아래 "가입 요청"에서 승인하면 사용할 수 있습니다.'),
+      h('div', { class: 'invite-row' }, h('code', {}, link),
+        h('button', { class: 'btn small', onclick: () => { navigator.clipboard?.writeText(link); toast('링크를 복사했습니다.'); } }, '복사'),
+        h('button', { class: 'btn small', onclick: () => showQr(link) }, '📱 QR'),
+        h('button', { class: 'btn small ghost', onclick: async () => { if (await confirmBox('초대 코드를 새로 만들까요? 이전 링크는 더 이상 쓸 수 없습니다.')) { await api('/api/admin/invite', { method: 'POST' }); users(root); } } }, '코드 바꾸기')),
+      h('div', { class: 'muted small' }, `초대 코드: ${inv.code}`)),
+    pending.length ? h('section', { class: 'card warn' }, h('h3', {}, `🙋 가입 요청 ${pending.length}명`),
+      h('ul', { class: 'list' }, pending.map((u) => h('li', {}, h('strong', {}, u.name || u.account_name || '(이름 없음)'), h('span', { class: 'muted' }, ` ${u.email} · ${u.created_at}`), ' ', approve(u))))) : null,
+    h('p', { class: 'hint' }, '이름은 보결·담당 배정·내 할 일에 쓰이므로 실명으로 맞춰 주세요. 이메일을 미리 등록해 두면 그 선생님은 첫 로그인부터 바로 사용합니다.'),
     form,
     h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
       h('thead', {}, h('tr', {}, ['이메일', '이름', '부서', '권한', '최근 로그인', ''].map((t) => h('th', {}, t)))),
@@ -57,9 +70,9 @@ async function users(root) {
 }
 
 // 접속 QR: 교무실 화면·연수 자료에 띄워 두면 폰 카메라로 바로 접속
-export async function showQr() {
+export async function showQr(target) {
   if (!window.qrcode) await loadScript('/vendor/qrcode.js');
-  const url = location.origin + '/';
+  const url = typeof target === 'string' ? target : location.origin + '/';
   const qr = window.qrcode(0, 'M');
   qr.addData(url);
   qr.make();
@@ -74,7 +87,7 @@ export async function showQr() {
       h('button', { class: 'btn', onclick: () => {
         const w = window.open('', '_blank');
         if (!w) return;
-        w.document.write(`<title>접속 QR</title><div style="text-align:center;font-family:sans-serif;padding:40px"><h1>${state.settings.schoolName || ''} 온라인 교무실</h1><div style="width:420px;margin:auto">${box.innerHTML}</div><p style="font-size:20px">${url}</p></div>`);
+        w.document.write(`<title>접속 QR</title><div style="text-align:center;font-family:sans-serif;padding:40px"><h1>${state.settings.schoolName || ''} · OnlineFlatform</h1><div style="width:420px;margin:auto">${box.innerHTML}</div><p style="font-size:20px">${url}</p></div>`);
         w.document.close();
         w.print();
       } }, '인쇄'))));
@@ -224,7 +237,7 @@ async function copy(root) {
 
 async function audit(root) {
   const rows = await api('/api/admin/audit');
-  const ACT = { create: '추가', update: '수정', delete: '삭제', reveal: '비밀번호 보기', import: '가져오기', settings: '설정', user: '사용자', 'copy-year': '연도 복사', export: '백업', observe: '참관 신청', unobserve: '참관 취소' };
+  const ACT = { create: '추가', update: '수정', delete: '삭제', reveal: '비밀번호 보기', import: '가져오기', settings: '설정', user: '사용자', 'copy-year': '연도 복사', export: '백업', observe: '참관 신청', unobserve: '참관 취소', 'self-on': '본인 체크', 'self-off': '본인 체크 해제', 'neis-sync': '나이스 동기화' };
   clear(root, h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
     h('thead', {}, h('tr', {}, ['시각(UTC)', '사용자', '작업', '메뉴', '내용'].map((t) => h('th', {}, t)))),
     h('tbody', {}, rows.map((a) => h('tr', {},

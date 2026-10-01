@@ -1,6 +1,6 @@
-import { MODULES, GROUPS, ROLES } from './modules.js';
-import { h, api, clear, toast } from './ui.js';
-import { state, setYear, isAdmin } from './state.js';
+import { MODULES, GROUPS, DESK_GROUPS, ROLES, APP_NAME, DESK_NAME } from './modules.js';
+import { h, api, clear, toast, modal, today, apiCtx } from './ui.js';
+import { state, setYear, isAdmin, canEdit, remember, defaultSettings } from './state.js';
 import { dashboardView } from './views/dashboard.js';
 import { tableView } from './views/table.js';
 import { timetableView } from './views/timetable.js';
@@ -10,16 +10,16 @@ import { scheduleOverview, eventsList, tripsView } from './views/schedule.js';
 import { classOverview, programsView, openClassesTab, substitutesView } from './views/classes.js';
 import { reservationsView } from './views/reservations.js';
 import { dutiesView } from './views/duties.js';
-import { loadNews, markSeen, paintBadges } from './news.js';
-import { noticeOverview, noticesView, meetingsView, collectionsView } from './views/notices.js';
+import { noticeOverview, noticesView, meetingsView, collectionsView, briefingsView } from './views/notices.js';
 import { moneyOverview, purchasesView, budgetView } from './views/money.js';
 import { infoOverview, contactsView, rulesView, resourcesView } from './views/info.js';
+import { DESK_VIEWS } from './views/desk.js';
+import { joinView, platformView, meView } from './views/account.js';
+import { bellButton, refreshBell } from './views/inbox.js';
 import { openRecordForm } from './form.js';
-import { modal } from './ui.js';
-import { today } from './ui.js';
-import { canEdit } from './state.js';
+import { loadNews, markSeen, paintBadges } from './news.js';
 
-// 영역/탭 → 화면
+// OnlineFlatform(학교) 영역/탭 → 화면
 const VIEWS = {
   'home/': dashboardView,
   'schedule/overview': scheduleOverview,
@@ -33,6 +33,7 @@ const VIEWS = {
   'class/reservations': reservationsView,
   'notice/overview': noticeOverview,
   'notice/notices': noticesView,
+  'notice/briefings': briefingsView,
   'notice/meetings': meetingsView,
   'notice/collections': collectionsView,
   'notice/duties': dutiesView,
@@ -56,44 +57,52 @@ function legacyRoute(id) {
 
 const app = document.getElementById('app');
 
+// 초대 링크(#/join/코드)로 들어오면 로그인 뒤에도 쓰도록 기억
+const inviteMatch = location.hash.match(/^#\/join\/([0-9a-f]{6,16})/i);
+if (inviteMatch) remember('invite', inviteMatch[1].toLowerCase());
+
+async function loadMe() {
+  const me = await api('/api/me');
+  state.account = me.user;
+  state.schools = me.schools;
+  state.member = me.member;
+  state.push = me.push;
+  state.settings = me.settings || defaultSettings();
+  state.me = {
+    email: me.user.email, super: me.user.super, accountName: me.user.name,
+    name: me.member?.name || me.user.name || '', role: me.member?.role || null, dept: me.member?.dept || '',
+  };
+  apiCtx.school = me.member?.schoolId || '';
+  if (me.member) remember('school', me.member.schoolId);
+  document.title = state.member ? `${state.settings.schoolName} · ${APP_NAME}` : APP_NAME;
+}
+
 async function boot() {
+  apiCtx.school = remember('school') || '';
   try {
-    const me = await api('/api/me');
-    state.me = me.user;
-    state.settings = me.settings;
+    await loadMe();
     let saved = null;
     try { saved = Number(localStorage.getItem('gy_year')); } catch { /* 무시 */ }
-    state.year = saved || me.settings.currentYear;
-    state.staff = await api('/api/staff').catch(() => []);
+    state.year = saved || state.settings.currentYear;
+    state.staff = state.member ? await api('/api/staff').catch(() => []) : [];
   } catch (e) {
     if (e.status === 401) return loginScreen();
     return clear(app, h('div', { class: 'center-box' }, h('p', {}, `연결 오류: ${e.message}`)));
   }
-  if (!['admin', 'staff', 'viewer'].includes(state.me.role)) return pendingScreen();
-  document.title = `${state.settings.schoolName || ''} 온라인 교무실`.trim();
   layout();
   route();
+  refreshBell();
 }
 
 function loginScreen() {
   clear(app, h('div', { class: 'center-box' },
     h('div', { class: 'login' },
       h('div', { class: 'logo' }, '🏫'),
-      h('h1', {}, '온라인 교무실'),
-      h('p', { class: 'muted' }, '학교에서 승인한 구글 계정으로 로그인합니다.'),
-      h('a', { class: 'btn primary big', href: '/auth/login' }, 'Google 계정으로 로그인'))));
-}
-
-function pendingScreen() {
-  clear(app, h('div', { class: 'center-box' },
-    h('div', { class: 'login' },
-      h('div', { class: 'logo' }, '⏳'),
-      h('h1', {}, state.me.role === 'blocked' ? '사용이 제한된 계정입니다' : '관리자 승인 대기 중'),
-      h('p', {}, state.me.email),
-      h('p', { class: 'muted' }, '교무 담당 선생님께 승인을 요청해 주세요. 승인 후 새로고침하면 사용할 수 있습니다.'),
-      h('div', { class: 'row-actions center' },
-        h('button', { class: 'btn', onclick: () => location.reload() }, '새로고침'),
-        h('button', { class: 'btn', onclick: logout }, '다른 계정으로 로그인')))));
+      h('h1', {}, APP_NAME),
+      h('p', { class: 'muted' }, `학교 업무는 ${APP_NAME}, 내 학급·수업은 ${DESK_NAME}`),
+      h('a', { class: 'btn primary big', href: '/auth/login' }, 'Google 계정으로 로그인'),
+      h('p', { class: 'muted small' }, '구글 계정이면 누구나 로그인할 수 있습니다. 학교 자료는 학교 관리자가 가입을 승인한 뒤 보입니다.'),
+      remember('invite') ? h('p', { class: 'alert' }, '초대 링크로 들어왔습니다. 로그인하면 학교 가입 요청이 이어집니다.') : null)));
 }
 
 async function logout() {
@@ -104,65 +113,108 @@ async function logout() {
 let main;
 let nav;
 
+const spaceOfPath = (path) => (path.startsWith('desk') ? 'desk' : 'school');
+const currentPath = () => location.hash.replace(/^#\/?/, '').split('?')[0];
+
 function layout() {
   const years = [];
   for (let y = state.settings.currentYear - 2; y <= state.settings.currentYear + 1; y++) years.push(y);
   if (!years.includes(state.year)) years.push(state.year);
-  nav = h('nav', { class: 'nav' },
-    GROUPS.map((g) => h('div', { class: 'nav-group', 'data-group': g.id },
-      h('a', { href: `#/${g.id}/${g.tabs.length ? 'overview' : ''}`, class: 'nav-head', 'data-id': `${g.id}/${g.tabs.length ? 'overview' : ''}` }, h('span', { class: 'ico' }, g.icon), g.label),
-      g.tabs.filter((t) => t.id !== 'overview').map((t) => h('a', { href: `#/${g.id}/${t.id}`, class: 'nav-sub', 'data-id': `${g.id}/${t.id}` }, t.label)))),
-    isAdmin() ? h('a', { href: '#/admin', 'data-id': 'admin', class: 'nav-head admin-link' }, h('span', { class: 'ico' }, '⚙️'), '관리자') : null);
+  nav = h('nav', { class: 'nav' });
   main = h('main', { class: 'main' });
+  const schoolPick = state.schools.filter((s) => s.status === 'active' && ['admin', 'staff', 'viewer'].includes(s.role));
   clear(app,
     h('header', { class: 'top' },
       h('button', { class: 'icon-btn menu-btn', 'aria-label': '메뉴', onclick: () => document.body.classList.toggle('nav-open') }, '☰'),
-      h('a', { href: '#/home/', class: 'brand' }, `${state.settings.schoolName || ''} 온라인 교무실`),
+      h('div', { class: 'space-tabs', role: 'tablist' },
+        h('a', { href: '#/home/', class: 'space-tab', 'data-space': 'school' }, h('span', { class: 'ico' }, '🏫'), h('span', { class: 'lbl' }, APP_NAME), h('span', { class: 'lbls' }, '학교')),
+        h('a', { href: '#/desk/home', class: 'space-tab', 'data-space': 'desk' }, h('span', { class: 'ico' }, '🪴'), h('span', { class: 'lbl' }, DESK_NAME), h('span', { class: 'lbls' }, '내 책상'))),
       h('span', { class: 'grow' }),
+      schoolPick.length > 1 ? h('select', { class: 'school-pick', 'aria-label': '학교', onchange: async (e) => { remember('school', e.target.value); apiCtx.school = e.target.value; await refresh(); } },
+        schoolPick.map((s) => h('option', { value: s.id, selected: s.id === state.member?.schoolId }, s.name))) : null,
       h('label', { class: 'year' }, h('span', { class: 'year-label' }, '학년도 '),
         h('select', { id: 'year-select', onchange: (e) => { setYear(e.target.value); route(); } },
           years.sort().map((y) => h('option', { value: y, selected: y === state.year }, `${y}`)))),
-      h('span', { class: 'who', title: state.me.email }, state.me.name || state.me.email, h('span', { class: 'tag ghost' }, ROLES[state.me.role])),
-      h('button', { class: 'btn small', onclick: logout }, '로그아웃')),
+      bellButton(),
+      h('a', { class: 'who', href: '#/me', title: state.me.email }, state.me.name || state.me.email, state.me.role ? h('span', { class: 'tag ghost' }, ROLES[state.me.role]) : null),
+      h('button', { class: 'btn small logout', onclick: logout }, '로그아웃')),
     h('div', { class: 'body' }, nav, main),
     bottomBar(),
     quickAddButton());
   nav.addEventListener('click', (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); });
 }
 
+// 왼쪽 메뉴: 공간(학교/내 책상)마다 다르고, 큰 항목별로 접고 펼 수 있음 (기억함)
+function drawNav(space, activeKey, activeGroup) {
+  const groups = space === 'desk' ? DESK_GROUPS : GROUPS;
+  const prefix = space === 'desk' ? 'desk/' : '';
+  const folded = new Set(remember(`nav_fold_${space}`) || []);
+  const toggle = (id, el) => {
+    if (folded.has(id)) folded.delete(id); else folded.add(id);
+    remember(`nav_fold_${space}`, [...folded]);
+    el.classList.toggle('folded', folded.has(id));
+  };
+  const schoolLocked = space === 'school' && !state.member;
+  clear(nav,
+    space === 'school' && state.member ? h('div', { class: 'nav-school' }, `🏫 ${state.settings.schoolName}`) : null,
+    schoolLocked ? h('a', { href: '#/join', class: 'nav-head on' }, h('span', { class: 'ico' }, '🙋'), '학교 가입·개설') : null,
+    schoolLocked ? null : groups.map((g) => {
+      const subs = g.tabs.filter((t) => t.id !== 'overview' || g.tabs.length === 1);
+      const head = `${prefix}${g.id}/${g.tabs.length ? (g.tabs[0].id) : ''}`;
+      const grp = h('div', { class: `nav-group ${folded.has(g.id) ? 'folded' : ''} ${g.id === activeGroup ? 'open' : ''}`, 'data-group': g.id },
+        h('div', { class: 'nav-head-row' },
+          h('a', { href: `#/${head}`, class: 'nav-head', 'data-id': head }, h('span', { class: 'ico' }, g.icon), g.label),
+          subs.length > 1 || (subs.length === 1 && g.tabs.length > 1) ? h('button', { class: 'fold', 'aria-label': `${g.label} 접기/펴기`, onclick: (e) => { e.stopPropagation(); toggle(g.id, grp); } }, '▾') : null),
+        subs.length > 1 || g.tabs.length > 1 ? h('div', { class: 'nav-subs' }, subs.map((t) => h('a', { href: `#/${prefix}${g.id}/${t.id}`, class: 'nav-sub', 'data-id': `${prefix}${g.id}/${t.id}` }, t.label))) : null);
+      return grp;
+    }),
+    space === 'school' && isAdmin() ? h('a', { href: '#/admin', 'data-id': 'admin', class: 'nav-head admin-link' }, h('span', { class: 'ico' }, '⚙️'), '학교 관리') : null,
+    state.me.super ? h('a', { href: '#/platform', 'data-id': 'platform', class: 'nav-head admin-link' }, h('span', { class: 'ico' }, '🛰'), '플랫폼 운영') : null,
+    space === 'school' && state.member ? h('a', { href: '#/join', class: 'nav-sub small' }, '+ 다른 학교 가입') : null,
+    h('a', { href: '#/me', 'data-id': 'me', class: 'nav-head admin-link' }, h('span', { class: 'ico' }, '👤'), `내 정보 · ${state.me.name || ''}`),
+    h('button', { class: 'nav-logout link-btn', onclick: logout }, '로그아웃'));
+  for (const a of nav.querySelectorAll('a[data-id]')) a.classList.toggle('on', a.dataset.id === activeKey);
+}
+
 // 휴대폰 하단 탭 (넓은 화면에서는 숨김)
-const BOTTOM = [
-  { href: '#/home/', group: 'home', icon: '🏠', label: '홈' },
-  { href: '#/schedule/overview', group: 'schedule', icon: '📅', label: '달력' },
-  { href: '#/class/overview', group: 'class', icon: '🕘', label: '수업' },
-  { href: '#/notice/overview', group: 'notice', icon: '📢', label: '공지' },
-];
 function bottomBar() {
+  const items = [
+    { href: '#/home/', group: 'home', space: 'school', icon: '🏠', label: '홈' },
+    { href: '#/schedule/overview', group: 'schedule', space: 'school', icon: '📅', label: '달력' },
+    { href: '#/notice/overview', group: 'notice', space: 'school', icon: '📢', label: '공지' },
+    { href: '#/desk/home', group: 'desk', space: 'desk', icon: '🪴', label: '내 책상' },
+  ];
   return h('nav', { class: 'bottom-bar', 'aria-label': '빠른 메뉴' },
-    BOTTOM.map((b) => h('a', { href: b.href, 'data-group': b.group }, h('span', { class: 'bb-ico' }, b.icon), h('span', {}, b.label))),
+    items.map((b) => h('a', { href: b.href, 'data-group': b.group, 'data-space': b.space }, h('span', { class: 'bb-ico' }, b.icon), h('span', {}, b.label))),
     h('button', { onclick: () => document.body.classList.toggle('nav-open') }, h('span', { class: 'bb-ico' }, '☰'), h('span', {}, '전체')));
 }
 
-// 휴대폰 빠른 추가(+): 지금 날짜로 바로 입력
+// 빠른 추가(+): 지금 공간에 맞는 항목
 function quickAddButton() {
-  const targets = [
-    ['events', '📅 일정', { date: today(), category: '전체행사' }],
-    ['trips', '🚌 복무·출장', { date: today(), kind: '출장', person: state.me.name || '' }],
-    ['substitutes', '🔁 보결', { date: today() }],
-    ['collections', '📥 수합', {}],
-    ['reservations', '🏫 특별실 예약', { date: today(), user: state.me.name || '' }],
-    ['duties', '🧑‍🏫 담당 배정', { date: today() }],
-    ['memos', '✏️ 달력 메모', { date: today() }],
-    ['programs', '🎨 특별수업', { date: today(), status: '예정' }],
-    ['notices', '📢 공지', { category: '일반' }],
-    ['meetings', '📝 회의 안건', { date: today(), meeting: '전체회의', status: '완료' }],
-    ['purchases', '🛒 물품 신청', { requester: state.me.name || '' }],
-  ].filter(([m]) => canEdit(m));
-  if (!targets.length) return null;
   return h('button', { class: 'fab', 'aria-label': '빠른 추가', onclick: () => {
-    const close = modal('빠른 추가', h('div', { class: 'choice' }, targets.map(([m, label, defaults]) => h('button', { class: 'btn big', onclick: () => {
+    const school = state.member ? [
+      ['events', '📅 일정', { date: today(), category: '전체행사' }],
+      ['trips', '🚌 복무·출장', { date: today(), kind: '출장', person: state.me.name || '' }],
+      ['substitutes', '🔁 보결', { date: today() }],
+      ['briefings', '📣 전달사항', { date: today(), kind: '조례' }],
+      ['collections', '📥 수합', {}],
+      ['reservations', '🏫 특별실 예약', { date: today(), user: state.me.name || '' }],
+      ['duties', '🧑‍🏫 담당 배정', { date: today() }],
+      ['memos', '✏️ 달력 메모', { date: today() }],
+      ['notices', '📢 공지', { category: '일반' }],
+      ['meetings', '📝 회의 안건', { date: today(), meeting: '전체회의', status: '완료' }],
+      ['purchases', '🛒 물품 신청', { requester: state.me.name || '' }],
+    ].filter(([m]) => canEdit(m)) : [];
+    const desk = [
+      ['todos', '✅ 할 일', { due: today(), repeat: '없음' }],
+      ['notes', '🗒 누가기록', { date: today(), category: '관찰' }],
+      ['progress', '📘 진도', { date: today() }],
+      ['market', '🛍 마켓에 자료 올리기', {}],
+    ];
+    const list = state.space === 'desk' ? [...desk, ...school] : [...school, ...desk];
+    const close = modal('빠른 추가', h('div', { class: 'choice' }, list.map(([m, label, defaults]) => h('button', { class: 'btn big', onclick: () => {
       close();
-      openRecordForm(m, null, { defaults: { ...defaults, date: defaults.date ? today() : undefined }, onSaved: () => route() });
+      openRecordForm(m, null, { defaults, onSaved: () => route() });
     } }, label))));
   } }, '+');
 }
@@ -172,57 +224,74 @@ async function route() {
   const ys = document.getElementById('year-select');
   if (ys && ![...ys.options].some((op) => Number(op.value) === state.year)) ys.append(h('option', { value: state.year }, `${state.year}`));
   if (ys) ys.value = String(state.year);
-  let path = location.hash.replace(/^#\/?/, '').split('?')[0];
-  if (!path) path = 'home/';
-  if (!path.includes('/') && path !== 'admin') {
+  let path = currentPath();
+  if (!path) path = state.member ? 'home/' : remember('invite') ? 'join' : 'desk/home';
+  if (!path.includes('/') && !['admin', 'join', 'platform', 'me'].includes(path)) {
     const to = legacyRoute(path);
     location.replace(`#/${to || 'home/'}`);
     return;
   }
-  const [gid, tidRaw] = path.split('/');
-  const group = GROUPS.find((g) => g.id === gid);
-  const tid = tidRaw || (group?.tabs.length ? 'overview' : '');
-  const key = path === 'admin' ? 'admin' : `${gid}/${tid}`;
-  for (const a of nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.id === key);
-  for (const a of document.querySelectorAll('.bottom-bar a')) a.classList.toggle('on', a.dataset.group === gid);
-  window.scrollTo(0, 0);
-  for (const g of nav.querySelectorAll('.nav-group')) g.classList.toggle('open', g.dataset.group === gid);
+  const space = spaceOfPath(path);
+  state.space = space;
+  document.body.dataset.space = space;
+  for (const a of document.querySelectorAll('.space-tab')) a.classList.toggle('on', a.dataset.space === space && !['join', 'platform', 'me'].includes(path));
+  for (const a of document.querySelectorAll('.bottom-bar a')) a.style.display = '';
 
   const content = h('div', { class: 'content' });
+  window.scrollTo(0, 0);
+  const special = { admin: ['⚙️ 학교 관리', adminView], join: ['🙋 학교 가입·개설', joinView], platform: ['🛰 플랫폼 운영', platformView], me: ['👤 내 정보', meView] }[path.split('/')[0]];
+
+  if (special || (space === 'school' && !state.member)) {
+    const [title, view] = special || ['🙋 학교 가입·개설', joinView];
+    drawNav(space === 'desk' ? 'desk' : 'school', path, '');
+    clear(main, h('h2', { class: 'page-title' }, title), content);
+    try { await view(content, refresh); } catch (e) { showError(content, e); }
+    return;
+  }
+
+  const groups = space === 'desk' ? DESK_GROUPS : GROUPS;
+  const rel = space === 'desk' ? path.slice(5) : path;
+  const [gid, tidRaw] = rel.split('/');
+  const group = groups.find((g) => g.id === gid);
+  const tid = tidRaw || (group?.tabs.length ? group.tabs[0].id : '');
+  const key = `${gid}/${tid}`;
+  drawNav(space, `${space === 'desk' ? 'desk/' : ''}${key}`, gid);
+  for (const a of document.querySelectorAll('.bottom-bar a')) a.classList.toggle('on', space === 'desk' ? a.dataset.group === 'desk' : a.dataset.group === gid);
+
   const tab = group?.tabs.find((t) => t.id === tid);
   const mod = tab?.module ? MODULES[tab.module] : null;
-  const title = path === 'admin' ? '⚙️ 관리자' : group ? `${group.icon} ${group.label}` : '';
+  const title = group ? `${group.icon} ${group.label}` : '';
   const scopeNote = mod?.scope === 'global' ? '' : `  ${state.year}학년도`;
+  const prefix = space === 'desk' ? '#/desk/' : '#/';
   clear(main,
     h('h2', { class: 'page-title' }, title, h('span', { class: 'muted small' }, scopeNote)),
-    group?.tabs.length ? h('div', { class: 'tabs-bar' }, group.tabs.map((t) => h('a', { href: `#/${gid}/${t.id}`, class: t.id === tid ? 'on' : '' }, t.label))) : null,
+    group?.tabs.length > 1 ? h('div', { class: 'tabs-bar' }, group.tabs.map((t) => h('a', { href: `${prefix}${gid}/${t.id}`, class: t.id === tid ? 'on' : '' }, t.label))) : null,
     content);
   content.append(h('p', { class: 'muted' }, '불러오는 중…'));
-  await loadNews();
-  if (tab?.module) markSeen(tab.module);
-  paintBadges();
-  try {
-    if (path === 'admin') {
-      if (isAdmin()) await adminView(content, refresh);
-      else location.replace('#/home/');
-      return;
-    }
-    const view = VIEWS[key];
-    if (!view) { location.replace('#/home/'); return; }
-    await view(content);
-  } catch (e) {
-    if (e.status === 401) return loginScreen();
-    clear(content, h('p', { class: 'alert error' }, e.message));
-    toast(e.message, 'error');
+  if (space === 'school') {
+    await loadNews();
+    if (tab?.module) markSeen(tab.module);
+    paintBadges();
   }
+  try {
+    const view = space === 'desk' ? DESK_VIEWS[key] : VIEWS[key];
+    if (!view) { location.replace(space === 'desk' ? '#/desk/home' : '#/home/'); return; }
+    await view(content);
+  } catch (e) { showError(content, e); }
+}
+
+function showError(content, e) {
+  if (e.status === 401) return loginScreen();
+  clear(content, h('p', { class: 'alert error' }, e.message));
+  toast(e.message, 'error');
 }
 
 async function refresh() {
-  const me = await api('/api/me');
-  state.me = me.user;
-  state.settings = me.settings;
+  await loadMe();
+  state.staff = state.member ? await api('/api/staff').catch(() => []) : [];
   layout();
   route();
+  refreshBell();
 }
 
 window.addEventListener('hashchange', () => { if (main) route(); });

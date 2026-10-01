@@ -1,125 +1,262 @@
 import { Hono } from 'hono';
-import { MODULES, DEFAULT_LISTS, SELF_TOGGLE, yearRange, normalizeData } from '../public/js/modules.js';
+import { MODULES, DEFAULT_LISTS, SELF_TOGGLE, yearRange, normalizeData, spaceOf } from '../public/js/modules.js';
 import { searchSchools, syncSchedule, getMeals, getTimetable } from './neis.js';
-import { mountAuth, loadUser } from './auth.js';
+import { mountAuth, loadUser, adminEmails } from './auth.js';
 import { randomToken, encryptText, decryptText } from './crypto.js';
+import { notify, pushReady, sendPush } from './push.js';
 
 const app = new Hono();
 const RANK = { viewer: 1, staff: 2, admin: 3 };
+const ACTIVE_ROLES = ['admin', 'staff', 'viewer'];
 const MASK = '••••••';
+const err = (status, message) => Object.assign(new Error(message), { status });
 
 mountAuth(app);
 
-// ---------- 공통 ----------
+// ---------- 학교·설정 ----------
 
-async function getSettings(db) {
-  const rows = await db.prepare('SELECT key, value FROM settings').all();
+async function getSettings(db, schoolId) {
+  const school = await db.prepare('SELECT name FROM schools WHERE id = ?').bind(schoolId).first();
+  const rows = await db.prepare('SELECT key, value FROM school_settings WHERE school_id = ?').bind(schoolId).all();
   const s = Object.fromEntries(rows.results.map((r) => [r.key, JSON.parse(r.value)]));
   return {
     currentYear: s.currentYear || new Date().getFullYear(),
-    schoolName: s.schoolName || '',
+    schoolName: school?.name || s.schoolName || '',
     lists: { ...DEFAULT_LISTS, ...(s.lists || {}) },
     neis: s.neis || null, // { atpt, code, name, office, lastSync }
   };
 }
 
+const putSetting = (db, schoolId, key, value) => db.prepare('INSERT INTO school_settings (school_id, key, value) VALUES (?, ?, ?) ON CONFLICT(school_id, key) DO UPDATE SET value = excluded.value')
+  .bind(schoolId, key, JSON.stringify(value));
+
+// 요청한 학교(x-school 머리글, 없으면 첫 학교)에서의 내 자격. 없으면 null
+async function memberOf(c) {
+  if (c.get('member') !== undefined) return c.get('member');
+  const user = c.get('user');
+  const want = c.req.header('x-school') || '';
+  const rows = await c.env.DB.prepare(`SELECT m.school_id, m.role, m.name, m.dept, s.name AS school_name, s.status
+    FROM members m JOIN schools s ON s.id = m.school_id WHERE m.email = ? ORDER BY m.created_at`).bind(user.email).all();
+  const ok = (r) => r.status === 'active' && ACTIVE_ROLES.includes(r.role);
+  const row = rows.results.find((r) => r.school_id === want && ok(r)) || (!want ? rows.results.find(ok) : null) || null;
+  const member = row ? { schoolId: row.school_id, role: row.role, name: row.name || user.name, dept: row.dept, schoolName: row.school_name } : null;
+  c.set('member', member);
+  return member;
+}
+
+async function requireSchool(c, min = 'viewer') {
+  const m = await memberOf(c);
+  if (!m) throw err(403, '학교에 가입 승인된 뒤 사용할 수 있습니다.');
+  if ((RANK[m.role] || 0) < RANK[min]) throw err(403, min === 'admin' ? '학교 관리자만 사용할 수 있습니다.' : '권한이 없습니다.');
+  return m;
+}
+
 async function audit(c, action, module, recordId, detail) {
   const u = c.get('user');
-  await c.env.DB.prepare('INSERT INTO audit (email, action, module, record_id, detail) VALUES (?, ?, ?, ?, ?)')
-    .bind(u?.email || null, action, module || null, recordId || null, detail ? String(detail).slice(0, 500) : null).run();
+  const m = c.get('member');
+  await c.env.DB.prepare('INSERT INTO audit (email, action, module, record_id, detail, school_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(u?.email || null, action, module || null, recordId || null, detail ? String(detail).slice(0, 500) : null, m?.schoolId || null).run();
 }
 
-function canEdit(user, moduleId) {
-  return (RANK[user.role] || 0) >= RANK[MODULES[moduleId].edit];
+// 모듈별 '누구의 기록인가' : 학교 기록 → school_id, 개인 기록 → owner, 마켓 → 모두 읽기
+async function tenant(c, m) {
+  const user = c.get('user');
+  const space = spaceOf(m);
+  if (space === 'desk') return { col: 'owner', val: user.email, canEdit: true, space };
+  if (space === 'market') return { col: null, val: null, canEdit: true, space };
+  const mem = await requireSchool(c);
+  return { col: 'school_id', val: mem.schoolId, canEdit: (RANK[mem.role] || 0) >= RANK[MODULES[m].edit], space, member: mem };
 }
 
-const secretKeys = (moduleId) => MODULES[moduleId].fields.filter((f) => f.type === 'secret').map((f) => f.key);
+const secretKeys = (m) => MODULES[m].fields.filter((f) => f.type === 'secret').map((f) => f.key);
+const encKeys = (m) => MODULES[m].fields.filter((f) => f.enc).map((f) => f.key);
 
-async function encryptSecrets(env, moduleId, data, previous) {
-  for (const k of secretKeys(moduleId)) {
+async function encryptSecrets(env, m, data, previous) {
+  for (const k of secretKeys(m)) {
     if (data[k] === undefined || data[k] === MASK) {
       if (previous?.[k] !== undefined) data[k] = previous[k];
       else delete data[k];
     } else if (data[k] !== '') data[k] = await encryptText(env, data[k]);
   }
+  for (const k of encKeys(m)) if (typeof data[k] === 'string' && data[k] !== '') data[k] = await encryptText(env, data[k]);
   return data;
 }
 
-function toClient(row) {
+async function toClient(env, row) {
   const data = JSON.parse(row.data);
   for (const k of secretKeys(row.module)) if (data[k]) data[k] = MASK;
-  return { id: row.id, year: row.year, date: row.date, sort: row.sort, version: row.version, data, updatedBy: row.updated_by, updatedAt: row.updated_at };
+  for (const k of encKeys(row.module)) if (data[k]) { try { data[k] = await decryptText(env, data[k]); } catch { data[k] = '(복호화 실패)'; } }
+  const out = { id: row.id, year: row.year, date: row.date, sort: row.sort, version: row.version, data, updatedBy: row.updated_by, updatedAt: row.updated_at };
+  if (row.author_name !== undefined) { out.author = row.author_name || ''; out.owner = row.owner; }
+  return out;
 }
 
-// scope 에 맞는 year/date 컬럼 값
-function placement(moduleId, data, year) {
-  const scope = MODULES[moduleId].scope;
-  return {
-    year: scope === 'year' ? Number(year) : null,
-    date: scope === 'date' ? data.date || null : null,
-  };
+function placement(m, data, year) {
+  const scope = MODULES[m].scope;
+  return { year: scope === 'year' ? Number(year) : null, date: scope === 'date' ? data.date || null : null };
 }
 
-function scopeWhere(moduleId, year) {
-  const scope = MODULES[moduleId].scope;
-  if (scope === 'date') {
-    const r = yearRange(year);
-    return { sql: 'module = ? AND date BETWEEN ? AND ?', args: [moduleId, r.from, r.to] };
-  }
-  if (scope === 'year') return { sql: 'module = ? AND year = ?', args: [moduleId, Number(year)] };
-  return { sql: 'module = ?', args: [moduleId] };
+function scopeWhere(m, year, t) {
+  const scope = MODULES[m].scope;
+  const parts = ['module = ?'];
+  const args = [m];
+  if (t.col) { parts.push(`${t.col} = ?`); args.push(t.val); }
+  if (scope === 'date') { const r = yearRange(year); parts.push('date BETWEEN ? AND ?'); args.push(r.from, r.to); }
+  if (scope === 'year') { parts.push('year = ?'); args.push(Number(year)); }
+  return { sql: parts.join(' AND '), args };
 }
 
-async function listRecords(db, moduleId, year) {
-  const w = scopeWhere(moduleId, year);
-  const order = MODULES[moduleId].scope === 'date' ? 'date, sort, created_at' : 'sort, created_at';
-  const rows = await db.prepare(`SELECT * FROM records WHERE ${w.sql} ORDER BY ${order}`).bind(...w.args).all();
-  return rows.results.map(toClient);
+async function listRecords(c, m, year) {
+  const t = await tenant(c, m);
+  const w = scopeWhere(m, year, t);
+  const order = MODULES[m].scope === 'date' ? 'date, sort, created_at' : t.space === 'market' ? 'created_at DESC' : 'sort, created_at';
+  const sql = t.space === 'market'
+    ? `SELECT r.*, COALESCE(NULLIF(u.name, ''), '선생님') AS author_name FROM records r LEFT JOIN users u ON u.email = r.owner WHERE ${w.sql.replace(/\bmodule\b/, 'r.module')} ORDER BY r.${order.replace(/, /g, ', r.')} LIMIT 500`
+    : `SELECT * FROM records WHERE ${w.sql} ORDER BY ${order}`;
+  const rows = await c.env.DB.prepare(sql).bind(...w.args).all();
+  return Promise.all(rows.results.map((r) => toClient(c.env, r)));
 }
 
-// 특별실 예약: 같은 날·장소·교시에 다른 예약이 있으면 막음
-async function reservationClash(db, m, data, id) {
-  if (m !== 'reservations') return null;
-  const row = await db.prepare("SELECT data FROM records WHERE module = 'reservations' AND date = ? AND id != ? AND json_extract(data, '$.place') = ? AND json_extract(data, '$.period') = ?")
-    .bind(data.date, id || '', data.place || '', data.period || '').first();
-  if (!row) return null;
-  const d = JSON.parse(row.data);
-  return `이미 예약되어 있습니다: ${data.place} ${data.period} (${d.user || ''}${d.className ? ` ${d.className}` : ''})`;
+// 기록 하나 (권한 범위 안에서만)
+async function findRecord(c, m, id, t) {
+  const cond = t.col ? ` AND ${t.col} = ?` : '';
+  return c.env.DB.prepare(`SELECT * FROM records WHERE id = ? AND module = ?${cond}`).bind(id, m, ...(t.col ? [t.val] : [])).first();
 }
+
+const canWrite = (c, t, row) => (t.space === 'market' ? !row || row.owner === c.get('user').email || c.get('user').super : t.canEdit);
 
 // ---------- 인증 미들웨어 ----------
 
 app.use('/api/*', async (c, next) => {
   const user = await loadUser(c);
   if (!user) return c.json({ error: '로그인이 필요합니다.' }, 401);
+  if (user.role === 'blocked') return c.json({ error: '사용이 제한된 계정입니다.' }, 403);
   c.set('user', user);
   if (c.req.method !== 'GET' && c.req.header('x-requested-with') !== 'gyomusil') {
     return c.json({ error: '잘못된 요청입니다.' }, 400); // CSRF 방지
   }
-  if (c.req.path === '/api/me') return next();
-  if (!RANK[user.role]) return c.json({ error: '관리자 승인 후 사용할 수 있습니다.' }, 403);
   return next();
 });
 
-app.use('/api/admin/*', async (c, next) => {
-  if (c.get('user').role !== 'admin') return c.json({ error: '관리자만 사용할 수 있습니다.' }, 403);
+app.use('/api/admin/*', async (c, next) => { await requireSchool(c, 'admin'); return next(); });
+app.use('/api/platform/*', async (c, next) => {
+  if (!c.get('user').super) return c.json({ error: '플랫폼 운영자만 사용할 수 있습니다.' }, 403);
   return next();
 });
 
-app.onError((err, c) => {
-  if (!err.status) console.error(err);
-  return c.json({ error: err.message || '서버 오류' }, err.status || 500);
+app.onError((e, c) => {
+  if (!e.status) console.error(e);
+  return c.json({ error: e.message || '서버 오류' }, e.status || 500);
 });
 
-// ---------- 사용자·설정 ----------
+// ---------- 나 · 학교 가입 ----------
 
 app.get('/api/me', async (c) => {
-  const settings = await getSettings(c.env.DB);
-  return c.json({ user: c.get('user'), settings: { ...settings, schoolName: settings.schoolName || c.env.SCHOOL_NAME || '', neisKey: !!c.env.NEIS_API_KEY } });
+  const user = c.get('user');
+  const schools = await c.env.DB.prepare(`SELECT s.id, s.name, s.status, m.role FROM members m JOIN schools s ON s.id = m.school_id WHERE m.email = ? ORDER BY m.created_at`).bind(user.email).all();
+  const member = await memberOf(c);
+  const settings = member ? await getSettings(c.env.DB, member.schoolId) : null;
+  return c.json({
+    user: { email: user.email, name: user.name, picture: user.picture, super: !!user.super },
+    schools: schools.results,
+    member,
+    settings: settings ? { ...settings, neisKey: !!c.env.NEIS_API_KEY } : null,
+    push: pushReady(c.env) ? c.env.VAPID_PUBLIC : null,
+  });
 });
 
+app.put('/api/me', async (c) => {
+  const b = await c.req.json();
+  const name = String(b.name || '').trim().slice(0, 30);
+  if (!name) return c.json({ error: '이름을 입력해 주세요.' }, 400);
+  await c.env.DB.prepare('UPDATE users SET name = ? WHERE email = ?').bind(name, c.get('user').email).run();
+  return c.json({ ok: true });
+});
+
+app.get('/api/schools/search', async (c) => {
+  const q = String(c.req.query('q') || '').trim();
+  if (q.length < 2) return c.json([]);
+  const rows = await c.env.DB.prepare("SELECT id, name FROM schools WHERE status = 'active' AND name LIKE ? ORDER BY name LIMIT 20").bind(`%${q}%`).all();
+  return c.json(rows.results);
+});
+
+const schoolAdmins = async (db, schoolId) => (await db.prepare("SELECT email FROM members WHERE school_id = ? AND role = 'admin'").bind(schoolId).all()).results.map((r) => r.email);
+
+// 가입 요청: 학교 검색으로 고르거나 초대 코드. 학교 관리자가 승인해야 사용 가능
+app.post('/api/schools/join', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json();
+  const db = c.env.DB;
+  const school = b.code
+    ? await db.prepare("SELECT id, name FROM schools WHERE invite_code = ? AND status = 'active'").bind(String(b.code).trim().toLowerCase()).first()
+    : await db.prepare("SELECT id, name FROM schools WHERE id = ? AND status = 'active'").bind(String(b.schoolId || '')).first();
+  if (!school) return c.json({ error: b.code ? '초대 코드가 맞지 않습니다.' : '학교를 찾을 수 없습니다.' }, 404);
+  const name = String(b.name || user.name || '').trim().slice(0, 30);
+  const prev = await db.prepare('SELECT role FROM members WHERE school_id = ? AND email = ?').bind(school.id, user.email).first();
+  if (prev) return c.json({ ok: true, status: prev.role, school });
+  await db.prepare("INSERT INTO members (school_id, email, role, name) VALUES (?, ?, 'pending', ?)").bind(school.id, user.email, name).run();
+  await notify(c, await schoolAdmins(db, school.id), { title: '🙋 학교 가입 요청', body: `${name || user.email} 선생님이 가입을 요청했습니다.`, url: '/#/admin' }, school.id);
+  return c.json({ ok: true, status: 'pending', school });
+});
+
+// 새 학교 개설: 플랫폼 운영자가 승인하면 사용 가능 (운영자가 만들면 바로 사용)
+app.post('/api/schools', async (c) => {
+  const user = c.get('user');
+  const b = await c.req.json();
+  const db = c.env.DB;
+  const name = String(b.name || '').trim().slice(0, 40);
+  if (name.length < 2) return c.json({ error: '학교 이름을 입력해 주세요.' }, 400);
+  const mine = await db.prepare("SELECT COUNT(*) n FROM schools WHERE created_by = ? AND status = 'pending'").bind(user.email).first();
+  if (mine.n >= 2) return c.json({ error: '승인 대기 중인 학교가 이미 있습니다.' }, 400);
+  if (b.neisCode) {
+    const dup = await db.prepare("SELECT name FROM schools WHERE neis_code = ? AND status != 'closed'").bind(String(b.neisCode)).first();
+    if (dup) return c.json({ error: `이미 개설된 학교입니다 (${dup.name}). 학교 찾기로 가입을 요청해 주세요.` }, 409);
+  }
+  const id = `s${randomToken(5)}`;
+  const status = user.super ? 'active' : 'pending';
+  await db.batch([
+    db.prepare('INSERT INTO schools (id, name, status, invite_code, neis_code, created_by) VALUES (?, ?, ?, ?, ?, ?)').bind(id, name, status, randomToken(4), b.neisCode || null, user.email),
+    db.prepare("INSERT INTO members (school_id, email, role, name, dept) VALUES (?, ?, 'admin', ?, ?)").bind(id, user.email, String(b.myName || user.name || ''), String(b.dept || '')),
+    putSetting(db, id, 'currentYear', new Date().getFullYear()),
+  ]);
+  if (b.neis?.atpt && b.neis?.code) await putSetting(db, id, 'neis', { atpt: String(b.neis.atpt), code: String(b.neis.code), name: String(b.neis.name || name), office: String(b.neis.office || '') }).run();
+  if (status === 'pending') await notify(c, adminEmails(c.env), { title: '🏫 새 학교 개설 신청', body: `${name} (${user.email})`, url: '/#/platform' });
+  return c.json({ ok: true, id, status });
+});
+
+// 학교에서 나가기 (마지막 관리자는 못 나감)
+app.delete('/api/schools/:id/membership', async (c) => {
+  const id = c.req.param('id');
+  const email = c.get('user').email;
+  const admins = await schoolAdmins(c.env.DB, id);
+  if (admins.length === 1 && admins[0] === email) return c.json({ error: '마지막 관리자는 나갈 수 없습니다. 다른 관리자를 먼저 지정해 주세요.' }, 400);
+  await c.env.DB.prepare('DELETE FROM members WHERE school_id = ? AND email = ?').bind(id, email).run();
+  return c.json({ ok: true });
+});
+
+// ---------- 플랫폼 운영자 (ADMIN_EMAILS) ----------
+
+app.get('/api/platform/schools', async (c) => {
+  const rows = await c.env.DB.prepare(`SELECT s.*, (SELECT COUNT(*) FROM members m WHERE m.school_id = s.id AND m.role IN ('admin','staff','viewer')) AS members,
+    (SELECT COUNT(*) FROM records r WHERE r.school_id = s.id) AS records FROM schools s ORDER BY s.status = 'pending' DESC, s.created_at DESC`).all();
+  return c.json(rows.results.map(({ invite_code, ...r }) => r));
+});
+
+app.put('/api/platform/schools/:id', async (c) => {
+  const { status } = await c.req.json();
+  if (!['active', 'pending', 'closed'].includes(status)) return c.json({ error: '잘못된 상태' }, 400);
+  const id = c.req.param('id');
+  await c.env.DB.prepare('UPDATE schools SET status = ? WHERE id = ?').bind(status, id).run();
+  const s = await c.env.DB.prepare('SELECT name, created_by FROM schools WHERE id = ?').bind(id).first();
+  if (status === 'active' && s?.created_by) await notify(c, [s.created_by], { title: '🏫 학교 개설 승인', body: `${s.name}을(를) 이제 사용할 수 있습니다.`, url: '/' }, id);
+  return c.json({ ok: true });
+});
+
+// ---------- 학교 공통 ----------
+
 app.get('/api/staff', async (c) => {
-  const rows = await c.env.DB.prepare("SELECT name, dept FROM users WHERE role IN ('admin','staff','viewer') ORDER BY name").all();
+  const m = await requireSchool(c);
+  const rows = await c.env.DB.prepare("SELECT name, dept FROM members WHERE school_id = ? AND role IN ('admin','staff','viewer') AND name != '' ORDER BY name").bind(m.schoolId).all();
   return c.json(rows.results);
 });
 
@@ -127,57 +264,107 @@ app.get('/api/staff', async (c) => {
 
 function requireModule(c) {
   const m = c.req.param('module');
-  if (!MODULES[m]) throw Object.assign(new Error('알 수 없는 메뉴입니다.'), { status: 404 });
+  if (!MODULES[m]) throw err(404, '알 수 없는 메뉴입니다.');
   return m;
 }
 
-// 여러 모듈을 한 번에 (달력·대시보드용)
+const yearOf = async (c, q) => Number(q) || (await memberOf(c) ? (await getSettings(c.env.DB, c.get('member').schoolId)).currentYear : new Date().getFullYear());
+
 app.get('/api/bundle', async (c) => {
-  const year = Number(c.req.query('year')) || (await getSettings(c.env.DB)).currentYear;
+  const year = await yearOf(c, c.req.query('year'));
   const mods = String(c.req.query('modules') || '').split(',').filter((m) => MODULES[m]);
   const out = {};
-  for (const m of mods) out[m] = await listRecords(c.env.DB, m, year);
+  for (const m of mods) out[m] = await listRecords(c, m, year);
   return c.json(out);
 });
 
 app.get('/api/records/:module', async (c) => {
   const m = requireModule(c);
-  const year = Number(c.req.query('year')) || (await getSettings(c.env.DB)).currentYear;
-  return c.json(await listRecords(c.env.DB, m, year));
+  return c.json(await listRecords(c, m, await yearOf(c, c.req.query('year'))));
 });
+
+// 이름 → 이 학교 구성원 이메일
+async function emailsByName(db, schoolId, names) {
+  const list = [...new Set(names.map((n) => String(n || '').trim()).filter(Boolean))];
+  if (!list.length) return [];
+  const rows = await db.prepare(`SELECT email FROM members WHERE school_id = ? AND role IN ('admin','staff','viewer') AND name IN (${list.map(() => '?').join(',')})`).bind(schoolId, ...list).all();
+  return rows.results.map((r) => r.email);
+}
+async function allMembers(db, schoolId) {
+  return (await db.prepare("SELECT email FROM members WHERE school_id = ? AND role IN ('admin','staff','viewer')").bind(schoolId).all()).results.map((r) => r.email);
+}
+
+// 저장 뒤 알림: 보결·담당은 그 사람에게, 전체 공지·수합·전달사항은 학교 전체에
+async function notifyChange(c, m, data, prev, schoolId) {
+  const db = c.env.DB;
+  const short = (s) => String(s || '').split('\n')[0].slice(0, 60);
+  const d = data.date ? `${Number(data.date.slice(5, 7))}/${Number(data.date.slice(8, 10))} ` : '';
+  if (m === 'substitutes' && data.substitute && data.substitute !== prev?.substitute) {
+    return notify(c, await emailsByName(db, schoolId, [data.substitute]), { title: '🔁 보결 배정', body: `${d}${data.period || ''} ${data.className || ''} ${data.subject || ''} (${data.absent || ''} ${data.reason || ''})`, url: '/#/class/substitutes' }, schoolId);
+  }
+  if (m === 'duties' && data.person && data.person !== prev?.person) {
+    return notify(c, await emailsByName(db, schoolId, [data.person]), { title: '🧑‍🏫 담당 배정', body: `${d}${data.title} ${data.role ? `· ${data.role}` : ''}`, url: '/#/notice/duties' }, schoolId);
+  }
+  if (m === 'notices' && data.pinned && !prev?.pinned) {
+    return notify(c, await allMembers(db, schoolId), { title: '📌 전체 공지', body: short(data.title || data.content), url: '/#/notice/notices' }, schoolId);
+  }
+  if (m === 'collections' && !prev) {
+    const to = data.target?.length ? await emailsByName(db, schoolId, data.target) : await allMembers(db, schoolId);
+    return notify(c, to, { title: '📥 새 수합', body: `${short(data.title)}${data.due ? ` (마감 ${data.due.slice(5)})` : ''}`, url: '/#/notice/collections' }, schoolId);
+  }
+  if (m === 'briefings' && !prev) {
+    return notify(c, await allMembers(db, schoolId), { title: `📣 ${data.kind || ''} 전달사항`, body: `${d}${short(data.content)}`, url: '/#/notice/briefings' }, schoolId);
+  }
+}
+
+// 특별실 예약: 같은 학교·날·장소·교시 중복 금지
+async function reservationClash(db, m, data, schoolId, id) {
+  if (m !== 'reservations') return null;
+  const row = await db.prepare("SELECT data FROM records WHERE module = 'reservations' AND school_id = ? AND date = ? AND id != ? AND json_extract(data, '$.place') = ? AND json_extract(data, '$.period') = ?")
+    .bind(schoolId, data.date, id || '', data.place || '', data.period || '').first();
+  if (!row) return null;
+  const d = JSON.parse(row.data);
+  return `이미 예약되어 있습니다: ${data.place} ${data.period} (${d.user || ''}${d.className ? ` ${d.className}` : ''})`;
+}
 
 app.post('/api/records/:module', async (c) => {
   const m = requireModule(c);
   const user = c.get('user');
-  if (!canEdit(user, m)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  const t = await tenant(c, m);
+  if (!canWrite(c, t)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   const body = await c.req.json();
-  const data = await encryptSecrets(c.env, m, normalizeData(m, body.data));
-  const year = body.year || (await getSettings(c.env.DB)).currentYear;
-  const p = placement(m, data, year);
+  const clean = normalizeData(m, body.data);
+  if (m === 'market') clean.likes = [];
+  const year = body.year || (t.member ? (await getSettings(c.env.DB, t.member.schoolId)).currentYear : new Date().getFullYear());
+  const p = placement(m, clean, year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
-  const clash = await reservationClash(c.env.DB, m, data);
+  const clash = t.member && await reservationClash(c.env.DB, m, clean, t.member.schoolId);
   if (clash) return c.json({ error: clash, conflict: true }, 409);
+  const data = await encryptSecrets(c.env, m, { ...clean });
   const id = randomToken(8);
-  await c.env.DB.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, m, p.year, p.date, Number(body.sort) || Date.now() % 1e9, JSON.stringify(data), user.email, user.email).run();
-  await audit(c, 'create', m, id);
-  const row = await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first();
-  return c.json(toClient(row));
+  await c.env.DB.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by, school_id, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, m, p.year, p.date, Number(body.sort) || Date.now() % 1e9, JSON.stringify(data), user.email, user.email, t.member?.schoolId || null, t.space === 'school' ? null : user.email).run();
+  if (t.space === 'school') { await audit(c, 'create', m, id); await notifyChange(c, m, clean, null, t.member.schoolId); }
+  return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first()));
 });
 
 app.put('/api/records/:module/:id', async (c) => {
   const m = requireModule(c);
   const user = c.get('user');
-  if (!canEdit(user, m)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  const t = await tenant(c, m);
   const id = c.req.param('id');
-  const prev = await c.env.DB.prepare('SELECT * FROM records WHERE id = ? AND module = ?').bind(id, m).first();
+  const prev = await findRecord(c, m, id, t);
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
+  if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   const body = await c.req.json();
-  const data = await encryptSecrets(c.env, m, normalizeData(m, body.data), JSON.parse(prev.data));
-  const p = placement(m, data, prev.year);
+  const prevData = JSON.parse(prev.data);
+  const clean = normalizeData(m, body.data);
+  if (m === 'market') clean.likes = prevData.likes || []; // 좋아요는 각자 버튼으로만
+  const p = placement(m, clean, prev.year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
-  const clash = await reservationClash(c.env.DB, m, data, id);
+  const clash = t.member && await reservationClash(c.env.DB, m, clean, t.member.schoolId, id);
   if (clash) return c.json({ error: clash, conflict: true }, 409);
+  const data = await encryptSecrets(c.env, m, { ...clean }, prevData);
   // 버전이 다르면 그사이 다른 사람이 저장한 것 → 덮어쓰지 않음
   const res = await c.env.DB.prepare("UPDATE records SET data = ?, date = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ? AND version = ?")
     .bind(JSON.stringify(data), p.date, user.email, id, body.version ?? prev.version).run();
@@ -185,19 +372,23 @@ app.put('/api/records/:module/:id', async (c) => {
     const who = await c.env.DB.prepare('SELECT u.name, r.updated_by FROM records r LEFT JOIN users u ON u.email = r.updated_by WHERE r.id = ?').bind(id).first();
     return c.json({ error: `그사이 ${who?.name || who?.updated_by || '다른 사용자'}님이 이 기록을 먼저 수정했습니다. 화면을 새로고침한 뒤 다시 수정해 주세요.`, conflict: true }, 409);
   }
-  await audit(c, 'update', m, id);
-  const row = await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first();
-  return c.json(toClient(row));
+  if (t.space === 'school') {
+    await audit(c, 'update', m, id);
+    const plain = { ...prevData };
+    await notifyChange(c, m, clean, plain, t.member.schoolId);
+  }
+  return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first()));
 });
 
 app.delete('/api/records/:module/:id', async (c) => {
   const m = requireModule(c);
-  if (!canEdit(c.get('user'), m)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  const t = await tenant(c, m);
   const id = c.req.param('id');
-  const prev = await c.env.DB.prepare('SELECT data FROM records WHERE id = ? AND module = ?').bind(id, m).first();
+  const prev = await findRecord(c, m, id, t);
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
+  if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
-  await audit(c, 'delete', m, id, m === 'secrets' ? null : prev.data);
+  if (t.space === 'school') await audit(c, 'delete', m, id, m === 'secrets' ? null : prev.data);
   return c.json({ ok: true });
 });
 
@@ -205,7 +396,8 @@ app.delete('/api/records/:module/:id', async (c) => {
 app.get('/api/records/:module/:id/reveal', async (c) => {
   const m = requireModule(c);
   if (!secretKeys(m).length) return c.json({ error: '대상이 아닙니다.' }, 400);
-  const row = await c.env.DB.prepare('SELECT data FROM records WHERE id = ? AND module = ?').bind(c.req.param('id'), m).first();
+  const t = await tenant(c, m);
+  const row = await findRecord(c, m, c.req.param('id'), t);
   if (!row) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   const data = JSON.parse(row.data);
   const out = {};
@@ -214,44 +406,45 @@ app.get('/api/records/:module/:id/reveal', async (c) => {
   return c.json(out);
 });
 
-// 동료장학 참관 신청/취소 (본인 이름으로)
-// 이름 목록에 본인 이름 넣기/빼기 (동료장학 참관 신청, 수합 제출 완료)
+// 이름 목록에 본인 이름 넣기/빼기 (동료장학 참관 신청, 수합 제출 완료, 마켓 좋아요)
 async function toggleSelf(c, m) {
   const field = SELF_TOGGLE[m];
   if (!field) return c.json({ error: '대상이 아닙니다.' }, 400);
   const user = c.get('user');
-  if (user.role === 'viewer') return c.json({ error: '권한이 없습니다.' }, 403);
+  const t = await tenant(c, m);
+  if (t.member?.role === 'viewer') return c.json({ error: '권한이 없습니다.' }, 403);
   const { on } = await c.req.json();
   const id = c.req.param('id');
-  const name = user.name || user.email;
+  const name = t.space === 'market' ? user.email : (t.member?.name || user.name || user.email);
   // 여러 명이 동시에 눌러도 서로의 이름이 지워지지 않게, 버전이 맞을 때만 저장하고 다시 시도
   for (let attempt = 0; ; attempt++) {
-    const row = await c.env.DB.prepare('SELECT * FROM records WHERE id = ? AND module = ?').bind(id, m).first();
+    const row = await findRecord(c, m, id, t);
     if (!row) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
     const data = JSON.parse(row.data);
     const set = new Set(data[field] || []);
     if (on) set.add(name); else set.delete(name);
     data[field] = [...set];
-    const res = await c.env.DB.prepare("UPDATE records SET data = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ? AND version = ?")
-      .bind(JSON.stringify(data), user.email, id, row.version).run();
+    const res = await c.env.DB.prepare("UPDATE records SET data = ?, updated_at = CASE WHEN ? THEN updated_at ELSE datetime('now') END, version = version + 1 WHERE id = ? AND version = ?")
+      .bind(JSON.stringify(data), t.space === 'market' ? 1 : 0, id, row.version).run();
     if (res.meta.changes) break;
     if (attempt >= 4) return c.json({ error: '잠시 후 다시 시도해 주세요.' }, 409);
   }
-  await audit(c, on ? 'self-on' : 'self-off', m, id, field);
-  const saved = await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first();
-  return c.json(toClient(saved));
+  if (t.space === 'school') await audit(c, on ? 'self-on' : 'self-off', m, id, field);
+  const saved = await c.env.DB.prepare(t.space === 'market' ? "SELECT r.*, COALESCE(NULLIF(u.name, ''), '선생님') AS author_name FROM records r LEFT JOIN users u ON u.email = r.owner WHERE r.id = ?" : 'SELECT * FROM records WHERE id = ?').bind(id).first();
+  return c.json(await toClient(c.env, saved));
 }
 app.post('/api/records/openClasses/:id/observe', (c) => toggleSelf(c, 'openClasses'));
 app.post('/api/records/:module/:id/self', (c) => toggleSelf(c, requireModule(c)));
 
-// 새 글 표시: since 이후 다른 사람이 만들거나 고친 기록 (메뉴 배지·홈 '새 소식')
+// 새 글 표시: since 이후 다른 사람이 만들거나 고친 학교 기록
 const LABEL_KEYS = ['title', 'agenda', 'item', 'name', 'text', 'program', 'site', 'content', 'teacher', 'requester'];
 app.get('/api/changes', async (c) => {
   const now = (await c.env.DB.prepare("SELECT datetime('now') AS t").first()).t;
+  const mem = await memberOf(c);
   const since = String(c.req.query('since') || '');
-  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(since)) return c.json({ now, items: [] });
-  const rows = await c.env.DB.prepare(`SELECT r.id, r.module, r.date, r.data, r.updated_at, r.created_at, u.name FROM records r LEFT JOIN users u ON u.email = r.updated_by
-    WHERE r.updated_at > ? AND r.updated_by != ? AND r.updated_by != 'neis-auto' ORDER BY r.updated_at DESC LIMIT 300`).bind(since, c.get('user').email).all();
+  if (!mem || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(since)) return c.json({ now, items: [] });
+  const rows = await c.env.DB.prepare(`SELECT r.id, r.module, r.date, r.data, r.updated_at, r.created_at, m.name FROM records r LEFT JOIN members m ON m.email = r.updated_by AND m.school_id = r.school_id
+    WHERE r.school_id = ? AND r.updated_at > ? AND r.updated_by != ? AND r.updated_by != 'neis-auto' ORDER BY r.updated_at DESC LIMIT 300`).bind(mem.schoolId, since, c.get('user').email).all();
   const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"'))).map((r) => {
     const d = r.module === 'secrets' ? {} : JSON.parse(r.data);
     const key = LABEL_KEYS.find((k) => d[k]);
@@ -260,11 +453,50 @@ app.get('/api/changes', async (c) => {
   return c.json({ now, items });
 });
 
+// ---------- 알림함 · 휴대폰 알림 ----------
+
+app.get('/api/inbox', async (c) => {
+  const email = c.get('user').email;
+  const rows = await c.env.DB.prepare('SELECT i.*, s.name AS school_name FROM inbox i LEFT JOIN schools s ON s.id = i.school_id WHERE i.email = ? ORDER BY i.id DESC LIMIT 50').bind(email).all();
+  return c.json({ items: rows.results, unread: rows.results.filter((r) => !r.read).length });
+});
+app.post('/api/inbox/read', async (c) => {
+  await c.env.DB.prepare('UPDATE inbox SET read = 1 WHERE email = ? AND read = 0').bind(c.get('user').email).run();
+  return c.json({ ok: true });
+});
+// 서비스 워커가 푸시 신호를 받았을 때 보여 줄 내용
+app.get('/api/inbox/latest', async (c) => {
+  const row = await c.env.DB.prepare('SELECT title, body, url FROM inbox WHERE email = ? ORDER BY id DESC LIMIT 1').bind(c.get('user').email).first();
+  return c.json(row || { title: '새 알림', body: '', url: '/' });
+});
+app.post('/api/push/subscribe', async (c) => {
+  const b = await c.req.json();
+  if (!/^https:\/\//.test(b.endpoint || '')) return c.json({ error: '잘못된 구독 정보' }, 400);
+  await c.env.DB.prepare('INSERT INTO push_subs (endpoint, email, p256dh, auth) VALUES (?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET email = excluded.email')
+    .bind(b.endpoint, c.get('user').email, b.keys?.p256dh || '', b.keys?.auth || '').run();
+  return c.json({ ok: true });
+});
+app.post('/api/push/unsubscribe', async (c) => {
+  const b = await c.req.json();
+  await c.env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ? AND email = ?').bind(String(b.endpoint || ''), c.get('user').email).run();
+  return c.json({ ok: true });
+});
+app.post('/api/push/test', async (c) => {
+  const email = c.get('user').email;
+  await c.env.DB.prepare("INSERT INTO inbox (email, title, body, url) VALUES (?, '🔔 알림 시험', '이 기기에서 알림을 받을 수 있습니다.', '/')").bind(email).run();
+  c.executionCtx.waitUntil(sendPush(c.env, c.env.DB, [email], new URL(c.req.url).origin));
+  return c.json({ ok: true });
+});
+
 // ---------- 나이스 ----------
 
-// 학급 시간표 (초등). cls = '3-1', 기간 = 한 주
+async function neisCfg(c) {
+  const m = await requireSchool(c);
+  return (await getSettings(c.env.DB, m.schoolId)).neis;
+}
+
 app.get('/api/neis/timetable', async (c) => {
-  const { neis } = await getSettings(c.env.DB);
+  const neis = await neisCfg(c);
   if (!neis || !c.env.NEIS_API_KEY) return c.json({ configured: false, rows: [] });
   const cls = String(c.req.query('cls') || '');
   const from = c.req.query('from');
@@ -282,7 +514,7 @@ app.get('/api/neis/timetable', async (c) => {
 });
 
 app.get('/api/neis/meals', async (c) => {
-  const { neis } = await getSettings(c.env.DB);
+  const neis = await neisCfg(c);
   if (!neis || !c.env.NEIS_API_KEY) return c.json({ configured: false, meals: {} });
   const from = c.req.query('from');
   const to = c.req.query('to') || from;
@@ -297,7 +529,14 @@ app.get('/api/neis/meals', async (c) => {
   return c.json({ configured: true, meals });
 });
 
-// ---------- 관리자 ----------
+// 학교 검색은 학교 개설 화면에서도 쓰므로 로그인한 누구나
+app.get('/api/neis/schools', async (c) => {
+  const name = String(c.req.query('name') || '').trim();
+  if (name.length < 2) return c.json({ error: '학교 이름을 두 글자 이상 입력해 주세요.' }, 400);
+  return c.json(await searchSchools(c.env, name));
+});
+
+// ---------- 학교 관리자 ----------
 
 app.get('/api/admin/neis/schools', async (c) => {
   const name = String(c.req.query('name') || '').trim();
@@ -306,93 +545,118 @@ app.get('/api/admin/neis/schools', async (c) => {
 });
 
 app.post('/api/admin/neis/config', async (c) => {
+  const { schoolId } = c.get('member');
   const b = await c.req.json();
   const neis = b && b.atpt && b.code ? { atpt: String(b.atpt), code: String(b.code), name: String(b.name || ''), office: String(b.office || '') } : null;
-  await c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind('neis', JSON.stringify(neis)).run();
+  await putSetting(c.env.DB, schoolId, 'neis', neis).run();
+  await c.env.DB.prepare('UPDATE schools SET neis_code = ? WHERE id = ?').bind(neis?.code || null, schoolId).run();
   await audit(c, 'settings', null, null, `neis ${neis?.name || '해제'}`);
   return c.json({ ok: true, neis });
 });
 
 app.post('/api/admin/neis/sync', async (c) => {
-  const settings = await getSettings(c.env.DB);
+  const { schoolId } = c.get('member');
+  const settings = await getSettings(c.env.DB, schoolId);
   const { year } = await c.req.json().catch(() => ({}));
-  const result = await syncSchedule(c.env, c.env.DB, Number(year) || settings.currentYear, settings.neis, c.get('user').email);
-  await saveLastSync(c.env.DB, settings.neis, result);
+  const result = await syncSchedule(c.env, c.env.DB, schoolId, Number(year) || settings.currentYear, settings.neis, c.get('user').email);
+  await saveLastSync(c.env.DB, schoolId, settings.neis, result);
   await audit(c, 'neis-sync', 'events', null, JSON.stringify(result));
   return c.json(result);
 });
 
-async function saveLastSync(db, neis, result) {
+async function saveLastSync(db, schoolId, neis, result) {
   if (!neis) return;
   neis.lastSync = { at: new Date().toISOString(), ...result };
-  await db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind('neis', JSON.stringify(neis)).run();
+  await putSetting(db, schoolId, 'neis', neis).run();
 }
 
 app.get('/api/admin/users', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT email, name, role, dept, created_at, last_login FROM users ORDER BY role, name').all();
+  const { schoolId } = c.get('member');
+  const rows = await c.env.DB.prepare(`SELECT m.email, m.name, m.role, m.dept, m.created_at, u.last_login, u.name AS account_name FROM members m LEFT JOIN users u ON u.email = m.email
+    WHERE m.school_id = ? ORDER BY m.role = 'pending' DESC, m.role, m.name`).bind(schoolId).all();
   return c.json(rows.results);
 });
 
 app.put('/api/admin/users/:email', async (c) => {
+  const { schoolId } = c.get('member');
   const email = decodeURIComponent(c.req.param('email')).toLowerCase();
   const b = await c.req.json();
   if (b.role && !['admin', 'staff', 'viewer', 'pending', 'blocked'].includes(b.role)) return c.json({ error: '잘못된 권한' }, 400);
-  await c.env.DB.prepare('UPDATE users SET name = COALESCE(?, name), role = COALESCE(?, role), dept = COALESCE(?, dept) WHERE email = ?')
-    .bind(b.name ?? null, b.role ?? null, b.dept ?? null, email).run();
-  if (b.role === 'blocked') await c.env.DB.prepare('DELETE FROM sessions WHERE email = ?').bind(email).run();
+  if (email === c.get('user').email && b.role && b.role !== 'admin') return c.json({ error: '자기 자신의 관리자 권한은 내릴 수 없습니다.' }, 400);
+  const prev = await c.env.DB.prepare('SELECT role FROM members WHERE school_id = ? AND email = ?').bind(schoolId, email).first();
+  if (!prev) return c.json({ error: '구성원을 찾을 수 없습니다.' }, 404);
+  await c.env.DB.prepare('UPDATE members SET name = COALESCE(?, name), role = COALESCE(?, role), dept = COALESCE(?, dept) WHERE school_id = ? AND email = ?')
+    .bind(b.name ?? null, b.role ?? null, b.dept ?? null, schoolId, email).run();
+  if (prev.role === 'pending' && ACTIVE_ROLES.includes(b.role)) {
+    await notify(c, [email], { title: '✅ 학교 가입 승인', body: `${c.get('member').schoolName}에 가입되었습니다.`, url: '/' }, schoolId);
+  }
   await audit(c, 'user', null, email, JSON.stringify(b));
   return c.json({ ok: true });
 });
 
-// 미리 교직원 이메일 등록 (첫 로그인 전에 승인해 둘 때)
+// 미리 교직원 이메일 등록 (첫 로그인 때 바로 사용)
 app.post('/api/admin/users', async (c) => {
+  const { schoolId } = c.get('member');
   const b = await c.req.json();
   const email = String(b.email || '').trim().toLowerCase();
   if (!email.includes('@')) return c.json({ error: '이메일을 확인해 주세요.' }, 400);
-  await c.env.DB.prepare('INSERT INTO users (email, name, role, dept) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET role = excluded.role, name = excluded.name, dept = excluded.dept')
-    .bind(email, b.name || '', b.role || 'staff', b.dept || '').run();
+  await c.env.DB.prepare('INSERT INTO members (school_id, email, name, role, dept) VALUES (?, ?, ?, ?, ?) ON CONFLICT(school_id, email) DO UPDATE SET role = excluded.role, name = excluded.name, dept = excluded.dept')
+    .bind(schoolId, email, b.name || '', ACTIVE_ROLES.includes(b.role) ? b.role : 'staff', b.dept || '').run();
   await audit(c, 'user', null, email, 'add');
   return c.json({ ok: true });
 });
 
 app.delete('/api/admin/users/:email', async (c) => {
+  const { schoolId } = c.get('member');
   const email = decodeURIComponent(c.req.param('email')).toLowerCase();
-  await c.env.DB.batch([
-    c.env.DB.prepare('DELETE FROM sessions WHERE email = ?').bind(email),
-    c.env.DB.prepare('DELETE FROM users WHERE email = ?').bind(email),
-  ]);
+  if (email === c.get('user').email) return c.json({ error: '자기 자신은 내보낼 수 없습니다.' }, 400);
+  await c.env.DB.prepare('DELETE FROM members WHERE school_id = ? AND email = ?').bind(schoolId, email).run();
   await audit(c, 'user', null, email, 'delete');
   return c.json({ ok: true });
 });
 
-app.put('/api/admin/settings', async (c) => {
-  const b = await c.req.json();
-  const stmts = [];
-  for (const key of ['currentYear', 'schoolName', 'lists']) {
-    if (b[key] !== undefined) {
-      stmts.push(c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-        .bind(key, JSON.stringify(b[key])));
-    }
-  }
-  if (stmts.length) await c.env.DB.batch(stmts);
-  await audit(c, 'settings', null, null, Object.keys(b).join(','));
-  return c.json(await getSettings(c.env.DB));
+// 초대 코드 (보기 · 새로 만들기)
+app.get('/api/admin/invite', async (c) => {
+  const row = await c.env.DB.prepare('SELECT invite_code FROM schools WHERE id = ?').bind(c.get('member').schoolId).first();
+  return c.json({ code: row?.invite_code || '' });
 });
+app.post('/api/admin/invite', async (c) => {
+  const code = randomToken(4);
+  await c.env.DB.prepare('UPDATE schools SET invite_code = ? WHERE id = ?').bind(code, c.get('member').schoolId).run();
+  await audit(c, 'settings', null, null, 'invite code');
+  return c.json({ code });
+});
+
+app.put('/api/admin/settings', async (c) => {
+  const { schoolId } = c.get('member');
+  const b = await c.req.json();
+  const db = c.env.DB;
+  const stmts = [];
+  for (const key of ['currentYear', 'lists']) if (b[key] !== undefined) stmts.push(putSetting(db, schoolId, key, b[key]));
+  if (b.schoolName) stmts.push(db.prepare('UPDATE schools SET name = ? WHERE id = ?').bind(String(b.schoolName).slice(0, 40), schoolId));
+  if (stmts.length) await db.batch(stmts);
+  await audit(c, 'settings', null, null, Object.keys(b).join(','));
+  return c.json(await getSettings(db, schoolId));
+});
+
+const SCHOOL_MODULES = Object.keys(MODULES).filter((m) => spaceOf(m) === 'school');
 
 // 엑셀 가져오기 결과 저장. mode=replace 이면 해당 연도(범위)의 같은 모듈 기록을 지우고 넣음
 app.post('/api/admin/import', async (c) => {
   const user = c.get('user');
+  const { schoolId } = c.get('member');
   const { year, mode, items } = await c.req.json();
   if (!Number(year) || !Array.isArray(items)) return c.json({ error: '잘못된 요청' }, 400);
   const db = c.env.DB;
-  const modules = [...new Set(items.map((i) => i.module))].filter((m) => MODULES[m]);
+  const t = { col: 'school_id', val: schoolId };
+  const modules = [...new Set(items.map((i) => i.module))].filter((m) => SCHOOL_MODULES.includes(m));
   const stmts = [];
   if (mode === 'replace') {
     // 규격이 바뀌며 없어진 메뉴(예: v1 '월별 안내')의 기록 정리
     const known = Object.keys(MODULES);
-    stmts.push(db.prepare(`DELETE FROM records WHERE module NOT IN (${known.map(() => '?').join(',')})`).bind(...known));
+    stmts.push(db.prepare(`DELETE FROM records WHERE school_id = ? AND module NOT IN (${known.map(() => '?').join(',')})`).bind(schoolId, ...known));
     for (const m of modules) {
-      const w = scopeWhere(m, year);
+      const w = scopeWhere(m, year, t);
       // 나이스에서 가져온 일정은 남겨 둠 (엑셀에 없으므로)
       const keepNeis = m === 'events' ? " AND COALESCE(json_extract(data, '$.source'), '') != '나이스'" : '';
       stmts.push(db.prepare(`DELETE FROM records WHERE ${w.sql}${keepNeis}`).bind(...w.args));
@@ -400,12 +664,12 @@ app.post('/api/admin/import', async (c) => {
   }
   let n = 0;
   for (const it of items) {
-    if (!MODULES[it.module]) continue;
+    if (!SCHOOL_MODULES.includes(it.module)) continue;
     const data = await encryptSecrets(c.env, it.module, normalizeData(it.module, it.data));
     const p = placement(it.module, data, year);
     if (MODULES[it.module].scope === 'date' && !p.date) continue;
-    stmts.push(db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(randomToken(8), it.module, p.year, p.date, n, JSON.stringify(data), user.email, user.email));
+    stmts.push(db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by, school_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(randomToken(8), it.module, p.year, p.date, n, JSON.stringify(data), user.email, user.email, schoolId));
     n++;
   }
   for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80));
@@ -416,19 +680,21 @@ app.post('/api/admin/import', async (c) => {
 // 연도별 기록(시간표 등)을 다음 해로 복사
 app.post('/api/admin/copy-year', async (c) => {
   const user = c.get('user');
+  const { schoolId } = c.get('member');
   const { from, to, modules } = await c.req.json();
   const db = c.env.DB;
   let n = 0;
   const stmts = [];
   for (const m of modules || []) {
-    if (MODULES[m]?.scope !== 'year') continue;
-    const rows = await db.prepare('SELECT * FROM records WHERE module = ? AND year = ? ORDER BY sort').bind(m, Number(from)).all();
+    if (MODULES[m]?.scope !== 'year' || !SCHOOL_MODULES.includes(m)) continue;
+    const rows = await db.prepare('SELECT * FROM records WHERE module = ? AND school_id = ? AND year = ? ORDER BY sort').bind(m, schoolId, Number(from)).all();
     for (const r of rows.results) {
       const data = JSON.parse(r.data);
       if (m === 'openClasses') delete data.observers;
       if (m === 'purchases') delete data.received;
-      stmts.push(db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)')
-        .bind(randomToken(8), m, Number(to), r.sort, JSON.stringify(data), user.email, user.email));
+      if (m === 'collections') delete data.done;
+      stmts.push(db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by, school_id) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)')
+        .bind(randomToken(8), m, Number(to), r.sort, JSON.stringify(data), user.email, user.email, schoolId));
       n++;
     }
   }
@@ -438,32 +704,39 @@ app.post('/api/admin/copy-year', async (c) => {
 });
 
 app.get('/api/admin/audit', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT a.*, u.name FROM audit a LEFT JOIN users u ON u.email = a.email ORDER BY a.id DESC LIMIT 300').all();
+  const { schoolId } = c.get('member');
+  const rows = await c.env.DB.prepare('SELECT a.*, m.name FROM audit a LEFT JOIN members m ON m.email = a.email AND m.school_id = a.school_id WHERE a.school_id = ? ORDER BY a.id DESC LIMIT 300').bind(schoolId).all();
   return c.json(rows.results);
 });
 
-// 백업 (비밀번호는 암호화된 상태 그대로)
+// 백업 (비밀번호는 암호화된 상태 그대로, 이 학교 것만)
 app.get('/api/admin/export', async (c) => {
-  const [records, settings, users] = await Promise.all([
-    c.env.DB.prepare('SELECT * FROM records ORDER BY module, date, sort').all(),
-    c.env.DB.prepare('SELECT * FROM settings').all(),
-    c.env.DB.prepare('SELECT email, name, role, dept FROM users').all(),
+  const { schoolId } = c.get('member');
+  const db = c.env.DB;
+  const [records, settings, members] = await Promise.all([
+    db.prepare('SELECT * FROM records WHERE school_id = ? ORDER BY module, date, sort').bind(schoolId).all(),
+    db.prepare('SELECT key, value FROM school_settings WHERE school_id = ?').bind(schoolId).all(),
+    db.prepare('SELECT email, name, role, dept FROM members WHERE school_id = ?').bind(schoolId).all(),
   ]);
   await audit(c, 'export');
-  return c.json({ exportedAt: new Date().toISOString(), records: records.results, settings: settings.results, users: users.results });
+  return c.json({ exportedAt: new Date().toISOString(), schoolId, records: records.results, settings: settings.results, users: members.results });
 });
 
 app.all('/api/*', (c) => c.json({ error: '없는 주소입니다.' }, 404));
 
-// 매일 새벽 자동: 나이스 학사일정 동기화 (wrangler.toml [triggers])
+// 매일 새벽 자동: 학교마다 나이스 학사일정 동기화 (wrangler.toml [triggers])
 async function scheduled(_event, env, ctx) {
   ctx.waitUntil((async () => {
-    const settings = await getSettings(env.DB);
-    if (!settings.neis || !env.NEIS_API_KEY) return;
-    try {
-      const result = await syncSchedule(env, env.DB, settings.currentYear, settings.neis, 'neis-auto');
-      await saveLastSync(env.DB, settings.neis, result);
-    } catch (e) { console.error('neis auto sync', e.message); }
+    if (!env.NEIS_API_KEY) return;
+    const schools = await env.DB.prepare("SELECT s.id FROM schools s JOIN school_settings t ON t.school_id = s.id AND t.key = 'neis' WHERE s.status = 'active' AND t.value != 'null'").all();
+    for (const { id } of schools.results.slice(0, 20)) {
+      try {
+        const settings = await getSettings(env.DB, id);
+        if (!settings.neis) continue;
+        const result = await syncSchedule(env, env.DB, id, settings.currentYear, settings.neis, 'neis-auto');
+        await saveLastSync(env.DB, id, settings.neis, result);
+      } catch (e) { console.error('neis auto sync', id, e.message); }
+    }
   })());
 }
 

@@ -7,7 +7,11 @@
 //   global : 연도와 무관한 기록 (연락처, 위임전결 등)
 //
 // edit : 수정 가능한 최소 권한 (staff | admin)
+// space: school(기본, 학교 공유) | desk(Deskterior 개인 공간, 본인만) | market(모든 선생님 공유)
+// enc  : 필드에 enc:true → 서버에 암호화해 저장 (학생 관련 기록)
 
+export const APP_NAME = 'OnlineFlatform';
+export const DESK_NAME = 'Deskterior';
 export const ROLES = { admin: '관리자', staff: '교직원', viewer: '열람', pending: '승인대기', blocked: '차단' };
 
 // 설정에서 관리하는 목록(드롭다운) 기본값
@@ -93,6 +97,16 @@ export const MODULES = {
       { key: 'substitute', label: '보결 교사', type: 'select', list: 'staff', free: true, required: true },
       { key: 'reason', label: '사유', type: 'text', hint: '예) 출장, 연가' },
       { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  briefings: {
+    label: '전달사항', icon: '📣', scope: 'date', edit: 'staff',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'kind', label: '구분', type: 'select', options: ['조례', '종례', '공통'] },
+      { key: 'target', label: '대상', type: 'text', hint: '비워 두면 전체. 예) 5~6학년 담임' },
+      { key: 'content', label: '전달 내용', type: 'textarea', required: true, hint: '학생에게 전달할 내용 (담임이 그대로 읽어 줄 수 있게)' },
+      { key: 'dept', label: '부서', type: 'select', list: 'depts', free: true },
     ],
   },
   reservations: {
@@ -298,6 +312,91 @@ export const MODULES = {
       { key: 'note', label: '설명', type: 'text' },
     ],
   },
+
+  // ---------- Deskterior (개인 공간: 본인만 봄) ----------
+  students: {
+    label: '학생 명단', icon: '🧒', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'num', label: '번호', type: 'number' },
+      { key: 'name', label: '이름', type: 'text', required: true },
+      { key: 'gender', label: '성별', type: 'select', options: ['남', '여'] },
+      { key: 'note', label: '특이사항', type: 'textarea', enc: true, hint: '암호화해 저장되며 본인만 봅니다' },
+    ],
+  },
+  seatPlan: {
+    label: '자리 배치', icon: '🪑', scope: 'year', edit: 'staff', space: 'desk', extras: ['layout'],
+    fields: [
+      { key: 'title', label: '이름', type: 'text', required: true, hint: '예) 1학기 1차' },
+      { key: 'note', label: '메모', type: 'text' },
+    ],
+  },
+  classRoles: {
+    label: '1인 1역', icon: '🧹', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'role', label: '역할', type: 'text', required: true, hint: '예) 칠판 정리, 우유 당번' },
+      { key: 'students', label: '맡은 학생', type: 'names', hint: '이름을 쉼표로 구분' },
+      { key: 'note', label: '하는 일', type: 'text' },
+    ],
+  },
+  myTimetable: {
+    label: '내 시간표', icon: '🗓', scope: 'year', edit: 'staff', space: 'desk', extras: ['grid'],
+    fields: [
+      { key: 'title', label: '제목', type: 'text', required: true },
+      { key: 'semester', label: '학기', type: 'select', options: ['1학기', '2학기', '연간'] },
+      { key: 'note', label: '메모', type: 'text' },
+    ],
+  },
+  progress: {
+    label: '진도표', icon: '📘', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'subject', label: '과목', type: 'text', required: true },
+      { key: 'date', label: '날짜(예정)', type: 'date' },
+      { key: 'unit', label: '단원·차시', type: 'text', required: true, hint: '예) 2. 분수의 나눗셈 (3/8차시)' },
+      { key: 'done', label: '완료', type: 'bool' },
+      { key: 'note', label: '수업 메모', type: 'textarea' },
+    ],
+  },
+  evalPlans: {
+    label: '평가', icon: '📝', scope: 'year', edit: 'staff', space: 'desk', extras: ['scores'],
+    fields: [
+      { key: 'subject', label: '과목', type: 'text', required: true },
+      { key: 'area', label: '영역·단원', type: 'text' },
+      { key: 'standard', label: '성취기준·평가 요소', type: 'textarea' },
+      { key: 'timing', label: '시기', type: 'text', hint: '예) 4월 2주' },
+      { key: 'method', label: '방법', type: 'select', options: ['서술형', '논술형', '구술', '실기', '관찰', '포트폴리오', '프로젝트', '기타'], free: true },
+    ],
+  },
+  notes: {
+    label: '누가기록', icon: '🗒', scope: 'date', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'student', label: '학생', type: 'select', list: 'students', free: true, required: true },
+      { key: 'category', label: '구분', type: 'select', options: ['관찰', '상담', '학습', '생활', '칭찬', '학부모', '기타'] },
+      { key: 'content', label: '내용', type: 'textarea', required: true, enc: true, hint: '암호화해 저장되며 본인만 봅니다' },
+    ],
+  },
+  todos: {
+    label: '할 일', icon: '✅', scope: 'global', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'title', label: '할 일', type: 'text', required: true },
+      { key: 'due', label: '날짜', type: 'date' },
+      { key: 'repeat', label: '반복', type: 'select', options: ['없음', '매일', '평일', '매주', '매월'] },
+      { key: 'done', label: '완료', type: 'bool' },
+      { key: 'note', label: '메모', type: 'text' },
+    ],
+  },
+  // ---------- 마켓 (모든 학교 선생님 공유) ----------
+  market: {
+    label: '마켓', icon: '🛍', scope: 'global', edit: 'staff', space: 'market',
+    fields: [
+      { key: 'category', label: '분류', type: 'select', options: ['학급 운영', '수업 자료', '평가 자료', '업무 서식', '에듀테크', '기타'] },
+      { key: 'title', label: '제목', type: 'text', required: true },
+      { key: 'grades', label: '학년·과목', type: 'text', hint: '예) 5학년 수학' },
+      { key: 'desc', label: '설명', type: 'textarea' },
+      { key: 'link', label: '자료 링크', type: 'url', hint: '드라이브·패들렛 등 공유 링크 (학생 개인정보가 담긴 자료는 올리지 마세요)' },
+      { key: 'likes', label: '좋아요', type: 'names' },
+    ],
+  },
 };
 
 // 왼쪽 메뉴: 업무 영역별 묶음. 각 영역 = 전체 보기(overview) + 세부 탭
@@ -319,6 +418,7 @@ export const GROUPS = [
   { id: 'notice', label: '공지·업무', icon: '📢', tabs: [
     { id: 'overview', label: '한눈에' },
     { id: 'notices', label: '공지', module: 'notices' },
+    { id: 'briefings', label: '전달사항', module: 'briefings' },
     { id: 'collections', label: '수합', module: 'collections' },
     { id: 'duties', label: '담당 배정', module: 'duties' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
@@ -339,8 +439,37 @@ export const GROUPS = [
   ] },
 ];
 
-// 이름 목록을 각자 켜고 끌 수 있는 칸 (참관 신청, 수합 제출)
-export const SELF_TOGGLE = { openClasses: 'observers', collections: 'done' };
+// Deskterior 메뉴 (tdesk 벤치마킹: 학급 · 수업 · 평가 · 기록 · 마켓)
+export const DESK_GROUPS = [
+  { id: 'home', label: '내 책상', icon: '🪴', tabs: [] },
+  { id: 'class', label: '학급', icon: '🧒', tabs: [
+    { id: 'overview', label: '학급 한눈에' },
+    { id: 'students', label: '학생 명단', module: 'students' },
+    { id: 'seats', label: '자리 배치', module: 'seatPlan' },
+    { id: 'roles', label: '1인 1역', module: 'classRoles' },
+    { id: 'tools', label: '뽑기·타이머' },
+  ] },
+  { id: 'lesson', label: '수업', icon: '📘', tabs: [
+    { id: 'overview', label: '오늘 수업' },
+    { id: 'timetable', label: '내 시간표', module: 'myTimetable' },
+    { id: 'progress', label: '진도표', module: 'progress' },
+  ] },
+  { id: 'eval', label: '평가', icon: '📝', tabs: [
+    { id: 'overview', label: '평가 기록', module: 'evalPlans' },
+  ] },
+  { id: 'record', label: '기록', icon: '🗒', tabs: [
+    { id: 'overview', label: '누가기록', module: 'notes' },
+    { id: 'todos', label: '할 일', module: 'todos' },
+  ] },
+  { id: 'market', label: '마켓', icon: '🛍', tabs: [
+    { id: 'overview', label: '자료 마켓', module: 'market' },
+  ] },
+];
+
+export const spaceOf = (moduleId) => MODULES[moduleId]?.space || 'school';
+
+// 이름 목록을 각자 켜고 끌 수 있는 칸 (참관 신청, 수합 제출, 마켓 좋아요)
+export const SELF_TOGGLE = { openClasses: 'observers', collections: 'done', market: 'likes' };
 
 // 학년도 Y의 범위: Y-01-01 ~ (Y+1)-02-말일
 export function yearRange(year) {

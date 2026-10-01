@@ -13,7 +13,7 @@ const monthEnd = (ym) => { const [y, m] = ym.split('-').map(Number); return `${y
 const weekStart = (d) => { const [y, m, dd] = d.split('-').map(Number); return addDays(d, -new Date(y, m - 1, dd).getDay()); };
 
 export async function dashboardView(root) {
-  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,purchases,budget,contests,substitutes,collections,duties,reservations`);
+  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,purchases,budget,contests,substitutes,collections,duties,reservations,briefings`);
   const t = today();
   const ym = t.slice(0, 7);
   const me = myName();
@@ -42,6 +42,7 @@ export async function dashboardView(root) {
   // D-Day: 'D-Day 표시'를 체크한 일정 중 오늘 이후
   const ddays = d.events.filter((e) => e.data.dday && (e.data.endDate || e.data.date) >= t).sort((a, b) => a.data.date.localeCompare(b.data.date)).slice(0, 6);
   const news = unseen();
+  const briefs = d.briefings.filter((b) => b.data.date === t);
   const myLeaves = d.trips.filter((x) => x.data.person === me && (x.data.endDate || x.data.date) >= t && x.data.date <= addDays(t, 7));
 
   const item = (it) => h('li', { class: 'click', onclick: () => openRecordForm(it.mod, it.r, { onSaved: reload }) },
@@ -80,6 +81,9 @@ export async function dashboardView(root) {
       h('strong', {}, ddayLabel(e.data.date, e.data.endDate, t)), h('span', {}, (e.data.title || '').split('\n')[0]), h('span', { class: 'muted small' }, fmtDate(e.data.date))))) : null,
     h('div', { class: 'dash' },
       boardBox,
+      briefs.length ? h('div', { class: 'card mine' }, h('h3', {}, `📣 오늘 전달사항 ${briefs.length}건`),
+        briefs.map((b) => h('div', { class: 'brief-row click', onclick: () => openRecordForm('briefings', b, { onSaved: reload }) }, b.data.kind ? h('span', { class: 'tag' }, b.data.kind) : null, b.data.target ? h('span', { class: 'tag ghost' }, b.data.target) : null, h('div', { class: 'pre clamp' }, b.data.content))),
+        h('a', { href: '#/notice/briefings', class: 'more-link' }, '전달사항 →')) : null,
       news.length ? h('div', { class: 'card news' }, h('h3', {}, `🆕 새 소식 ${news.length}건`),
         h('ul', { class: 'list' }, news.slice(0, 8).map((n) => h('li', { class: 'click', onclick: () => { location.hash = tabOf(n.module) || '#/home/'; } },
           h('span', { class: 'tag ghost' }, MODULES[n.module]?.label || n.module), ` ${n.label}`,
@@ -92,7 +96,7 @@ export async function dashboardView(root) {
           myDuties.map((x) => h('li', { class: 'click', onclick: () => { location.hash = '#/notice/duties'; } }, `🧑‍🏫 ${fmtDate(x.data.date)} ${x.data.title}`, h('span', { class: 'muted' }, ` ${[x.data.role, x.data.place, x.data.time].filter(Boolean).join(' · ')}`))),
           myResv.map((x) => h('li', { class: 'click', onclick: () => { location.hash = '#/class/reservations'; } }, `🏫 ${fmtDate(x.data.date)} ${x.data.period} ${x.data.place} 예약`)),
           myLeaves.map((x) => item(tripItem(x)))) : h('p', { class: 'muted' }, '오늘 이후 내 보결·담당·제출할 수합이 없습니다.'),
-        !state.me.name ? h('p', { class: 'muted small' }, '관리자 화면에서 내 이름이 등록되어야 내 할 일이 보입니다.') : null),
+        !state.me.name ? h('p', { class: 'muted small' }, '학교 관리 → 사용자에서 내 이름(실명)이 등록되어야 내 할 일이 보입니다.') : null),
       mealBox,
       h('div', { class: 'card' }, h('h3', {}, '💰 예산·물품'),
         h('div', { class: 'mini-kpi' }, h('span', {}, '배정'), h('strong', {}, won(assign))),
