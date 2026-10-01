@@ -3,7 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#2f6fed">
+  <meta name="theme-color" content="#ffffff">
+  <script>
+    // 화면 깜빡임 없이 저장된 테마 먼저 적용 (기본: 밝게)
+    try { var t = JSON.parse(localStorage.getItem('gy_theme') || '{}'); var d = t.mode === 'dark' || (t.mode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = d ? 'dark' : 'light'; document.documentElement.dataset.accent = t.accent || 'indigo'; } catch (e) { document.documentElement.dataset.theme = 'light'; }
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="OnlineFlatform">
   <link rel="manifest" href="/manifest.webmanifest">

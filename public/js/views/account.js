@@ -3,6 +3,7 @@ import { h, api, clear, toast, confirmBox } from '../ui.js';
 import { state, remember } from '../state.js';
 import { APP_NAME, DESK_NAME, ROLES } from '../modules.js';
 import { pushState, enablePush, disablePush, pushSupported } from './inbox.js';
+import { MODES, myTheme, setMyTheme, swatches } from '../theme.js';
 
 const STATUS = { pending: '승인 대기', active: '사용 중', closed: '중지' };
 
@@ -139,7 +140,18 @@ export async function meView(root, refresh) {
       h('p', { class: 'hint' }, '보결·담당 배정, 전체 공지, 새 수합, 전달사항, 학교 가입 승인 때 알림이 옵니다. 기기마다 따로 켭니다.'));
   };
   drawPush();
+  const themeBox = h('div', {});
+  const drawTheme = () => {
+    const t = myTheme();
+    clear(themeBox,
+      h('div', { class: 'seg' }, MODES.map(([v, l]) => h('button', { class: (t.mode || 'light') === v ? 'on' : '', onclick: () => { setMyTheme({ mode: v }); drawTheme(); } }, l))),
+      h('p', { class: 'muted small', style: { margin: '12px 0 6px' } }, '주 색 (첫 칸 = 학교 기본 색)'),
+      swatches(t.accent || '', (id) => { setMyTheme({ accent: id }); drawTheme(); }, { withDefault: true }),
+      h('p', { class: 'hint' }, '이 기기에만 적용됩니다. 기본은 밝은 화면입니다.'));
+  };
+  drawTheme();
   clear(root,
+    h('section', { class: 'card' }, h('h3', {}, '🎨 화면 테마'), themeBox),
     h('section', { class: 'card' }, h('h3', {}, '👤 계정'),
       h('p', {}, state.me.email, state.me.super ? h('span', { class: 'tag' }, '플랫폼 운영자') : null),
       h('form', { class: 'inline-form', onsubmit: async (e) => {

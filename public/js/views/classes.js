@@ -29,13 +29,25 @@ export async function classOverview(root) {
   for (let i = 0; i < 30 && offOf(day); i++) day = addDays(day, 1);
   const weekday = DOW[new Date(...day.split('-').map((x, i) => (i === 1 ? Number(x) - 1 : Number(x)))).getDay()];
   const subs = d.substitutes.filter((s) => s.data.date === day);
+  // 나이스 학급 시간표(그 날 전체 학급)를 시트 시간표의 빈칸에 채움
+  let neis = { rows: [], note: '' };
+  if (state.settings.neis) {
+    try {
+      const res = await api(`/api/neis/timetable-day?date=${day}`);
+      neis.rows = res.rows || [];
+      neis.note = neis.rows.length ? `나이스 시간표 ${new Set(neis.rows.map((r) => r.cls)).size}개 학급을 합쳐 보여 줍니다. 연한 글씨 = 나이스, 진한 글씨 = 시트(전담·특별실 등).` : '나이스에 이 날 학급 시간표가 없습니다 (학교가 나이스에 시간표를 아직 입력하지 않았거나 방학·휴일).';
+    } catch (e) { neis.note = `나이스 시간표를 불러오지 못했습니다: ${e.message}`; }
+  } else neis.note = '학교 관리 → 설정 → 나이스 연동에서 학교를 선택하면 학급 시간표 전체(국어·수학 등)를 나이스에서 채워 넣습니다.';
+  const soft = new Set();
+  const merged = mergeNeis(tts, neis.rows, weekday, soft);
   const cal = h('div', {});
   clear(root,
     h('section', { class: 'section' },
       h('h3', {}, day === t ? `오늘(${weekday}) 시간표 한눈에` : `다음 수업일 ${fmtDate(day)} 시간표`,
         reason && day !== t ? h('span', { class: 'badge warn' }, `오늘은 ${reason}`) : null),
       subs.length ? h('p', { class: 'alert warn' }, `🔁 보결 ${subs.length}건: `, subs.map((s) => `${s.data.period} ${s.data.className || ''} → ${s.data.substitute}`).join(' · ')) : null,
-      tts.length ? glanceTable(tts, { days: [weekday], onOpen: (r) => editTimetable(r, () => classOverview(root)), clash: conflicts(tts) }) : h('p', { class: 'muted' }, '시간표가 없습니다.')),
+      merged.length ? glanceTable(merged, { days: [weekday], onOpen: (r) => (r.synthetic ? null : editTimetable(r, () => classOverview(root))), clash: conflicts(tts), soft }) : h('p', { class: 'muted' }, '시간표가 없습니다.'),
+      h('p', { class: 'hint' }, neis.note)),
     h('section', { class: 'section' }, h('h3', {}, '수업 달력 (학급수업 · 특별수업 · 동료장학)'), cal));
   renderCalendar(cal, {
     key: 'cal_class', defaultMode: 'month', autoScroll: false,
@@ -117,4 +129,38 @@ export async function substitutesView(root) {
           h('td', {}, r.data.absent || ''), h('td', {}, h('strong', {}, r.data.substitute || '')), h('td', {}, r.data.reason || '')))))))) : h('p', { class: 'muted' }, '보결 기록이 없습니다.'),
     counts.size ? h('section', { class: 'section' }, h('h3', {}, `교사별 보결 횟수 (${state.year}학년도)`),
       h('div', { class: 'chips-row' }, [...counts].sort((a, b) => b[1] - a[1]).map(([k, v]) => h('span', { class: `tag big ${k === me ? 'mine' : ''}` }, `${k} ${v}회`)))) : null);
+}
+
+// 시트 학급 시간표 + 나이스 하루 시간표 합치기. 시트에 없는 학급은 나이스만으로 줄을 만듦
+function mergeNeis(tts, rows, weekday, soft) {
+  if (!rows.length) return tts;
+  const byCls = new Map();
+  for (const r of rows) { if (!byCls.has(r.cls)) byCls.set(r.cls, {}); byCls.get(r.cls)[r.period] = r.subject; }
+  const out = tts.map((r) => {
+    const m = String(r.data.title).match(/^(\d)-(\d+)$/);
+    const day = m && r.data.kind === '학급' ? byCls.get(`${m[1]}-${m[2]}`) : null;
+    if (!day) return r;
+    const g = JSON.parse(JSON.stringify(r.data.grid || { days: ['월', '화', '수', '목', '금'], periods: [], cells: [] }));
+    const di = g.days.indexOf(weekday);
+    if (di < 0) return r;
+    const maxP = Math.max(g.periods.length, ...Object.keys(day).map(Number));
+    while (g.periods.length < maxP) { g.periods.push(`${g.periods.length + 1}교시`); g.cells.push(Array(g.days.length).fill('')); }
+    for (const [p, subj] of Object.entries(day)) {
+      const pi = Number(p) - 1;
+      if (!g.cells[pi][di]) { g.cells[pi][di] = subj; soft.add(`${r.id}|${pi}|${di}`); }
+    }
+    byCls.delete(`${m[1]}-${m[2]}`);
+    return { ...r, data: { ...r.data, grid: g } };
+  });
+  // 시트에 없는 학급
+  const extra = [...byCls].sort(([a], [b]) => a.localeCompare(b, 'ko', { numeric: true })).map(([cls, day]) => {
+    const n = Math.max(6, ...Object.keys(day).map(Number));
+    const cells = Array.from({ length: n }, (_, pi) => [day[pi + 1] || '']);
+    const id = `neis-${cls}`;
+    cells.forEach((row, pi) => { if (row[0]) soft.add(`${id}|${pi}|0`); });
+    return { id, synthetic: true, data: { title: cls, kind: '학급', grid: { days: [weekday], periods: cells.map((_, i) => `${i + 1}교시`), cells } } };
+  });
+  const firstNonClass = out.findIndex((r) => r.data.kind !== '학급');
+  if (firstNonClass < 0) return [...out, ...extra];
+  return [...out.slice(0, firstNonClass), ...extra, ...out.slice(firstNonClass)];
 }

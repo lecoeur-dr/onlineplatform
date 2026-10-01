@@ -28,7 +28,7 @@ export function editTimetable(r, reload, defaults) {
 }
 
 // 한눈에: 줄 = 시간표, 칸 = 요일×교시
-export function glanceTable(rows, { days = ['월', '화', '수', '목', '금'], onOpen, clash = new Set() } = {}) {
+export function glanceTable(rows, { days = ['월', '화', '수', '목', '금'], onOpen, clash = new Set(), soft = new Set() } = {}) {
   const periods = Math.max(6, ...rows.map((r) => r.data.grid?.periods?.length || 0));
   return h('div', { class: 'table-wrap' }, h('table', { class: 'tt glance' },
     h('thead', {},
@@ -40,7 +40,7 @@ export function glanceTable(rows, { days = ['월', '화', '수', '목', '금'], 
         h('th', { class: 'sticky-col click', onclick: () => onOpen?.(r), title: r.data.note || '' }, r.data.title, h('span', { class: 'tag small' }, r.data.kind || '')),
         days.map((d) => {
           const di = g.days.indexOf(d);
-          return Array.from({ length: periods }, (_, pi) => h('td', { class: `${pi === 0 ? 'day-sep' : ''} ${clash.has(`${r.id}|${pi}|${di}`) ? 'clash' : ''}` }, di >= 0 ? g.cells[pi]?.[di] || '' : ''));
+          return Array.from({ length: periods }, (_, pi) => h('td', { class: `${pi === 0 ? 'day-sep' : ''} ${clash.has(`${r.id}|${pi}|${di}`) ? 'clash' : ''} ${soft.has(`${r.id}|${pi}|${di}`) ? 'from-neis' : ''}` }, di >= 0 ? g.cells[pi]?.[di] || '' : ''));
         }));
     }))));
 }

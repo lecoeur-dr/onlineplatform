@@ -246,6 +246,13 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
     if (tt) for (let i = 0; i < 5; i++) { const day = add(q('from'), i); tt.data.grid.cells.forEach((row, pi) => { if (row[i]) rows.push({ date: day, period: pi + 1, subject: row[i] }); }); }
     return { configured: true, rows };
   }
+  if (p === '/api/neis/timetable-day') {
+    const di = dow(q('date')) - 1;
+    const rows = [];
+    for (const r of d.records.filter((x) => x.module === 'timetables' && /^\d-\d+$/.test(x.data.title))) r.data.grid.cells.forEach((row, pi) => { if (row[di]) rows.push({ cls: r.data.title, period: pi + 1, subject: row[di] }); });
+    for (const cls of ['1-1', '2-1', '3-1', '4-1']) ['국어', '수학', '바른 생활', '슬기로운 생활', '즐거운 생활'].forEach((subject, pi) => rows.push({ cls, period: pi + 1, subject }));
+    return { configured: true, rows };
+  }
   if ((m = p.match(/^\/api\/records\/([^/]+)$/))) {
     const mod = m[1];
     if (!MODULES[mod]) fail(404, '알 수 없는 메뉴입니다.');
@@ -301,7 +308,7 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
     });
   }
   if (p === '/api/admin/invite') return { code: 'demo2026' };
-  if (p === '/api/admin/settings') return write(() => { if (body.currentYear) d.settings.currentYear = body.currentYear; if (body.lists) d.settings.lists = body.lists; if (body.schoolName) d.settings.schoolName = body.schoolName; return d.settings; });
+  if (p === '/api/admin/settings') return write(() => { if (body.currentYear) d.settings.currentYear = body.currentYear; if (body.lists) d.settings.lists = body.lists; if (body.schoolName) d.settings.schoolName = body.schoolName; if (body.theme) d.settings.theme = body.theme; return d.settings; });
   if (p === '/api/admin/audit') return d.audit.slice(0, 100);
   if (p === '/api/admin/export') return { exportedAt: new Date().toISOString(), demo: true, records: d.records };
   if (p === '/api/admin/import') {

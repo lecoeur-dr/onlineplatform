@@ -3,6 +3,7 @@ import { MODULES, ROLES, DEFAULT_LISTS } from '../modules.js';
 import { h, api, clear, toast, confirmBox, loadScript, download, modal } from '../ui.js';
 import { state } from '../state.js';
 import { parseWorkbook, guessYear } from '../importer.js';
+import { swatches, applyTheme } from '../theme.js';
 
 let tab = 'users';
 const TABS = { users: '사용자·초대', settings: '설정', import: '엑셀 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
@@ -114,7 +115,14 @@ async function settings(root, refreshApp) {
     h('label', {}, `${LABELS[k] || k} 목록 (한 줄에 하나)`),
     h('textarea', { name: k, rows: 8, value: (s.lists[k] || []).join('\n') })))),
   h('div', {}, h('button', { class: 'btn primary' }, '설정 저장')));
-  clear(root, neisSection(refreshApp), h('h3', {}, '기본 설정'), form);
+  const themeBox = h('section', { class: 'card' });
+  const drawTheme = () => clear(themeBox, h('h3', {}, '🎨 학교 기본 색'),
+    h('p', { class: 'muted small' }, '우리 학교 선생님들 화면의 주 색입니다. 각자 내 정보에서 따로 바꿀 수도 있습니다.'),
+    swatches(s.theme?.accent || 'indigo', async (id) => {
+      try { await api('/api/admin/settings', { method: 'PUT', body: { theme: { accent: id } } }); s.theme = { accent: id }; applyTheme(); drawTheme(); toast('학교 기본 색을 바꿨습니다.'); } catch (err) { toast(err.message, 'error'); }
+    }));
+  drawTheme();
+  clear(root, themeBox, neisSection(refreshApp), h('h3', {}, '기본 설정'), form);
 }
 
 // 나이스 연동: 학교 검색 → 선택 → 학사일정 가져오기 (급식은 홈에 자동 표시)

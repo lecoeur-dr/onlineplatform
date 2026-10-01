@@ -161,3 +161,14 @@ export async function getTimetable(env, cfg, grade, cls, from, to, fetchImpl) {
   return rows.map((r) => ({ date: ymd(r.ALL_TI_YMD), period: Number(r.PERIO) || 0, subject: String(r.ITRT_CNTNT || '').replace(/^-/, '').trim() }))
     .sort((a, b) => a.date.localeCompare(b.date) || a.period - b.period);
 }
+
+// 학교 전체 학급의 하루 시간표 (학급 조건 없이 한 번에): [{ cls: '3-1', period, subject }]
+export async function getDayTimetable(env, cfg, date, fetchImpl) {
+  if (!cfg?.atpt || !cfg?.code) throw new NeisError('나이스 연동 학교가 설정되지 않았습니다.');
+  const [y, mo] = date.split('-').map(Number);
+  const rows = await neisFetch(env, 'elsTimetable', {
+    ATPT_OFCDC_SC_CODE: cfg.atpt, SD_SCHUL_CODE: cfg.code, AY: String(mo < 3 ? y - 1 : y), TI_FROM_YMD: compact(date), TI_TO_YMD: compact(date),
+  }, fetchImpl);
+  return rows.map((r) => ({ cls: `${r.GRADE}-${r.CLASS_NM}`, period: Number(r.PERIO) || 0, subject: String(r.ITRT_CNTNT || '').replace(/^-/, '').trim() }))
+    .filter((r) => r.period && r.subject);
+}

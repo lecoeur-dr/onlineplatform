@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseNeis, scheduleToEvents, searchSchools, getMeals, NeisError } from '../src/neis.js';
+import { parseNeis, scheduleToEvents, searchSchools, getMeals, getDayTimetable, NeisError } from '../src/neis.js';
 
 const ok = (service, row) => ({ [service]: [{ head: [{ list_total_count: row.length }, { RESULT: { CODE: 'INFO-000', MESSAGE: '정상 처리되었습니다.' } }] }, { row }] });
 const fakeFetch = (body) => async () => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
@@ -44,4 +44,12 @@ test('학교 검색 · 급식 정리', async () => {
   assert.equal(schools[0].code, '7801234');
   const meals = await getMeals(env, { atpt: 'K10', code: '7801234' }, '2026-10-01', '2026-10-01', fakeFetch(ok('mealServiceDietInfo', [{ MLSV_YMD: '20261001', MMEAL_SC_NM: '중식', DDISH_NM: '현미밥<br/>된장국 (5.6.13.)<br/>제육볶음*(10.13.)', CAL_INFO: '650.2 Kcal' }])));
   assert.deepEqual(meals['2026-10-01'][0].dishes, ['현미밥', '된장국', '제육볶음']);
+});
+
+test('학교 전체 하루 시간표', async () => {
+  const env = { NEIS_API_KEY: 'k' };
+  const rows = await getDayTimetable(env, { atpt: 'K10', code: '7801234' }, '2026-10-01', fakeFetch(ok('elsTimetable', [
+    { GRADE: '3', CLASS_NM: '1', PERIO: '1', ITRT_CNTNT: '국어' }, { GRADE: '3', CLASS_NM: '1', PERIO: '2', ITRT_CNTNT: '-수학' }, { GRADE: '5', CLASS_NM: '2', PERIO: '1', ITRT_CNTNT: '' },
+  ])));
+  assert.deepEqual(rows, [{ cls: '3-1', period: 1, subject: '국어' }, { cls: '3-1', period: 2, subject: '수학' }]);
 });

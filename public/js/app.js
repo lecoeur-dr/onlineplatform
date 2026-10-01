@@ -19,6 +19,7 @@ import { bellButton, refreshBell } from './views/inbox.js';
 import { openRecordForm } from './form.js';
 import { loadNews, markSeen, paintBadges } from './news.js';
 import { isDemo, startDemo, exitDemo, resetDemo, demoApi } from './demo.js';
+import { applyTheme } from './theme.js';
 
 // OnlineFlatform(학교) 영역/탭 → 화면
 const VIEWS = {
@@ -76,6 +77,7 @@ async function loadMe() {
   apiCtx.school = me.member?.schoolId || '';
   if (me.member && !isDemo()) remember('school', me.member.schoolId);
   document.title = state.member ? `${state.settings.schoolName} · ${APP_NAME}` : APP_NAME;
+  applyTheme();
 }
 
 async function boot() {

@@ -22,14 +22,13 @@
   --nav-w: 200px;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+html[data-theme="dark"] {
     --bg: #14171c; --panel: #1c2027; --line: #2d333d; --text: #e6e8ec; --muted: #9aa3af;
     --primary: #6d9bff; --primary-soft: #1f2b45; --warn-soft: #3a2f16; --sun: #ff7b7b; --sat: #7ba7ff;
     --c-event: #6d9bff; --c-program: #b28cff; --c-meeting: #3cc4b6; --c-training: #f0a050; --c-holiday: #ff7b7b; --c-trip: #d6b45a;
     color-scheme: dark;
   }
-}
+
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -402,7 +401,8 @@ tr.is-new, .card.is-new { background: color-mix(in srgb, var(--danger) 6%, var(-
 .space-tab.on[data-space="school"] { background: var(--primary); color: #fff; }
 .space-tab.on[data-space="desk"] { background: #2f855a; color: #fff; }
 body[data-space="desk"] { --primary: #2f855a; --primary-soft: #e3f3ea; }
-@media (prefers-color-scheme: dark) { body[data-space="desk"] { --primary: #5cc58a; --primary-soft: #1d3326; } }
+html[data-theme="dark"] body[data-space="desk"] { --primary: #5cc58a; --primary-soft: #1d3326; }
+
 .school-pick { max-width: 160px; }
 .bell { position: relative; font-size: 18px; }
 .bell .nbadge { position: absolute; top: -2px; right: -6px; margin: 0; }

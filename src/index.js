@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { MODULES, DEFAULT_LISTS, SELF_TOGGLE, yearRange, normalizeData, spaceOf } from '../public/js/modules.js';
-import { searchSchools, syncSchedule, getMeals, getTimetable } from './neis.js';
+import { searchSchools, syncSchedule, getMeals, getTimetable, getDayTimetable } from './neis.js';
 import { mountAuth, loadUser, adminEmails } from './auth.js';
 import { randomToken, encryptText, decryptText } from './crypto.js';
 import { notify, pushReady, sendPush } from './push.js';
@@ -24,6 +24,7 @@ async function getSettings(db, schoolId) {
     schoolName: school?.name || s.schoolName || '',
     lists: { ...DEFAULT_LISTS, ...(s.lists || {}) },
     neis: s.neis || null, // { atpt, code, name, office, lastSync }
+    theme: s.theme || null, // { accent }
   };
 }
 
@@ -513,6 +514,21 @@ app.get('/api/neis/timetable', async (c) => {
   return c.json({ configured: true, rows });
 });
 
+// 학교 전체 학급의 하루 시간표 (수업 전체 화면의 '오늘 시간표 한눈에'에 합쳐 보여 줌)
+app.get('/api/neis/timetable-day', async (c) => {
+  const neis = await neisCfg(c);
+  if (!neis || !c.env.NEIS_API_KEY) return c.json({ configured: false, rows: [] });
+  const date = c.req.query('date');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return c.json({ error: '날짜 형식 오류' }, 400);
+  const cache = caches.default;
+  const key = new Request(`https://cache.local/ttday/${neis.atpt}/${neis.code}/${date}`);
+  const hit = await cache.match(key);
+  if (hit) return c.json({ configured: true, rows: await hit.json() });
+  const rows = await getDayTimetable(c.env, neis, date);
+  c.executionCtx.waitUntil(cache.put(key, new Response(JSON.stringify(rows), { headers: { 'cache-control': 'max-age=21600' } })));
+  return c.json({ configured: true, rows });
+});
+
 app.get('/api/neis/meals', async (c) => {
   const neis = await neisCfg(c);
   if (!neis || !c.env.NEIS_API_KEY) return c.json({ configured: false, meals: {} });
@@ -633,6 +649,7 @@ app.put('/api/admin/settings', async (c) => {
   const db = c.env.DB;
   const stmts = [];
   for (const key of ['currentYear', 'lists']) if (b[key] !== undefined) stmts.push(putSetting(db, schoolId, key, b[key]));
+  if (b.theme !== undefined) stmts.push(putSetting(db, schoolId, 'theme', { accent: String(b.theme?.accent || 'indigo').replace(/[^a-z]/g, '').slice(0, 12) }));
   if (b.schoolName) stmts.push(db.prepare('UPDATE schools SET name = ? WHERE id = ?').bind(String(b.schoolName).slice(0, 40), schoolId));
   if (stmts.length) await db.batch(stmts);
   await audit(c, 'settings', null, null, Object.keys(b).join(','));
