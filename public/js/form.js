@@ -1,9 +1,7 @@
 // 모듈 규격(fields)으로 입력 폼을 자동 생성
 import { MODULES } from './modules.js';
-import { h, api, modal, toast, confirmBox, won } from './ui.js';
+import { h, api, clear, modal, toast, confirmBox, won } from './ui.js';
 import { state, canEdit, listOf } from './state.js';
-
-let dlSeq = 0;
 
 export function fieldInput(f, value) {
   const common = { name: f.key, id: `f_${f.key}` };
@@ -27,18 +25,34 @@ export function fieldInput(f, value) {
       return h('textarea', { ...common, rows: 2, placeholder: '쉼표로 구분', value: (value || []).join(', ') });
     case 'select': {
       const opts = listOf(f);
-      if (f.free) {
-        const id = `dl_${++dlSeq}`;
-        return h('span', { class: 'combo' },
-          h('input', { ...common, list: id, value: value ?? '', autocomplete: 'off' }),
-          h('datalist', { id }, opts.map((o) => h('option', { value: o }))));
-      }
+      if (f.free) return freeSelect(common, opts, value);
       return h('select', common, h('option', { value: '' }, '선택'), opts.map((o) => h('option', { value: o, selected: o === value }, o)),
         value && !opts.includes(value) ? h('option', { value, selected: true }, value) : null);
     }
     default:
       return h('input', { ...common, type: 'text', value: value ?? '' });
   }
+}
+
+// 목록에서 고르기 + 맨 아래 '직접 입력' (설정의 목록·교직원 명단을 바로 드롭다운으로)
+const CUSTOM = '__custom__';
+function freeSelect(common, opts, value) {
+  const wrap = h('span', { class: 'combo' });
+  const toInput = (v) => {
+    const input = h('input', { ...common, value: v ?? '', autocomplete: 'off', placeholder: '직접 입력' });
+    clear(wrap, input, opts.length ? h('button', { type: 'button', class: 'link-btn', onclick: () => toSelect(input.value) }, '목록') : null);
+    input.focus();
+  };
+  const toSelect = (v) => {
+    const sel = h('select', { ...common, onchange: (e) => { if (e.target.value === CUSTOM) toInput(''); } },
+      h('option', { value: '' }, opts.length ? '선택' : '(목록 없음)'),
+      opts.map((o) => h('option', { value: o, selected: o === v }, o)),
+      v && !opts.includes(v) ? h('option', { value: v, selected: true }, v) : null,
+      h('option', { value: CUSTOM }, '✏️ 직접 입력…'));
+    clear(wrap, sel);
+  };
+  if (!opts.length) toInput(value); else toSelect(value);
+  return wrap;
 }
 
 export function readForm(form, fields) {

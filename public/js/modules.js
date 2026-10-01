@@ -140,6 +140,19 @@ export const MODULES = {
       { key: 'text', label: '메모', type: 'text', required: true, hint: '달력 날짜 칸에 짧게 보이는 메모' },
     ],
   },
+  assignments: {
+    label: '업무분장', icon: '🧩', scope: 'year', edit: 'staff',
+    fields: [
+      { key: 'name', label: '이름', type: 'text', required: true },
+      { key: 'position', label: '직위', type: 'text', hint: '예) 교감, 부장, 교사, 전담, 실무사' },
+      { key: 'dept', label: '부서', type: 'select', list: 'depts', free: true },
+      { key: 'homeroom', label: '담임 학급', type: 'select', list: 'classes', free: true },
+      { key: 'subject', label: '담당 교과', type: 'text' },
+      { key: 'duties', label: '담당 업무', type: 'textarea' },
+      { key: 'room', label: '교실·위치', type: 'text' },
+      { key: 'phone', label: '내선', type: 'text' },
+    ],
+  },
   resources: {
     label: '자료실', icon: '📂', scope: 'global', edit: 'staff',
     fields: [
@@ -503,6 +516,7 @@ export const GROUPS = [
   ] },
   { id: 'info', label: '학교 정보', icon: '🗂', tabs: [
     { id: 'overview', label: '계정·바로가기' },
+    { id: 'assignments', label: '업무분장', module: 'assignments' },
     { id: 'resources', label: '자료실', module: 'resources' },
     { id: 'contacts', label: '내선번호', module: 'contacts' },
     { id: 'rules', label: '위임전결', module: 'rules' },

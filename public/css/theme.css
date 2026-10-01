@@ -353,3 +353,11 @@ html[data-theme="dark"] { color-scheme: dark; }
 .swatch.on { box-shadow: 0 0 0 3px var(--text); }
 .from-neis { color: var(--muted); font-weight: 400; }
 .tt.glance td:not(.from-neis):not(:empty) { font-weight: 700; color: var(--primary); }
+.back-btn { align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--panel); color: var(--text-2); cursor: pointer; font-size: 16px; box-shadow: var(--shadow-sm); margin-right: 2px; }
+.back-btn:hover { background: var(--primary-soft); color: var(--primary); }
+.combo { display: flex; gap: 6px; align-items: center; }
+.combo select, .combo input { flex: 1; width: 100%; }
+.smart-in { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; margin: 14px 0 8px; }
+.smart-preview input, .smart-preview select, .smart-preview textarea { width: 100%; padding: 5px 7px; font-size: 13px; }
+.smart-preview tr.off td { opacity: .4; }
+@media (max-width: 900px) { .smart-in { grid-template-columns: 1fr; } }

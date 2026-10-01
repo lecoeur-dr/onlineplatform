@@ -36,7 +36,11 @@ export async function scheduleOverview(root) {
 }
 
 export async function eventsList(root) {
-  await tableView(root, 'events', { hide: ['review', 'endDate'] });
+  const box = h('div', {});
+  clear(root,
+    state.me?.role === 'admin' ? h('div', { class: 'toolbar' }, h('span', { class: 'grow' }), h('a', { class: 'btn', href: '#/admin?tab=smart' }, '🪄 학사일정 파일로 가져오기 (한글·엑셀)')) : null,
+    box);
+  await tableView(box, 'events', { hide: ['review', 'endDate'] });
 }
 
 // 복무·출장: 입력해서 행으로 보는 목록 / 달력

@@ -234,7 +234,11 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
       settings: { ...d.settings, neis: { name: d.settings.schoolName, demo: true }, neisKey: true }, push: null };
   }
   if (p === '/api/me' && method === 'PUT') return write(() => { d.name = body.name; return { ok: true }; });
-  if (p === '/api/staff') return d.members.filter((x) => x.role !== 'pending').map(({ name, dept }) => ({ name, dept }));
+  if (p === '/api/staff') {
+    const out = d.members.filter((x) => x.role !== 'pending').map(({ name, dept }) => ({ name, dept }));
+    for (const r of d.records) if (r.module === 'assignments' && r.data.name && !out.some((x) => x.name === r.data.name)) out.push({ name: r.data.name, dept: r.data.dept || '' });
+    return out.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  }
   if (p === '/api/bundle') { const out = {}; for (const x of String(q('modules') || '').split(',')) if (MODULES[x]) out[x] = list(x, year); return out; }
   if (p === '/api/changes') return { now: nowStamp(), items: [] };
   if (p === '/api/inbox') return { items: d.inbox, unread: d.inbox.filter((x) => !x.read).length };

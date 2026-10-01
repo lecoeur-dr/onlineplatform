@@ -12,7 +12,7 @@ import { reservationsView } from './views/reservations.js';
 import { dutiesView } from './views/duties.js';
 import { noticeOverview, noticesView, meetingsView, collectionsView, briefingsView } from './views/notices.js';
 import { moneyOverview, purchasesView, budgetView } from './views/money.js';
-import { infoOverview, contactsView, rulesView, resourcesView } from './views/info.js';
+import { infoOverview, contactsView, rulesView, resourcesView, assignmentsView } from './views/info.js';
 import { DESK_VIEWS } from './views/desk.js';
 import { joinView, platformView, meView } from './views/account.js';
 import { bellButton, refreshBell } from './views/inbox.js';
@@ -45,6 +45,7 @@ const VIEWS = {
   'money/contests': (el) => tableView(el, 'contests'),
   'money/contestInfo': (el) => tableView(el, 'contestInfo', { groupBy: 'topic' }),
   'info/overview': infoOverview,
+  'info/assignments': assignmentsView,
   'info/resources': resourcesView,
   'info/contacts': contactsView,
   'info/rules': rulesView,
@@ -265,8 +266,30 @@ function quickAddButton() {
   } }, '+');
 }
 
+// 앱 안 이동 기록: 다른 화면으로 건너갔을 때 ← 로 돌아오기
+const trail = [];
+function backButton() {
+  if (trail.length < 2) return null;
+  const prev = trail[trail.length - 2];
+  return h('button', { class: 'back-btn', title: '이전 화면', 'aria-label': '이전 화면으로', onclick: () => { trail.pop(); trail.pop(); location.hash = `#/${prev}`; } }, '←');
+}
+
+// 학생 이름(누가기록·출결 등 드롭다운)을 학년도마다 미리 불러 둠
+async function preloadStudents() {
+  if (state._studentsYear === state.year) return;
+  state._studentsYear = state.year;
+  try {
+    const rows = await api(`/api/records/students?year=${state.year}`);
+    rows.sort((a, b) => (Number(a.data.num) || 999) - (Number(b.data.num) || 999));
+    state.students = rows.map((r) => r.data.name).filter(Boolean);
+  } catch { state._studentsYear = null; }
+}
+
 async function route() {
   state.rerender = route;
+  preloadStudents();
+  const cur = currentPath() || 'home/';
+  if (trail[trail.length - 1] !== cur) { trail.push(cur); if (trail.length > 30) trail.shift(); }
   const ys = document.getElementById('year-select');
   if (ys && ![...ys.options].some((op) => Number(op.value) === state.year)) ys.append(h('option', { value: state.year }, `${state.year}`));
   if (ys) ys.value = String(state.year);
@@ -291,7 +314,7 @@ async function route() {
     const [title, view] = special || ['🙋 학교 가입·개설', joinView];
     drawNav(space === 'desk' ? 'desk' : 'school', path, '');
     drawGroupBar(space, path.split('/')[0]);
-    clear(main, h('h2', { class: 'page-title' }, title), content);
+    clear(main, h('h2', { class: 'page-title' }, backButton(), title), content);
     try { await view(content, refresh); } catch (e) { showError(content, e); }
     return;
   }
@@ -312,7 +335,7 @@ async function route() {
   const scopeNote = mod?.scope === 'global' ? '' : `  ${state.year}학년도`;
   const prefix = space === 'desk' ? '#/desk/' : '#/';
   clear(main,
-    h('h2', { class: 'page-title' }, title, h('span', { class: 'muted small' }, scopeNote)),
+    h('h2', { class: 'page-title' }, backButton(), title, h('span', { class: 'muted small' }, scopeNote)),
     group?.tabs.length > 1 ? h('div', { class: 'tabs-bar' }, group.tabs.map((t) => h('a', { href: `${prefix}${gid}/${t.id}`, class: t.id === tid ? 'on' : '' }, t.label))) : null,
     content);
   content.append(h('p', { class: 'muted' }, '불러오는 중…'));

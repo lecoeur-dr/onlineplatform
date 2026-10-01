@@ -4,16 +4,19 @@ import { h, api, clear, toast, confirmBox, loadScript, download, modal } from '.
 import { state } from '../state.js';
 import { parseWorkbook, guessYear } from '../importer.js';
 import { swatches, applyTheme } from '../theme.js';
+import { smartTab } from './smart-tab.js';
 
 let tab = 'users';
-const TABS = { users: '사용자·초대', settings: '설정', import: '엑셀 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
+const TABS = { users: '사용자·초대', smart: '🪄 새 학기 가져오기', settings: '설정', import: '기존 시트 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
 
 export async function adminView(root, refreshApp) {
+  const want = location.hash.match(/[?&]tab=(\w+)/)?.[1];
+  if (want && TABS[want]) { tab = want; history.replaceState(null, '', '#/admin'); }
   const body = h('div', {});
   clear(root,
     h('div', { class: 'seg tabs' }, Object.entries(TABS).map(([k, v]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; adminView(root, refreshApp); } }, v))),
     body);
-  await ({ users, settings, import: importTab, copy, audit, backup })[tab](body, refreshApp);
+  await ({ users, smart: smartTab, settings, import: importTab, copy, audit, backup })[tab](body, refreshApp);
 }
 
 async function users(root) {

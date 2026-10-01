@@ -26,6 +26,15 @@ export async function infoOverview(root) {
   await tableView(secretsBox, 'secrets', { rows: d.secrets, groupBy: 'category', embed: true, reload });
 }
 
+// 업무분장: 부서별 표 (새 학기 가져오기로 한글·엑셀 업무분장표를 한 번에 넣을 수 있음)
+export async function assignmentsView(root) {
+  const box = h('div', {});
+  clear(root,
+    state.me?.role === 'admin' ? h('div', { class: 'toolbar' }, h('span', { class: 'grow' }), h('a', { class: 'btn', href: '#/admin?tab=smart' }, '🪄 업무분장표 가져오기 (한글·엑셀)')) : null,
+    box);
+  await tableView(box, 'assignments', { groupBy: 'dept' });
+}
+
 // 자료실: 서식·양식·매뉴얼 링크를 분류별로
 export const resourcesView = (root) => tableView(root, 'resources', { groupBy: 'category' });
 export const contactsView = (root) => tableView(root, 'contacts', { groupBy: 'dept' });
