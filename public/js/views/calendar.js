@@ -3,7 +3,7 @@
 //   범례를 눌러 분류별로 켜고 끄기, 날짜 칸의 + 로 바로 입력
 import { yearMonths, yearRange, CATEGORIES, categoryColor, normCategory, NO_SCHOOL_CATEGORIES } from '../modules.js';
 import { h, clear, pad, fmtDate, addDays, today, DOW, modal } from '../ui.js';
-import { state, canEdit, remember } from '../state.js';
+import { state, canEdit, remember, setYear } from '../state.js';
 import { openRecordForm } from '../form.js';
 
 // ---------- 기록 → 달력 항목 ----------
@@ -51,6 +51,30 @@ export function renderCalendar(root, o) {
   const now = today();
   ui.month = months.find((m) => `${m.y}-${pad(m.m)}` === now.slice(0, 7)) || months[2];
   const legend = o.legend || CATEGORIES;
+  const ymOf = (m) => `${m.y}-${pad(m.m)}`;
+
+  let allByDate = {};
+  let banner;
+
+  // 배너 안의 '그 달' 부분(월 버튼 강조 + 주요 안내)만 다시 그림 — 스크롤할 때 호출
+  const paintMonth = () => {
+    if (!banner) return;
+    const ym = ymOf(ui.month);
+    for (const b of banner.querySelectorAll('.mchip')) b.classList.toggle('on', b.dataset.ym === ym);
+    banner.querySelector('.mchip.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const sel = banner.querySelector('.month-select');
+    if (sel) sel.value = String(months.findIndex((m) => ymOf(m) === ym));
+    const slot = banner.querySelector('.banner-note');
+    if (slot) clear(slot, noticePanel(o, ui.month, allByDate));
+  };
+
+  const scrollToMonth = (m, smooth = true) => {
+    const el = root.querySelector(`.month-divider[data-ym="${ymOf(m)}"]`);
+    if (!el) return;
+    const stickyBanner = banner && getComputedStyle(banner).position === 'sticky';
+    const offset = 50 + (stickyBanner ? banner.offsetHeight : 0) + 34;
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - offset + 2, behavior: smooth ? 'smooth' : 'auto' });
+  };
 
   const draw = () => {
     const shown = o.items.filter((it) => it && !ui.hidden.has(it.cat) && (!ui.q || `${it.label} ${it.sub || ''} ${JSON.stringify(it.r.data)}`.toLowerCase().includes(ui.q.toLowerCase())));
@@ -60,44 +84,92 @@ export function renderCalendar(root, o) {
       const end = it.endDate && it.endDate > d ? it.endDate : d;
       for (let g = 0; d <= end && g < 120; g++) { (byDate[d] ||= []).push(it); d = addDays(d, 1); }
     }
-    const allByDate = {};
+    allByDate = {};
     for (const it of o.items) if (it?.mod === 'events') (allByDate[it.date] ||= []).push(it);
 
     const counts = {};
     for (const it of o.items) if (it) counts[it.cat] = (counts[it.cat] || 0) + 1;
 
-    const legendBar = h('div', { class: 'legend' }, legend.filter((c) => counts[c.name]).map((c) => h('button', {
-      class: `legend-item ${ui.hidden.has(c.name) ? 'off' : ''}`, style: { '--c': c.color }, title: '눌러서 켜기/끄기',
-      onclick: () => { ui.hidden.has(c.name) ? ui.hidden.delete(c.name) : ui.hidden.add(c.name); remember(`${key}_hidden`, [...ui.hidden]); draw(); },
-    }, h('span', { class: 'dot' }), c.name, h('span', { class: 'cnt' }, counts[c.name]))),
-    ui.hidden.size ? h('button', { class: 'link-btn', onclick: () => { ui.hidden.clear(); remember(`${key}_hidden`, []); draw(); } }, '모두 켜기') : null);
-
     const idx = months.findIndex((m) => m.y === ui.month.y && m.m === ui.month.m);
-    const go = (i) => { if (i >= 0 && i < months.length) { ui.month = months[i]; draw(); } };
+    const go = (i) => {
+      if (i < 0 || i >= months.length) return;
+      ui.month = months[i];
+      if (ui.mode === 'scroll') { paintMonth(); scrollToMonth(ui.month); } else draw();
+    };
 
-    const toolbar = h('div', { class: 'toolbar' },
-      h('div', { class: 'seg' }, [['scroll', '연속'], ['month', '월별'], ['list', '목록']].map(([m, l]) => h('button', {
-        class: ui.mode === m ? 'on' : '', onclick: () => { ui.mode = remember(`${key}_mode`, m); draw(); },
-      }, l))),
-      ui.mode !== 'scroll' ? h('div', { class: 'month-nav' },
-        h('button', { class: 'btn', disabled: idx <= 0, onclick: () => go(idx - 1), 'aria-label': '이전 달' }, '◀'),
-        h('select', { class: 'month-select', onchange: (e) => go(Number(e.target.value)) }, months.map((m, i) => h('option', { value: i, selected: i === idx }, `${m.y}년 ${m.m}월`))),
-        h('button', { class: 'btn', disabled: idx >= months.length - 1, onclick: () => go(idx + 1), 'aria-label': '다음 달' }, '▶')) :
-        h('button', { class: 'btn', onclick: () => root.querySelector('.week.has-today')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, '오늘로'),
-      h('input', { type: 'search', placeholder: '검색', value: ui.q, oninput: debounce((e) => { ui.q = e.target.value; draw(); const s = root.querySelector('input[type=search]'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }) }),
-      h('span', { class: 'grow' }),
-      addButtons(o, `${ui.month.y}-${pad(ui.month.m)}-01`));
+    const years = [];
+    for (let y = state.settings.currentYear - 2; y <= state.settings.currentYear + 1; y++) years.push(y);
+    if (!years.includes(state.year)) years.push(state.year);
+
+    // ---------- 위쪽 고정 배너: 연도 · 월 · 보기 · 추가 · 주요 안내 · 범례 ----------
+    banner = h('div', { class: 'cal-banner' },
+      h('div', { class: 'banner-row' },
+        h('label', { class: 'year-pick' },
+          h('select', { 'aria-label': '학년도', onchange: (e) => { setYear(e.target.value); state.rerender?.(); } },
+            years.sort().map((y) => h('option', { value: y, selected: y === state.year }, `${y}학년도`)))),
+        h('div', { class: 'month-nav' },
+          h('button', { class: 'btn', onclick: () => go(months.findIndex((m) => ymOf(m) === ymOf(ui.month)) - 1), 'aria-label': '이전 달' }, '◀'),
+          h('select', { class: 'month-select', onchange: (e) => go(Number(e.target.value)) }, months.map((m, i) => h('option', { value: i, selected: i === idx }, `${m.y}년 ${m.m}월`))),
+          h('button', { class: 'btn', onclick: () => go(months.findIndex((m) => ymOf(m) === ymOf(ui.month)) + 1), 'aria-label': '다음 달' }, '▶')),
+        h('button', { class: 'btn', onclick: () => { const i = months.findIndex((m) => ymOf(m) === now.slice(0, 7)); if (i >= 0) go(i); } }, '오늘'),
+        h('div', { class: 'seg' }, [['scroll', '스크롤'], ['month', '월별'], ['list', '목록']].map(([m, l]) => h('button', {
+          class: ui.mode === m ? 'on' : '', onclick: () => { ui.mode = remember(`${key}_mode`, m); draw(); },
+        }, l))),
+        h('input', { type: 'search', placeholder: '검색', value: ui.q, oninput: debounce((e) => { ui.q = e.target.value; draw(); const sb = root.querySelector('input[type=search]'); sb.focus(); sb.setSelectionRange(sb.value.length, sb.value.length); }) }),
+        h('span', { class: 'grow' }),
+        addButtons(o, `${ymOf(ui.month)}-01`)),
+      h('div', { class: 'month-chips' }, months.map((m, i) => h('button', {
+        class: `mchip ${ymOf(m) === ymOf(ui.month) ? 'on' : ''} ${ymOf(m) === now.slice(0, 7) ? 'now' : ''}`, 'data-ym': ymOf(m), onclick: () => go(i),
+      }, m.m === 1 || i === 0 ? `${m.y}.${m.m}월` : `${m.m}월`))),
+      o.notices ? h('div', { class: 'banner-note' }) : null,
+      h('div', { class: 'legend' }, legend.filter((c) => counts[c.name]).map((c) => h('button', {
+        class: `legend-item ${ui.hidden.has(c.name) ? 'off' : ''}`, style: { '--c': c.color }, title: '눌러서 켜기/끄기',
+        onclick: () => { ui.hidden.has(c.name) ? ui.hidden.delete(c.name) : ui.hidden.add(c.name); remember(`${key}_hidden`, [...ui.hidden]); draw(); },
+      }, h('span', { class: 'dot' }), c.name, h('span', { class: 'cnt' }, counts[c.name]))),
+      ui.hidden.size ? h('button', { class: 'link-btn', onclick: () => { ui.hidden.clear(); remember(`${key}_hidden`, []); draw(); } }, '모두 켜기') : null));
 
     let body;
     if (ui.mode === 'scroll') body = scrollView(o, byDate, allByDate, now);
-    else if (ui.mode === 'month') body = [monthHead(o, ui.month, allByDate), monthGrid(o, ui.month, byDate, now)];
-    else body = [monthHead(o, ui.month, allByDate), listView(o, ui.month, byDate)];
+    else if (ui.mode === 'month') body = monthGrid(o, ui.month, byDate, now);
+    else body = listView(o, ui.month, byDate);
 
-    clear(root, toolbar, legendBar, body,
-      h('p', { class: 'hint' }, '날짜 칸의 + 또는 두 번 누르기로 바로 입력합니다. 범례를 누르면 그 분류만 끄고 켤 수 있습니다.',
+    const keepY = ui.mode === 'scroll' && root._drawn ? window.scrollY : null;
+    clear(root, banner, body,
+      h('p', { class: 'hint' }, '날짜 칸의 + 또는 두 번 누르기로 바로 입력합니다. 위 배너의 월을 누르면 그 달로 이동하고, 스크롤하면 배너의 월과 주요 안내가 함께 바뀝니다.',
         ui.mode === 'month' ? ' 좌우로 밀거나 ← → 키로 달을 옮깁니다.' : ''));
+    root.classList.add('cal-root');
+    paintMonth();
 
-    if (ui.mode === 'scroll' && o.autoScroll !== false) requestAnimationFrame(() => root.querySelector('.week.has-today')?.scrollIntoView({ block: 'center' }));
+    // 고정 배너 높이만큼 요일 머리를 아래로
+    const setH = () => root.style.setProperty('--banner-h', getComputedStyle(banner).position === 'sticky' ? `${banner.offsetHeight}px` : '0px');
+    setH();
+    root._ro?.disconnect();
+    if (window.ResizeObserver) { root._ro = new ResizeObserver(setH); root._ro.observe(banner); }
+
+    // 스크롤 위치 → 보고 있는 달
+    if (root._onScroll) window.removeEventListener('scroll', root._onScroll);
+    root._onScroll = null;
+    if (ui.mode === 'scroll') {
+      let ticking = false;
+      root._onScroll = () => {
+        if (!root.isConnected) { window.removeEventListener('scroll', root._onScroll); return; }
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          ticking = false;
+          const line = 50 + (getComputedStyle(banner).position === 'sticky' ? banner.offsetHeight : 0) + 40;
+          let cur = null;
+          for (const el of root.querySelectorAll('.month-divider')) {
+            if (el.getBoundingClientRect().top <= line + 10) cur = el.dataset.ym; else break;
+          }
+          if (!cur) cur = root.querySelector('.month-divider')?.dataset.ym;
+          if (cur && cur !== ymOf(ui.month)) { ui.month = months.find((m) => ymOf(m) === cur) || ui.month; paintMonth(); }
+        });
+      };
+      window.addEventListener('scroll', root._onScroll, { passive: true });
+      if (keepY !== null) window.scrollTo(0, keepY);
+      else if (!root._drawn && o.autoScroll !== false) requestAnimationFrame(() => scrollToMonth(ui.month, false));
+    }
     if (ui.mode === 'month') {
       const grid = root.querySelector('.calendar');
       let x0 = null;
@@ -106,6 +178,7 @@ export function renderCalendar(root, o) {
     }
     root._go = ui.mode === 'month' ? go : null;
     root._idx = idx;
+    root._drawn = true;
   };
 
   if (!root._keys) {
@@ -116,6 +189,7 @@ export function renderCalendar(root, o) {
       if (e.key === 'ArrowRight') root._go(root._idx + 1);
     });
   }
+  root._drawn = false;
   draw();
 }
 
@@ -166,18 +240,25 @@ function dayCell(o, d, items, now, extraClass = '') {
 const ORDER = ['휴일·방학', '전체행사', '회의', '대회출전', '연수', '학급수업', '특별수업', '동료장학', '출장', '기타'];
 const order = (it) => { const i = ORDER.indexOf(it.cat); return i < 0 ? 50 : i; };
 
-// 월 머리: 전체 공지(해당 월) + 수업일수
-function monthHead(o, { y, m }, allByDate) {
+// 배너의 월별 주요 안내: 전체 공지(해당 월) + 수업일수 + 작성/수정
+function noticePanel(o, { y, m }, allByDate) {
   const ym = `${y}-${pad(m)}`;
   const pins = (o.notices || []).filter((n) => n.data.pinned && n.data.month === ym);
   const days = pins.map((n) => n.data.schoolDays).find(Boolean);
   const auto = schoolDays(y, m, allByDate);
-  return h('div', { class: 'month-head' },
-    h('div', { class: 'mh-title' }, `${y}년 ${m}월`,
-      h('span', { class: 'mh-days' }, `수업일수 ${days || '-'}`, h('span', { class: 'muted' }, ` (자동 계산 ${auto}일)`))),
-    pins.map((n) => h('div', { class: 'mh-note click', onclick: () => openRecordForm('notices', n, { onSaved: o.reload }) },
-      h('strong', {}, '📌 ', n.data.title || '공지'), n.data.content && n.data.content !== '-' ? h('div', { class: 'pre' }, n.data.content) : null)),
-    canEdit('notices') && !pins.length && o.notices ? h('button', { class: 'link-btn', onclick: () => openRecordForm('notices', null, { defaults: { category: '월별 안내', pinned: true, month: ym, title: `${m}월 교육과정 주요 안내` }, onSaved: o.reload }) }, `+ ${m}월 주요 안내 작성`) : null);
+  const write = () => openRecordForm('notices', null, { defaults: { category: '월별 안내', pinned: true, month: ym, title: `${m}월 교육과정 주요 안내` }, onSaved: o.reload });
+  return h('div', { class: 'note-panel' },
+    h('div', { class: 'np-head' },
+      h('strong', {}, `📌 ${y}년 ${m}월 주요 안내`),
+      h('span', { class: 'mh-days' }, `수업일수 ${days || '-'}`, h('span', { class: 'muted' }, ` (자동 ${auto}일)`)),
+      h('span', { class: 'grow' }),
+      pins.length ? pins.map((n) => h('button', { class: 'link-btn', onclick: () => openRecordForm('notices', n, { onSaved: o.reload }) }, canEdit('notices') ? '수정' : '보기')) : null,
+      canEdit('notices') ? h('button', { class: 'btn small', onclick: write }, pins.length ? '+ 추가' : '+ 작성') : null),
+    pins.length
+      ? pins.map((n) => h('div', { class: 'np-body pre clamp-3', title: '눌러서 펼치기', onclick: (e) => e.currentTarget.classList.toggle('clamp-3') },
+        n.data.title && pins.length > 1 ? h('strong', {}, `${n.data.title}\n`) : null,
+        n.data.content && n.data.content !== '-' ? n.data.content : h('span', { class: 'muted' }, '(내용 없음)')))
+      : h('div', { class: 'np-body muted' }, '등록된 주요 안내가 없습니다.'));
 }
 
 function schoolDays(y, m, allByDate) {
@@ -204,22 +285,22 @@ function monthGrid(o, { y, m }, byDate, now) {
   return h('div', { class: 'calendar' }, DOW.map((d, i) => h('div', { class: `dow ${i === 0 ? 'sun' : ''} ${i === 6 ? 'sat' : ''}` }, d)), cells);
 }
 
-// 연속 보기: 학년도 전체를 주 단위로 이어서, 달이 바뀌는 곳에 월 머리
+// 스크롤 보기: 학년도 전체(14개월)를 주 단위로 이어서, 달이 바뀌는 곳에 월 구분선
 function scrollView(o, byDate, allByDate, now) {
   const { from, to } = yearRange(state.year);
   const [fy, fm, fd] = from.split('-').map(Number);
   let d = addDays(from, -new Date(fy, fm - 1, fd).getDay());
   const out = [h('div', { class: 'calendar sticky-dow' }, DOW.map((x, i) => h('div', { class: `dow ${i === 0 ? 'sun' : ''} ${i === 6 ? 'sat' : ''}` }, x)))];
-  let lastMonth = '';
+  let first = true;
   while (d <= to) {
     const week = [];
     for (let i = 0; i < 7; i++) week.push(addDays(d, i));
     const firstOfMonth = week.find((x) => x.endsWith('-01') && x >= from && x <= to);
-    const ym = (firstOfMonth || week[0]).slice(0, 7);
-    if (firstOfMonth || !lastMonth) {
+    if (firstOfMonth || first) {
+      const ym = (firstOfMonth || from).slice(0, 7);
       const [y, m] = ym.split('-').map(Number);
-      if (ym !== lastMonth) out.push(monthHead(o, { y, m }, allByDate));
-      lastMonth = ym;
+      out.push(h('div', { class: 'month-divider', 'data-ym': ym }, `${y}년 ${m}월`, h('span', { class: 'muted small' }, ` · 수업일수 자동 ${schoolDays(y, m, allByDate)}일`)));
+      first = false;
     }
     out.push(h('div', { class: `calendar week ${week.includes(now) ? 'has-today' : ''}` }, week.map((x) => {
       const inRange = x >= from && x <= to;

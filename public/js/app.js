@@ -107,7 +107,7 @@ function layout() {
       h('a', { href: '#/home/', class: 'brand' }, `${state.settings.schoolName || ''} 온라인 교무실`),
       h('span', { class: 'grow' }),
       h('label', { class: 'year' }, h('span', { class: 'year-label' }, '학년도 '),
-        h('select', { onchange: (e) => { setYear(e.target.value); route(); } },
+        h('select', { id: 'year-select', onchange: (e) => { setYear(e.target.value); route(); } },
           years.sort().map((y) => h('option', { value: y, selected: y === state.year }, `${y}`)))),
       h('span', { class: 'who', title: state.me.email }, state.me.name || state.me.email, h('span', { class: 'tag ghost' }, ROLES[state.me.role])),
       h('button', { class: 'btn small', onclick: logout }, '로그아웃')),
@@ -116,6 +116,10 @@ function layout() {
 }
 
 async function route() {
+  state.rerender = route;
+  const ys = document.getElementById('year-select');
+  if (ys && ![...ys.options].some((op) => Number(op.value) === state.year)) ys.append(h('option', { value: state.year }, `${state.year}`));
+  if (ys) ys.value = String(state.year);
   let path = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (!path) path = 'home/';
   if (!path.includes('/') && path !== 'admin') {
