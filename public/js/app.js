@@ -102,7 +102,8 @@ function loginScreen() {
       h('p', { class: 'muted' }, `학교 업무는 ${APP_NAME}, 내 학급·수업은 ${DESK_NAME}`),
       h('a', { class: 'btn primary big', href: '/auth/login' }, 'Google 계정으로 로그인'),
       h('p', { class: 'muted small' }, '구글 계정이면 누구나 로그인할 수 있습니다. 학교 자료는 학교 관리자가 가입을 승인한 뒤 보입니다.'),
-      remember('invite') ? h('p', { class: 'alert' }, '초대 링크로 들어왔습니다. 로그인하면 학교 가입 요청이 이어집니다.') : null)));
+      remember('invite') ? h('p', { class: 'alert' }, '초대 링크로 들어왔습니다. 로그인하면 학교 가입 요청이 이어집니다.') : null,
+      h('p', { class: 'muted small' }, h('a', { href: '/privacy/' }, '개인정보처리방침'), ' · ', h('a', { href: '/terms/' }, '이용약관')))));
 }
 
 async function logout() {
