@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { MODULES, DEFAULT_LISTS, yearRange, normalizeData } from '../public/js/modules.js';
+import { MODULES, DEFAULT_LISTS, SELF_TOGGLE, yearRange, normalizeData } from '../public/js/modules.js';
+import { searchSchools, syncSchedule, getMeals } from './neis.js';
 import { mountAuth, loadUser } from './auth.js';
 import { randomToken, encryptText, decryptText } from './crypto.js';
 
@@ -18,6 +19,7 @@ async function getSettings(db) {
     currentYear: s.currentYear || new Date().getFullYear(),
     schoolName: s.schoolName || '',
     lists: { ...DEFAULT_LISTS, ...(s.lists || {}) },
+    neis: s.neis || null, // { atpt, code, name, office, lastSync }
   };
 }
 
@@ -103,7 +105,7 @@ app.onError((err, c) => {
 
 app.get('/api/me', async (c) => {
   const settings = await getSettings(c.env.DB);
-  return c.json({ user: c.get('user'), settings: { ...settings, schoolName: settings.schoolName || c.env.SCHOOL_NAME || '' } });
+  return c.json({ user: c.get('user'), settings: { ...settings, schoolName: settings.schoolName || c.env.SCHOOL_NAME || '', neisKey: !!c.env.NEIS_API_KEY } });
 });
 
 app.get('/api/staff', async (c) => {
@@ -199,31 +201,83 @@ app.get('/api/records/:module/:id/reveal', async (c) => {
 });
 
 // 동료장학 참관 신청/취소 (본인 이름으로)
-app.post('/api/records/openClasses/:id/observe', async (c) => {
+// 이름 목록에 본인 이름 넣기/빼기 (동료장학 참관 신청, 수합 제출 완료)
+async function toggleSelf(c, m) {
+  const field = SELF_TOGGLE[m];
+  if (!field) return c.json({ error: '대상이 아닙니다.' }, 400);
   const user = c.get('user');
   if (user.role === 'viewer') return c.json({ error: '권한이 없습니다.' }, 403);
   const { on } = await c.req.json();
   const id = c.req.param('id');
   const name = user.name || user.email;
-  // 본인 이름만 넣고 빼므로, 여러 명이 동시에 눌러도 서로의 신청이 지워지지 않게 버전이 맞을 때만 저장하고 다시 시도
+  // 여러 명이 동시에 눌러도 서로의 이름이 지워지지 않게, 버전이 맞을 때만 저장하고 다시 시도
   for (let attempt = 0; ; attempt++) {
-    const row = await c.env.DB.prepare("SELECT * FROM records WHERE id = ? AND module = 'openClasses'").bind(id).first();
+    const row = await c.env.DB.prepare('SELECT * FROM records WHERE id = ? AND module = ?').bind(id, m).first();
     if (!row) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
     const data = JSON.parse(row.data);
-    const set = new Set(data.observers || []);
+    const set = new Set(data[field] || []);
     if (on) set.add(name); else set.delete(name);
-    data.observers = [...set];
+    data[field] = [...set];
     const res = await c.env.DB.prepare("UPDATE records SET data = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ? AND version = ?")
       .bind(JSON.stringify(data), user.email, id, row.version).run();
     if (res.meta.changes) break;
     if (attempt >= 4) return c.json({ error: '잠시 후 다시 시도해 주세요.' }, 409);
   }
-  await audit(c, on ? 'observe' : 'unobserve', 'openClasses', id);
+  await audit(c, on ? 'self-on' : 'self-off', m, id, field);
   const saved = await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first();
   return c.json(toClient(saved));
+}
+app.post('/api/records/openClasses/:id/observe', (c) => toggleSelf(c, 'openClasses'));
+app.post('/api/records/:module/:id/self', (c) => toggleSelf(c, requireModule(c)));
+
+// ---------- 나이스 ----------
+
+app.get('/api/neis/meals', async (c) => {
+  const { neis } = await getSettings(c.env.DB);
+  if (!neis || !c.env.NEIS_API_KEY) return c.json({ configured: false, meals: {} });
+  const from = c.req.query('from');
+  const to = c.req.query('to') || from;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return c.json({ error: '날짜 형식 오류' }, 400);
+  // 같은 학교·기간은 6시간 동안 재사용 (나이스 호출 줄이기)
+  const cache = caches.default;
+  const key = new Request(`https://cache.local/meals/${neis.atpt}/${neis.code}/${from}/${to}`);
+  const hit = await cache.match(key);
+  if (hit) return c.json({ configured: true, meals: await hit.json() });
+  const meals = await getMeals(c.env, neis, from, to);
+  c.executionCtx.waitUntil(cache.put(key, new Response(JSON.stringify(meals), { headers: { 'cache-control': 'max-age=21600' } })));
+  return c.json({ configured: true, meals });
 });
 
 // ---------- 관리자 ----------
+
+app.get('/api/admin/neis/schools', async (c) => {
+  const name = String(c.req.query('name') || '').trim();
+  if (name.length < 2) return c.json({ error: '학교 이름을 두 글자 이상 입력해 주세요.' }, 400);
+  return c.json(await searchSchools(c.env, name));
+});
+
+app.post('/api/admin/neis/config', async (c) => {
+  const b = await c.req.json();
+  const neis = b && b.atpt && b.code ? { atpt: String(b.atpt), code: String(b.code), name: String(b.name || ''), office: String(b.office || '') } : null;
+  await c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind('neis', JSON.stringify(neis)).run();
+  await audit(c, 'settings', null, null, `neis ${neis?.name || '해제'}`);
+  return c.json({ ok: true, neis });
+});
+
+app.post('/api/admin/neis/sync', async (c) => {
+  const settings = await getSettings(c.env.DB);
+  const { year } = await c.req.json().catch(() => ({}));
+  const result = await syncSchedule(c.env, c.env.DB, Number(year) || settings.currentYear, settings.neis, c.get('user').email);
+  await saveLastSync(c.env.DB, settings.neis, result);
+  await audit(c, 'neis-sync', 'events', null, JSON.stringify(result));
+  return c.json(result);
+});
+
+async function saveLastSync(db, neis, result) {
+  if (!neis) return;
+  neis.lastSync = { at: new Date().toISOString(), ...result };
+  await db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind('neis', JSON.stringify(neis)).run();
+}
 
 app.get('/api/admin/users', async (c) => {
   const rows = await c.env.DB.prepare('SELECT email, name, role, dept, created_at, last_login FROM users ORDER BY role, name').all();
@@ -350,4 +404,16 @@ app.get('/api/admin/export', async (c) => {
 
 app.all('/api/*', (c) => c.json({ error: '없는 주소입니다.' }, 404));
 
-export default app;
+// 매일 새벽 자동: 나이스 학사일정 동기화 (wrangler.toml [triggers])
+async function scheduled(_event, env, ctx) {
+  ctx.waitUntil((async () => {
+    const settings = await getSettings(env.DB);
+    if (!settings.neis || !env.NEIS_API_KEY) return;
+    try {
+      const result = await syncSchedule(env, env.DB, settings.currentYear, settings.neis, 'neis-auto');
+      await saveLastSync(env.DB, settings.neis, result);
+    } catch (e) { console.error('neis auto sync', e.message); }
+  })());
+}
+
+export default { fetch: app.fetch, scheduled };

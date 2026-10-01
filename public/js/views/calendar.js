@@ -20,8 +20,15 @@ export function programItem(r, legendBy = 'category', programs = []) {
   const color = legendBy === 'program' ? paletteColor(Math.max(0, programs.indexOf(r.data.program))) : categoryColor('특별수업');
   return { mod: 'programs', r, date: r.data.date, cat, color, label: `[${r.data.program || ''}] ${(r.data.content || '').split('\n')[0]}`, sub: r.data.place, cancel: r.data.status === '취소' };
 }
+const LEAVE_ICON = { 출장: '🚌', 조퇴: '🏃', 외출: '🚶', 지참: '⏰', 연가: '🌿', 병가: '🏥', 공가: '📋', 특별휴가: '🎗️' };
 export function tripItem(r) {
-  return { mod: 'trips', r, date: r.data.date, endDate: r.data.endDate, cat: '출장', color: categoryColor('출장'), label: `🚌 ${(r.data.title || '').split('/')[0]}`, sub: r.data.person };
+  const kind = r.data.kind || '출장';
+  const who = r.data.person ? `${r.data.person} ` : '';
+  const what = kind === '출장' ? (r.data.title || '').split('/')[0] : `${kind}${r.data.time ? ` ${r.data.time}` : ''}`;
+  return { mod: 'trips', r, date: r.data.date, endDate: r.data.endDate, cat: '복무·출장', color: categoryColor('복무·출장'), label: `${LEAVE_ICON[kind] || '🚌'} ${who}${what}`.trim(), sub: kind === '출장' ? '' : (r.data.title || '').split('\n')[0] };
+}
+export function substituteItem(r) {
+  return { mod: 'substitutes', r, date: r.data.date, cat: '보결', color: '#c2410c', label: `🔁 ${r.data.period || ''} ${r.data.className || ''} → ${r.data.substitute || ''}`.trim(), sub: r.data.absent ? `(${r.data.absent})` : '' };
 }
 export function openClassItem(r) {
   if (!r.data.date) return null;

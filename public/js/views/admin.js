@@ -57,7 +57,7 @@ async function users(root) {
 
 async function settings(root, refreshApp) {
   const s = state.settings;
-  const LABELS = { depts: '부서', places: '장소', classes: '학급', programs: '특별수업 프로그램', eventCategories: '일정 분류' };
+  const LABELS = { depts: '부서', places: '장소', classes: '학급', programs: '특별수업 프로그램', meetingTypes: '회의 종류', linkCategories: '바로가기 분류', leaveKinds: '복무 구분', periods: '교시' };
   const form = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -73,10 +73,56 @@ async function settings(root, refreshApp) {
   h('div', { class: 'row' }, h('label', {}, '기본 학년도'), h('input', { name: 'currentYear', type: 'number', value: s.currentYear }),
     h('small', { class: 'hint' }, `학년도 ${s.currentYear} = ${s.currentYear}년 1월 ~ ${s.currentYear + 1}년 2월. 선생님들이 처음 들어왔을 때 보이는 연도입니다.`)),
   h('div', { class: 'lists' }, Object.keys(DEFAULT_LISTS).map((k) => h('div', { class: 'row' },
-    h('label', {}, `${LABELS[k]} 목록 (한 줄에 하나)`),
+    h('label', {}, `${LABELS[k] || k} 목록 (한 줄에 하나)`),
     h('textarea', { name: k, rows: 8, value: (s.lists[k] || []).join('\n') })))),
   h('div', {}, h('button', { class: 'btn primary' }, '설정 저장')));
-  clear(root, form);
+  clear(root, neisSection(refreshApp), h('h3', {}, '기본 설정'), form);
+}
+
+// 나이스 연동: 학교 검색 → 선택 → 학사일정 가져오기 (급식은 홈에 자동 표시)
+function neisSection(refreshApp) {
+  const s = state.settings;
+  const box = h('section', { class: 'card neis-box' });
+  const results = h('div', {});
+  const status = h('div', {});
+  const search = async (name) => {
+    clear(results, h('p', { class: 'muted' }, '검색 중…'));
+    try {
+      const list = await api(`/api/admin/neis/schools?name=${encodeURIComponent(name)}`);
+      clear(results, list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table compact' },
+        h('tbody', {}, list.map((x) => h('tr', {},
+          h('td', {}, h('strong', {}, x.name), h('div', { class: 'muted small' }, `${x.office || ''} · ${x.address || ''}`)),
+          h('td', {}, h('button', { class: 'btn small primary', onclick: async () => {
+            await api('/api/admin/neis/config', { method: 'POST', body: x });
+            toast(`${x.name}(으)로 설정했습니다.`);
+            refreshApp();
+          } }, '선택'))))))) : h('p', { class: 'muted' }, '검색 결과가 없습니다.'));
+    } catch (e) { clear(results, h('p', { class: 'alert error' }, e.message)); }
+  };
+  const sync = async (btn) => {
+    btn.disabled = true;
+    clear(status, h('p', { class: 'muted' }, '나이스에서 학사일정을 가져오는 중…'));
+    try {
+      const r = await api('/api/admin/neis/sync', { method: 'POST', body: { year: state.year } });
+      clear(status, h('p', { class: 'alert' }, `완료: 나이스 ${r.fetched}건 → 학사일정 ${r.inserted}건 등록 (직접 입력한 같은 일정 ${r.skipped}건은 건너뜀)`));
+    } catch (e) { clear(status, h('p', { class: 'alert error' }, e.message)); }
+    btn.disabled = false;
+  };
+  const last = s.neis?.lastSync;
+  clear(box,
+    h('h3', {}, '🔗 나이스 연동 (학사일정 · 급식)'),
+    !s.neisKey ? h('p', { class: 'alert warn' }, '인증키(NEIS_API_KEY)가 아직 등록되지 않았습니다. Cloudflare → onlineplatform → 설정 → 변수 및 비밀에 비밀(Secret)로 등록하세요. (docs/02_배포_가이드.md 참고)') : null,
+    s.neis ? h('p', {}, '연결된 학교: ', h('strong', {}, s.neis.name), h('span', { class: 'muted' }, ` (${s.neis.office || s.neis.atpt})`),
+      last ? h('span', { class: 'muted small' }, ` · 마지막 동기화 ${new Date(last.at).toLocaleString('ko-KR')} (${last.inserted}건)`) : null) : h('p', { class: 'muted' }, '아직 학교가 선택되지 않았습니다.'),
+    h('form', { class: 'inline-form', onsubmit: (e) => { e.preventDefault(); search(new FormData(e.target).get('q')); } },
+      h('input', { name: 'q', placeholder: '학교 이름 (예: 서부초)', value: '', required: true }),
+      h('button', { class: 'btn', disabled: !s.neisKey }, '학교 검색')),
+    results,
+    s.neis ? h('div', { class: 'row-actions' },
+      h('button', { class: 'btn primary', disabled: !s.neisKey, onclick: (e) => sync(e.currentTarget) }, `${state.year}학년도 학사일정 가져오기`),
+      h('span', { class: 'muted small' }, '매일 새벽 5시에도 자동으로 갱신됩니다. 직접 입력한 같은 날·같은 이름의 일정은 중복으로 넣지 않습니다.')) : null,
+    status);
+  return box;
 }
 
 async function importTab(root) {

@@ -5,6 +5,7 @@ export const state = {
   settings: null, // { currentYear, schoolName, lists }
   year: null,     // 화면에서 보고 있는 학년도
   budgetSources: [], // 물품 신청의 '예산 구분' 드롭다운 (예산·공모사업 이름)
+  staff: [],         // 승인된 교직원 [{name, dept}] — 이름 드롭다운용
 };
 
 const RANK = { viewer: 1, staff: 2, admin: 3 };
@@ -18,6 +19,7 @@ export const isAdmin = () => state.me?.role === 'admin';
 export function listOf(field) {
   if (field.options) return field.options;
   if (field.list === 'budgetSources') return state.budgetSources;
+  if (field.list === 'staff') return state.staff.map((x) => x.name).filter(Boolean);
   if (field.list) return state.settings?.lists?.[field.list] || [];
   return [];
 }
@@ -35,3 +37,5 @@ export function remember(key, value) {
   } catch { /* 무시 */ }
   return value;
 }
+
+export const myName = () => state.me?.name || state.me?.email || '';

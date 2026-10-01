@@ -18,6 +18,8 @@ export const DEFAULT_LISTS = {
   programs: ['SW·AI', '국악', '무용', '연극', '음악줄넘기', '기타'],
   meetingTypes: ['전체회의', '월례회의', '부장회의', '학년협의회', '교과협의회', '기타'],
   linkCategories: ['업무 폴더', '교육청·행정', '에듀테크', '신청·설문', '기타'],
+  leaveKinds: ['출장', '조퇴', '외출', '지참', '연가', '병가', '공가', '특별휴가', '기타'],
+  periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '방과후'],
 };
 
 // 학사일정 색 분류 (순서 = 범례 순서)
@@ -28,7 +30,7 @@ export const CATEGORIES = [
   { name: '동료장학', color: '#d6408f' },
   { name: '회의', color: '#0f8f86' },
   { name: '연수', color: '#e07b12' },
-  { name: '출장', color: '#9a6b2f' },
+  { name: '복무·출장', color: '#9a6b2f' },
   { name: '대회출전', color: '#3949ab' },
   { name: '휴일·방학', color: '#d93b3b' },
   { name: '기타', color: '#7a808c' },
@@ -41,6 +43,7 @@ export function normCategory(c) {
   if (!c) return '전체행사';
   if (c === '행사') return '전체행사';
   if (['공휴일', '휴업일', '방학'].includes(c)) return '휴일·방학';
+  if (c === '출장') return '복무·출장';
   return EVENT_CATEGORIES.includes(c) ? c : '기타';
 }
 
@@ -62,15 +65,43 @@ export const MODULES = {
       { key: 'place', label: '장소', type: 'select', list: 'places', free: true },
       { key: 'note', label: '비고', type: 'text' },
       { key: 'review', label: '확인필요', type: 'bool', hint: '가져오기 때 담당·장소 줄이 맞지 않은 항목' },
+      { key: 'source', label: '출처', type: 'text', hint: '"나이스"는 나이스에서 자동으로 가져온 일정 (다시 동기화하면 갱신됨)' },
     ],
   },
   trips: {
-    label: '출장', icon: '🚌', scope: 'date', edit: 'staff',
+    label: '복무·출장', icon: '🚌', scope: 'date', edit: 'staff',
     fields: [
       { key: 'date', label: '날짜', type: 'date', required: true },
-      { key: 'endDate', label: '종료일', type: 'date' },
-      { key: 'title', label: '출장 내용', type: 'textarea', required: true, hint: '출장명/이름/시각/장소' },
-      { key: 'person', label: '출장자', type: 'text' },
+      { key: 'endDate', label: '종료일', type: 'date', hint: '여러 날일 때만' },
+      { key: 'kind', label: '구분', type: 'select', list: 'leaveKinds', free: true },
+      { key: 'person', label: '교직원', type: 'select', list: 'staff', free: true },
+      { key: 'time', label: '시간·교시', type: 'text', hint: '예) 14:00~16:40, 5~6교시' },
+      { key: 'title', label: '내용·장소', type: 'textarea', required: true, hint: '예) 교육지원청 협의회 / 연수원' },
+      { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  substitutes: {
+    label: '보결', icon: '🔁', scope: 'date', edit: 'staff',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'period', label: '교시', type: 'select', list: 'periods', free: true, required: true },
+      { key: 'className', label: '학급', type: 'select', list: 'classes', free: true },
+      { key: 'subject', label: '과목', type: 'text' },
+      { key: 'absent', label: '부재 교사', type: 'select', list: 'staff', free: true },
+      { key: 'substitute', label: '보결 교사', type: 'select', list: 'staff', free: true, required: true },
+      { key: 'reason', label: '사유', type: 'text', hint: '예) 출장, 연가' },
+      { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  collections: {
+    label: '수합', icon: '📥', scope: 'year', edit: 'staff',
+    fields: [
+      { key: 'title', label: '제목', type: 'text', required: true, hint: '예) 학급 교육과정 운영계획 제출' },
+      { key: 'due', label: '마감일', type: 'date' },
+      { key: 'target', label: '대상', type: 'names', hint: '이름을 쉼표로 구분. 비워 두면 전체 교직원' },
+      { key: 'content', label: '안내', type: 'textarea' },
+      { key: 'link', label: '제출 링크·폴더', type: 'url' },
+      { key: 'done', label: '제출 완료', type: 'names', hint: '각자 [제출 완료] 버튼으로 체크' },
     ],
   },
   programs: {
@@ -232,17 +263,19 @@ export const GROUPS = [
   { id: 'schedule', label: '학사일정', icon: '📅', tabs: [
     { id: 'overview', label: '통합 달력' },
     { id: 'events', label: '일정 목록', module: 'events' },
-    { id: 'trips', label: '출장', module: 'trips' },
+    { id: 'trips', label: '복무·출장', module: 'trips' },
   ] },
   { id: 'class', label: '수업', icon: '🕘', tabs: [
     { id: 'overview', label: '수업 전체' },
     { id: 'timetables', label: '시간표', module: 'timetables' },
     { id: 'programs', label: '특별수업', module: 'programs' },
     { id: 'openClasses', label: '동료장학', module: 'openClasses' },
+    { id: 'substitutes', label: '보결', module: 'substitutes' },
   ] },
-  { id: 'notice', label: '공지·회의', icon: '📢', tabs: [
+  { id: 'notice', label: '공지·업무', icon: '📢', tabs: [
     { id: 'overview', label: '한눈에' },
     { id: 'notices', label: '공지', module: 'notices' },
+    { id: 'collections', label: '수합', module: 'collections' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },
   { id: 'money', label: '예산·물품', icon: '💰', tabs: [
@@ -259,6 +292,9 @@ export const GROUPS = [
     { id: 'boards', label: '자유 표', module: 'boards' },
   ] },
 ];
+
+// 이름 목록을 각자 켜고 끌 수 있는 칸 (참관 신청, 수합 제출)
+export const SELF_TOGGLE = { openClasses: 'observers', collections: 'done' };
 
 // 학년도 Y의 범위: Y-01-01 ~ (Y+1)-02-말일
 export function yearRange(year) {

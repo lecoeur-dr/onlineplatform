@@ -169,7 +169,7 @@ function parseMonthly(s, out) {
       splitEvents(s.lines(r, c + 2), s.lines(r, c + 3), s.lines(r, c + 4)).forEach((e) => out.push({ module: 'events', data: { date, ...e } }));
       for (const line of s.text(r, c + 5).split('\n').map((x) => x.trim()).filter(Boolean)) {
         const parts = line.split('/').map((x) => x.trim());
-        out.push({ module: 'trips', data: { date, title: line, person: parts.length >= 2 ? parts[1] : '' } });
+        out.push({ module: 'trips', data: { date, kind: '출장', title: line, person: parts.length >= 2 ? parts[1] : '' } });
       }
     }
     if (!ym) continue;

@@ -68,7 +68,8 @@ function render(root, moduleId, rows, opts = {}) {
   const total = (list, f) => list.reduce((a, r) => a + (Number(f.computed ? f.computed(r.data) : r.data[f.key]) || 0), 0);
   const foot = sums.length ? h('tfoot', {}, h('tr', {}, cols.map((f, i) => h('td', { class: f.sum ? 'num strong' : '' },
     f.sum ? won(total(shown, f)) : i === 0 ? `합계 (${shown.length}건)` : '')))) : null;
-  const row = (r) => h('tr', { class: 'click', onclick: () => openRecordForm(moduleId, r, { onSaved: reload }) }, cols.map((f) => cell(f, r)));
+  const row = (r) => h('tr', { class: `click ${opts.rowClass?.(r) || ''}`, onclick: () => openRecordForm(moduleId, r, { onSaved: reload }) }, cols.map((f) => cell(f, r)),
+    opts.rowAction ? h('td', { class: 'nowrap', onclick: (e) => e.stopPropagation() }, opts.rowAction(r, reload)) : null);
 
   let body;
   if (!shown.length) body = h('tr', {}, h('td', { colspan: cols.length, class: 'muted center' }, '기록이 없습니다.'));
@@ -97,7 +98,7 @@ function render(root, moduleId, rows, opts = {}) {
       editable ? h('button', { class: 'btn primary', onclick: () => openRecordForm(moduleId, null, { defaults: opts.defaults, onSaved: reload }) }, `+ ${def.label}`) : null),
     opts.embed ? null : scopeNote(def),
     h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, cols.map((f) => h('th', {}, f.label)))),
+      h('thead', {}, h('tr', {}, cols.map((f) => h('th', {}, f.label)), opts.rowAction ? h('th', {}, '') : null)),
       h('tbody', {}, body),
       foot)));
 }

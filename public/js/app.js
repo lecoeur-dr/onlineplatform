@@ -7,8 +7,8 @@ import { timetableView } from './views/timetable.js';
 import { boardView } from './views/board.js';
 import { adminView } from './views/admin.js';
 import { scheduleOverview, eventsList, tripsView } from './views/schedule.js';
-import { classOverview, programsView, openClassesTab } from './views/classes.js';
-import { noticeOverview, noticesView, meetingsView } from './views/notices.js';
+import { classOverview, programsView, openClassesTab, substitutesView } from './views/classes.js';
+import { noticeOverview, noticesView, meetingsView, collectionsView } from './views/notices.js';
 import { moneyOverview, purchasesView, budgetView } from './views/money.js';
 import { infoOverview, contactsView, rulesView } from './views/info.js';
 import { openRecordForm } from './form.js';
@@ -26,9 +26,11 @@ const VIEWS = {
   'class/timetables': timetableView,
   'class/programs': programsView,
   'class/openClasses': openClassesTab,
+  'class/substitutes': substitutesView,
   'notice/overview': noticeOverview,
   'notice/notices': noticesView,
   'notice/meetings': meetingsView,
+  'notice/collections': collectionsView,
   'money/overview': moneyOverview,
   'money/purchases': purchasesView,
   'money/budget': budgetView,
@@ -56,6 +58,7 @@ async function boot() {
     let saved = null;
     try { saved = Number(localStorage.getItem('gy_year')); } catch { /* 무시 */ }
     state.year = saved || me.settings.currentYear;
+    state.staff = await api('/api/staff').catch(() => []);
   } catch (e) {
     if (e.status === 401) return loginScreen();
     return clear(app, h('div', { class: 'center-box' }, h('p', {}, `연결 오류: ${e.message}`)));
@@ -138,7 +141,9 @@ function bottomBar() {
 function quickAddButton() {
   const targets = [
     ['events', '📅 일정', { date: today(), category: '전체행사' }],
-    ['trips', '🚌 출장', { date: today() }],
+    ['trips', '🚌 복무·출장', { date: today(), kind: '출장', person: state.me.name || '' }],
+    ['substitutes', '🔁 보결', { date: today() }],
+    ['collections', '📥 수합', {}],
     ['programs', '🎨 특별수업', { date: today(), status: '예정' }],
     ['notices', '📢 공지', { category: '일반' }],
     ['meetings', '📝 회의 안건', { date: today(), meeting: '전체회의', status: '완료' }],

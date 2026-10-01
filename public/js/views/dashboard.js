@@ -1,20 +1,28 @@
-// 🏠 홈: 전체 공지 · 오늘 · 이번 주 · 예산 요약 · 재논의 · 확인필요
-import { h, api, clear, fmtDate, addDays, today, won, modal } from '../ui.js';
-import { state } from '../state.js';
+// 🏠 홈: 전체 공지 · 날짜별 게시판[오늘·이번 주·이번 달] · 내 할 일 · 급식 · 예산 · 재논의 · 확인필요
+import { h, api, clear, fmtDate, addDays, today, won, modal, DOW } from '../ui.js';
+import { state, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
-import { eventItem, programItem, tripItem, openClassItem } from './calendar.js';
-import { noticeCard } from './notices.js';
+import { eventItem, programItem, tripItem, openClassItem, substituteItem } from './calendar.js';
+import { noticeCard, isMyTask, dday } from './notices.js';
 import { budgetSources } from './money.js';
+import { seg } from './schedule.js';
+
+const monthEnd = (ym) => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`; };
+const weekStart = (d) => { const [y, m, dd] = d.split('-').map(Number); return addDays(d, -new Date(y, m - 1, dd).getDay()); };
 
 export async function dashboardView(root) {
-  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,purchases,budget,contests`);
+  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,purchases,budget,contests,substitutes,collections`);
   const t = today();
   const ym = t.slice(0, 7);
+  const me = myName();
   const reload = () => dashboardView(root);
-  const all = [...d.events.map(eventItem), ...d.programs.map((r) => programItem(r)), ...d.trips.map(tripItem), ...d.openClasses.map(openClassItem)].filter(Boolean);
-  const on = (it, day) => it.date <= day && (it.endDate || it.date) >= day;
-  const todays = all.filter((it) => on(it, t));
-  const week = all.filter((it) => it.date > t && it.date <= addDays(t, 7) && it.mod !== 'programs').sort((a, b) => a.date.localeCompare(b.date));
+  const all = [
+    ...d.events.map(eventItem), ...d.programs.map((r) => programItem(r)), ...d.trips.map(tripItem),
+    ...d.openClasses.map(openClassItem), ...d.substitutes.map(substituteItem),
+  ].filter(Boolean);
+  for (const c of d.collections) if (c.data.due) all.push({ mod: 'collections', r: c, date: c.data.due, cat: '수합', color: '#0e7490', label: `📥 마감: ${c.data.title}`, sub: '' });
+  for (const n of d.notices) if (n.data.due) all.push({ mod: 'notices', r: n, date: n.data.due, cat: '공지', color: '#b7791f', label: `📢 마감: ${n.data.title || n.data.content.split('\n')[0]}`, sub: n.data.dept || '' });
+
   const pinned = d.notices.filter((n) => n.data.pinned && (!n.data.month || n.data.month === ym));
   const redo = d.meetings.filter((m) => m.data.status === '재논의').slice(-5);
   const review = d.events.filter((e) => e.data.review);
@@ -23,20 +31,52 @@ export async function dashboardView(root) {
   const req = d.purchases.reduce((a, p) => a + (Number(p.data.price) || 0) * (Number(p.data.qty) || 0), 0);
   const waiting = d.purchases.filter((p) => !p.data.received).length;
 
+  // 내 할 일: 내 보결(7일 안) · 내가 낼 수합 · 내 복무
+  const mySubs = d.substitutes.filter((s) => s.data.substitute === me && s.data.date >= t && s.data.date <= addDays(t, 7)).sort((a, b) => a.data.date.localeCompare(b.data.date));
+  const myCols = d.collections.filter(isMyTask).sort((a, b) => String(a.data.due || '9999').localeCompare(String(b.data.due || '9999')));
+  const myLeaves = d.trips.filter((x) => x.data.person === me && (x.data.endDate || x.data.date) >= t && x.data.date <= addDays(t, 7));
+
   const item = (it) => h('li', { class: 'click', onclick: () => openRecordForm(it.mod, it.r, { onSaved: reload }) },
     h('span', { class: 'dot', style: { background: it.color } }), h('span', {}, it.label), it.sub ? h('span', { class: 'muted' }, ` ${it.sub}`) : null);
   const inRange = new Date().getFullYear() === state.year || (new Date().getFullYear() === state.year + 1 && new Date().getMonth() < 2);
+
+  const mealBox = h('div', { class: 'card meal' }, h('h3', {}, '🍚 오늘 급식'), h('p', { class: 'muted small' }, '불러오는 중…'));
+  const boardBox = h('div', { class: 'card board-card-home' });
+
+  // 날짜별 게시판
+  const drawBoard = () => {
+    const range = remember('home_range') || 'today';
+    const from = range === 'today' ? t : range === 'week' ? weekStart(t) : `${ym}-01`;
+    const to = range === 'today' ? t : range === 'week' ? addDays(weekStart(t), 6) : monthEnd(ym);
+    const days = [];
+    for (let x = from; x <= to; x = addDays(x, 1)) days.push(x);
+    const groups = days.map((x) => ({ day: x, items: all.filter((it) => it.date <= x && (it.endDate || it.date) >= x) })).filter((g) => g.items.length);
+    const past = groups.filter((g) => g.day < t);
+    const now = groups.filter((g) => g.day >= t);
+    const dayHead = (x) => { const [y, m, dd] = x.split('-').map(Number); const w = DOW[new Date(y, m - 1, dd).getDay()]; return `${m}/${dd}(${w})${x === t ? ' · 오늘' : ''}`; };
+    const block = (g) => h('div', { class: `board-day ${g.day === t ? 'is-today' : ''}` }, h('div', { class: 'board-date' }, dayHead(g.day)), h('ul', { class: 'list' }, g.items.map(item)));
+    clear(boardBox,
+      h('div', { class: 'card-head' }, h('h3', {}, '🗓 날짜별 게시판'),
+        seg([['today', '오늘'], ['week', '이번 주'], ['month', '이번 달']], range, (v) => { remember('home_range', v); drawBoard(); })),
+      past.length ? h('details', { class: 'past' }, h('summary', {}, `지난 날 ${past.length}일 보기`), past.map(block)) : null,
+      now.length ? now.map(block) : h('p', { class: 'muted' }, range === 'today' ? '오늘 등록된 일정이 없습니다.' : '남은 일정이 없습니다.'),
+      h('a', { href: '#/schedule/overview', class: 'more-link' }, '학사일정 달력 →'));
+  };
+  drawBoard();
 
   clear(root,
     installHint(),
     inRange ? null : h('p', { class: 'alert' }, `지금 ${state.year}학년도 기록을 보고 있습니다. 오늘 일정은 올해 학년도를 선택해야 보입니다.`),
     pinned.length ? h('section', { class: 'section' }, h('div', { class: 'cards' }, pinned.map((n) => noticeCard(n, reload, { compact: true })))) : null,
     h('div', { class: 'dash' },
-      h('div', { class: 'card' }, h('h3', {}, `오늘 ${fmtDate(t)}`),
-        todays.length ? h('ul', { class: 'list' }, todays.map(item)) : h('p', { class: 'muted' }, '오늘 등록된 일정이 없습니다.'),
-        h('a', { href: '#/schedule/overview', class: 'more-link' }, '학사일정 달력 →')),
-      h('div', { class: 'card' }, h('h3', {}, '다가오는 7일'),
-        week.length ? h('ul', { class: 'list' }, week.slice(0, 15).map((it) => item({ ...it, label: `${fmtDate(it.date)} ${it.label}` }))) : h('p', { class: 'muted' }, '예정된 일정이 없습니다.')),
+      boardBox,
+      h('div', { class: `card ${mySubs.length || myCols.length ? 'mine' : ''}` }, h('h3', {}, `✅ 내 할 일${me ? ` · ${me}` : ''}`),
+        mySubs.length || myCols.length || myLeaves.length ? h('ul', { class: 'list' },
+          mySubs.map((s) => h('li', { class: 'click', onclick: () => openRecordForm('substitutes', s, { onSaved: reload }) }, `🔁 ${fmtDate(s.data.date)} ${s.data.period} ${s.data.className || ''} 보결`, h('span', { class: 'muted' }, ` (${s.data.absent || ''} ${s.data.reason || ''})`))),
+          myCols.map((c) => h('li', { class: 'click', onclick: () => { location.hash = '#/notice/collections'; } }, `📥 ${c.data.title}`, h('span', { class: 'muted' }, ` ${c.data.due ? dday(c.data.due) : ''}`))),
+          myLeaves.map((x) => item(tripItem(x)))) : h('p', { class: 'muted' }, '오늘 이후 내 보결·제출할 수합이 없습니다.'),
+        !state.me.name ? h('p', { class: 'muted small' }, '관리자 화면에서 내 이름이 등록되어야 내 할 일이 보입니다.') : null),
+      mealBox,
       h('div', { class: 'card' }, h('h3', {}, '💰 예산·물품'),
         h('div', { class: 'mini-kpi' }, h('span', {}, '배정'), h('strong', {}, won(assign))),
         h('div', { class: 'mini-kpi' }, h('span', {}, '물품 신청'), h('strong', {}, won(req))),
@@ -48,6 +88,26 @@ export async function dashboardView(root) {
       review.length ? h('div', { class: 'card warn' }, h('h3', {}, `확인필요 일정 ${review.length}건`),
         h('p', { class: 'muted small' }, '가져올 때 담당·장소 줄이 행사와 맞지 않았던 일정입니다. 열어서 고친 뒤 "확인필요"를 해제하세요.'),
         h('ul', { class: 'list' }, review.slice(0, 12).map((e) => item({ ...eventItem(e), label: `${fmtDate(e.data.date)} ${eventItem(e).label}` })))) : null));
+
+  loadMeal(mealBox, t);
+}
+
+// 오늘 급식 (나이스). 주말·방학이면 다음 급식일까지 최대 7일 앞을 찾아봄
+async function loadMeal(box, t) {
+  if (!state.settings.neis || !state.settings.neisKey) {
+    clear(box, h('h3', {}, '🍚 급식'), h('p', { class: 'muted small' }, state.me.role === 'admin' ? '관리자 → 설정 → 나이스 연동에서 학교를 선택하면 급식이 표시됩니다.' : '나이스 연동이 아직 설정되지 않았습니다.'));
+    return;
+  }
+  try {
+    const res = await api(`/api/neis/meals?from=${t}&to=${addDays(t, 7)}`);
+    const day = Object.keys(res.meals || {}).sort().find((x) => x >= t);
+    if (!day) { clear(box, h('h3', {}, '🍚 급식'), h('p', { class: 'muted' }, '7일 안에 급식 정보가 없습니다.')); return; }
+    clear(box, h('h3', {}, day === t ? '🍚 오늘 급식' : `🍚 ${fmtDate(day)} 급식`),
+      res.meals[day].map((m) => h('div', {}, res.meals[day].length > 1 ? h('strong', { class: 'small' }, m.meal) : null,
+        h('div', { class: 'meal-dishes' }, m.dishes.join(' · ')), m.kcal ? h('div', { class: 'muted small' }, m.kcal) : null)));
+  } catch (e) {
+    clear(box, h('h3', {}, '🍚 급식'), h('p', { class: 'muted small' }, `급식을 불러오지 못했습니다: ${e.message}`));
+  }
 }
 
 // 휴대폰에서 앱처럼 쓰도록 '홈 화면에 추가' 안내 (이미 설치했거나 PC면 숨김)

@@ -303,6 +303,19 @@ tr.dim td { opacity: .6; }
 .mini-kpi { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .more-link { display: inline-block; margin-top: 8px; font-size: 12px; text-decoration: none; }
 
+/* 1차: 보결 · 수합 · 홈 게시판 · 급식 · 나이스 */
+.tag.danger { color: var(--danger); border-color: var(--danger); }
+.tag.mine, .card.mine { border-color: #c2410c; }
+.card.collection.late { border-left: 4px solid var(--danger); }
+.card.collection .bar { margin: 8px 0 4px; }
+.board-day { margin-top: 8px; }
+.board-day.is-today .board-date { color: var(--primary); }
+.board-date { font-weight: 700; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+.board-card-home .card-head { flex-wrap: wrap; gap: 6px; }
+details.past summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 6px; }
+.meal-dishes { font-size: 14px; line-height: 1.7; }
+.neis-box { margin-bottom: 16px; }
+
 /* 휴대폰 하단 탭 · 빠른 추가 */
 .bottom-bar, .fab { display: none; }
 

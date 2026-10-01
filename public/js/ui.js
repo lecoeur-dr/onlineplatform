@@ -2,8 +2,11 @@
 
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
+  let value;
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue;
+    // value 는 속성이 아니라 '현재 값'으로 넣어야 textarea·select 에 실제로 보임
+    if (k === 'value') { value = v; continue; }
     if (k === 'class') el.className = v;
     else if (k === 'style' && typeof v === 'object') {
       for (const [sk, sv] of Object.entries(v)) {
@@ -17,6 +20,10 @@ export function h(tag, attrs, ...children) {
     else el.setAttribute(k, v === true ? '' : v);
   }
   append(el, children);
+  if (value !== undefined) {
+    el.value = value;
+    if (tag === 'option' || tag === 'input') el.setAttribute('value', value); // 초기값(폼 초기화 기준)도 유지
+  }
   return el;
 }
 
