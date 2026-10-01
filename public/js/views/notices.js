@@ -3,12 +3,13 @@ import { h, api, clear, fmtDate, today, addDays, toast } from '../ui.js';
 import { state, canEdit, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { seg } from './schedule.js';
+import { isNew } from '../news.js';
 
 const monthLabel = (ym) => (ym ? `${Number(ym.slice(0, 4))}년 ${Number(ym.slice(5, 7))}월` : '');
 
 export function noticeCard(n, reload, { compact = false } = {}) {
   const d = n.data;
-  return h('div', { class: `card notice ${d.pinned ? 'pinned' : ''} click`, onclick: () => openRecordForm('notices', n, { onSaved: reload }) },
+  return h('div', { class: `card notice ${d.pinned ? 'pinned' : ''} ${isNew('notices', n) ? 'is-new' : ''} click`, onclick: () => openRecordForm('notices', n, { onSaved: reload }) },
     h('div', { class: 'notice-head' },
       d.pinned ? h('span', { class: 'pin', title: '전체 공지' }, '📌') : null,
       h('strong', {}, d.title || (d.content || '').split('\n')[0].slice(0, 40)),

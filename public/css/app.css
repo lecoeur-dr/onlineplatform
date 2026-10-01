@@ -356,3 +356,40 @@ details.past summary { cursor: pointer; color: var(--muted); font-size: 12px; ma
   input, select, textarea { font-size: 16px; } /* 아이폰 입력 시 화면 확대 방지 */
   .add-mini { opacity: 1; }
 }
+
+/* ---------- 2차: 새 글 · 메모 · 예약 · 담당 · D-Day · QR ---------- */
+.nbadge { display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; vertical-align: middle; }
+.bottom-bar a { position: relative; }
+.bottom-bar .nbadge { position: absolute; top: 2px; right: 18%; margin: 0; }
+tr.is-new td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+tr.is-new, .card.is-new { background: color-mix(in srgb, var(--danger) 6%, var(--panel)); }
+.card.is-new { border-color: var(--danger); }
+.day.can-add { cursor: pointer; }
+.day.can-add:hover { background: color-mix(in srgb, var(--primary) 5%, var(--panel)); }
+.day-head { gap: 4px; }
+.day-head .dnum { flex: none; }
+.memo { flex: 1; min-width: 0; border: 0; background: none; padding: 0 2px; color: var(--muted); font-size: 11px; font-style: italic; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.memo::before { content: '✏ '; font-style: normal; }
+.neis-mark { display: inline-block; margin-left: 3px; padding: 0 3px; border-radius: 3px; background: #1f9d55; color: #fff; font-size: 9px; font-weight: 700; line-height: 13px; vertical-align: 1px; }
+.dday-row { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 2px; }
+.dday { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 130px; padding: 8px 12px; border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: var(--radius); background: var(--panel); color: var(--text); cursor: pointer; text-align: left; }
+.dday strong { font-size: 18px; color: var(--c); }
+.tt.resv td { min-width: 110px; height: 44px; }
+.tt.resv td.free.click { color: var(--muted); cursor: pointer; }
+.tt.resv td.free .plus { opacity: 0; font-size: 12px; }
+.tt.resv td.free.click:hover { background: var(--primary-soft); }
+.tt.resv td.free.click:hover .plus { opacity: 1; }
+.tt.resv td.booked { background: color-mix(in srgb, var(--primary) 10%, var(--panel)); }
+.tt.resv td.booked.mine { background: color-mix(in srgb, #c2410c 14%, var(--panel)); }
+.tt th.today { color: var(--primary); }
+.resv-item { display: block; width: 100%; border: 0; background: none; color: var(--text); cursor: pointer; font-size: 13px; }
+.resv-prog td { font-size: 12px; color: var(--c-program); }
+.card.duty tr.me td { font-weight: 600; color: #c2410c; }
+.qr-box { width: min(320px, 80vw); margin: 0 auto 8px; background: #fff; padding: 8px; border-radius: 8px; }
+.qr-box svg { width: 100%; height: auto; display: block; }
+@media (max-width: 700px) {
+  .tt.resv td.free .plus { opacity: .5; }
+  .memo { font-size: 9px; }
+}
+.tt.resv th { white-space: nowrap; }
+@media (max-width: 700px) { .tt.resv td { min-width: 84px; } }

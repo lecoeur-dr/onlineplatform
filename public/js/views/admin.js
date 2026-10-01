@@ -1,6 +1,6 @@
 // 관리자: 사용자 승인 · 설정 · 엑셀 가져오기 · 연도 복사 · 변경 기록 · 백업
 import { MODULES, ROLES, DEFAULT_LISTS } from '../modules.js';
-import { h, api, clear, toast, confirmBox, loadScript, download } from '../ui.js';
+import { h, api, clear, toast, confirmBox, loadScript, download, modal } from '../ui.js';
 import { state } from '../state.js';
 import { parseWorkbook, guessYear } from '../importer.js';
 
@@ -38,6 +38,7 @@ async function users(root) {
   h('button', { class: 'btn primary' }, '미리 등록'));
 
   clear(root,
+    h('div', { class: 'toolbar' }, h('span', { class: 'grow' }), h('button', { class: 'btn', onclick: showQr }, '📱 접속 QR')),
     pending.length ? h('p', { class: 'alert warn' }, `승인 대기 ${pending.length}명 — 권한을 '교직원'으로 바꾸면 바로 사용할 수 있습니다.`) : null,
     h('p', { class: 'hint' }, '선생님이 구글 계정으로 처음 로그인하면 "승인대기"로 등록됩니다. 미리 이메일을 등록해 두면 첫 로그인부터 바로 사용할 수 있습니다.'),
     form,
@@ -55,9 +56,33 @@ async function users(root) {
         } }, '삭제'))))))));
 }
 
+// 접속 QR: 교무실 화면·연수 자료에 띄워 두면 폰 카메라로 바로 접속
+export async function showQr() {
+  if (!window.qrcode) await loadScript('/vendor/qrcode.js');
+  const url = location.origin + '/';
+  const qr = window.qrcode(0, 'M');
+  qr.addData(url);
+  qr.make();
+  const box = h('div', { class: 'qr-box' });
+  box.innerHTML = qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
+  modal('📱 접속 QR', h('div', { class: 'center' },
+    box,
+    h('p', { class: 'strong' }, url),
+    h('p', { class: 'muted small' }, '휴대폰 카메라로 비추면 바로 열립니다. 처음 로그인한 선생님은 "승인대기"가 되며, 사용자 탭에서 승인하면 됩니다.'),
+    h('div', { class: 'row-actions center' },
+      h('button', { class: 'btn', onclick: () => { navigator.clipboard?.writeText(url); toast('주소를 복사했습니다.'); } }, '주소 복사'),
+      h('button', { class: 'btn', onclick: () => {
+        const w = window.open('', '_blank');
+        if (!w) return;
+        w.document.write(`<title>접속 QR</title><div style="text-align:center;font-family:sans-serif;padding:40px"><h1>${state.settings.schoolName || ''} 온라인 교무실</h1><div style="width:420px;margin:auto">${box.innerHTML}</div><p style="font-size:20px">${url}</p></div>`);
+        w.document.close();
+        w.print();
+      } }, '인쇄'))));
+}
+
 async function settings(root, refreshApp) {
   const s = state.settings;
-  const LABELS = { depts: '부서', places: '장소', classes: '학급', programs: '특별수업 프로그램', meetingTypes: '회의 종류', linkCategories: '바로가기 분류', leaveKinds: '복무 구분', periods: '교시' };
+  const LABELS = { depts: '부서', places: '장소', classes: '학급', programs: '특별수업 프로그램', meetingTypes: '회의 종류', linkCategories: '바로가기 분류', leaveKinds: '복무 구분', periods: '교시', resourceCategories: '자료실 분류' };
   const form = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

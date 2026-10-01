@@ -20,6 +20,7 @@ export const DEFAULT_LISTS = {
   linkCategories: ['업무 폴더', '교육청·행정', '에듀테크', '신청·설문', '기타'],
   leaveKinds: ['출장', '조퇴', '외출', '지참', '연가', '병가', '공가', '특별휴가', '기타'],
   periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '방과후'],
+  resourceCategories: ['공문 서식', '업무 양식', '매뉴얼·지침', '수업 자료', '기타'],
 };
 
 // 학사일정 색 분류 (순서 = 범례 순서)
@@ -64,6 +65,7 @@ export const MODULES = {
       { key: 'dept', label: '담당부서', type: 'select', list: 'depts', free: true },
       { key: 'place', label: '장소', type: 'select', list: 'places', free: true },
       { key: 'note', label: '비고', type: 'text' },
+      { key: 'dday', label: 'D-Day 표시', type: 'bool', hint: '체크하면 홈에 "D-12"처럼 남은 날을 표시' },
       { key: 'review', label: '확인필요', type: 'bool', hint: '가져오기 때 담당·장소 줄이 맞지 않은 항목' },
       { key: 'source', label: '출처', type: 'text', hint: '"나이스"는 나이스에서 자동으로 가져온 일정 (다시 동기화하면 갱신됨)' },
     ],
@@ -91,6 +93,47 @@ export const MODULES = {
       { key: 'substitute', label: '보결 교사', type: 'select', list: 'staff', free: true, required: true },
       { key: 'reason', label: '사유', type: 'text', hint: '예) 출장, 연가' },
       { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  reservations: {
+    label: '특별실 예약', icon: '🏫', scope: 'date', edit: 'staff',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'place', label: '장소', type: 'select', list: 'places', free: true, required: true },
+      { key: 'period', label: '교시', type: 'select', list: 'periods', free: true, required: true },
+      { key: 'user', label: '사용 교사', type: 'select', list: 'staff', free: true, required: true },
+      { key: 'className', label: '학급', type: 'select', list: 'classes', free: true },
+      { key: 'purpose', label: '용도', type: 'text', hint: '예) 과학 실험, 학부모 상담' },
+      { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  duties: {
+    label: '담당 배정', icon: '🧑‍🏫', scope: 'date', edit: 'staff',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'title', label: '행사·업무', type: 'text', required: true, hint: '예) 운동회, 학부모 공개수업' },
+      { key: 'role', label: '역할', type: 'text', hint: '예) 진행, 안전 지도, 사진' },
+      { key: 'person', label: '담당자', type: 'select', list: 'staff', free: true, required: true },
+      { key: 'place', label: '장소', type: 'select', list: 'places', free: true },
+      { key: 'time', label: '시간', type: 'text', hint: '예) 09:00~10:30' },
+      { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  memos: {
+    label: '한 줄 메모', icon: '✏️', scope: 'date', edit: 'staff',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'text', label: '메모', type: 'text', required: true, hint: '달력 날짜 칸에 짧게 보이는 메모' },
+    ],
+  },
+  resources: {
+    label: '자료실', icon: '📂', scope: 'global', edit: 'staff',
+    fields: [
+      { key: 'category', label: '분류', type: 'select', list: 'resourceCategories', free: true },
+      { key: 'title', label: '자료명', type: 'text', required: true },
+      { key: 'url', label: '링크(드라이브 등)', type: 'url', required: true },
+      { key: 'dept', label: '부서', type: 'select', list: 'depts', free: true },
+      { key: 'note', label: '설명', type: 'text' },
     ],
   },
   collections: {
@@ -271,11 +314,13 @@ export const GROUPS = [
     { id: 'programs', label: '특별수업', module: 'programs' },
     { id: 'openClasses', label: '동료장학', module: 'openClasses' },
     { id: 'substitutes', label: '보결', module: 'substitutes' },
+    { id: 'reservations', label: '특별실 예약', module: 'reservations' },
   ] },
   { id: 'notice', label: '공지·업무', icon: '📢', tabs: [
     { id: 'overview', label: '한눈에' },
     { id: 'notices', label: '공지', module: 'notices' },
     { id: 'collections', label: '수합', module: 'collections' },
+    { id: 'duties', label: '담당 배정', module: 'duties' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },
   { id: 'money', label: '예산·물품', icon: '💰', tabs: [
@@ -287,6 +332,7 @@ export const GROUPS = [
   ] },
   { id: 'info', label: '학교 정보', icon: '🗂', tabs: [
     { id: 'overview', label: '계정·바로가기' },
+    { id: 'resources', label: '자료실', module: 'resources' },
     { id: 'contacts', label: '내선번호', module: 'contacts' },
     { id: 'rules', label: '위임전결', module: 'rules' },
     { id: 'boards', label: '자유 표', module: 'boards' },

@@ -30,6 +30,22 @@ export function tripItem(r) {
 export function substituteItem(r) {
   return { mod: 'substitutes', r, date: r.data.date, cat: '보결', color: '#c2410c', label: `🔁 ${r.data.period || ''} ${r.data.className || ''} → ${r.data.substitute || ''}`.trim(), sub: r.data.absent ? `(${r.data.absent})` : '' };
 }
+export function memoItem(r) {
+  return { mod: 'memos', r, date: r.data.date, cat: '메모', color: '#64748b', label: r.data.text || '', memo: true };
+}
+// 담당 배정: 같은 날·같은 행사는 한 줄로 (담당자 이름 나열)
+export function dutyItems(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = `${r.data.date}|${r.data.title}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  return [...groups.values()].map((list) => ({
+    mod: 'duties', r: list[0], date: list[0].data.date, cat: '담당 배정', color: '#0e7490',
+    label: `🧑‍🏫 ${list[0].data.title || ''}`, sub: [...new Set(list.map((r) => r.data.person).filter(Boolean))].join(','), go: '#/notice/duties',
+  }));
+}
 export function openClassItem(r) {
   if (!r.data.date) return null;
   return { mod: 'openClasses', r, date: r.data.date, cat: '동료장학', color: categoryColor('동료장학'), label: `👀 ${r.data.className || ''} ${r.data.teacher || ''} ${r.data.period || ''}`.trim(), sub: r.data.subject };
@@ -120,7 +136,7 @@ export function renderCalendar(root, o) {
           h('button', { class: 'btn', onclick: () => go(months.findIndex((m) => ymOf(m) === ymOf(ui.month)) + 1), 'aria-label': '다음 달' }, '▶')),
         h('button', { class: 'btn', onclick: () => { const i = months.findIndex((m) => ymOf(m) === now.slice(0, 7)); if (i >= 0) go(i); } }, '오늘'),
         h('div', { class: 'seg' }, [['scroll', '스크롤'], ['month', '월별'], ['list', '목록']].map(([m, l]) => h('button', {
-          class: ui.mode === m ? 'on' : '', onclick: () => { ui.mode = remember(`${key}_mode`, m); draw(); },
+          class: ui.mode === m ? 'on' : '', onclick: () => { ui.mode = remember(`${key}_mode`, m); draw(); if (m !== 'scroll') window.scrollTo(0, 0); },
         }, l))),
         h('input', { type: 'search', placeholder: '검색', value: ui.q, oninput: debounce((e) => { ui.q = e.target.value; draw(); const sb = root.querySelector('input[type=search]'); sb.focus(); sb.setSelectionRange(sb.value.length, sb.value.length); }) }),
         h('span', { class: 'grow' }),
@@ -142,7 +158,7 @@ export function renderCalendar(root, o) {
 
     const keepY = ui.mode === 'scroll' && root._drawn ? window.scrollY : null;
     clear(root, banner, body,
-      h('p', { class: 'hint' }, '날짜 칸의 + 또는 두 번 누르기로 바로 입력합니다. 위 배너의 월을 누르면 그 달로 이동하고, 스크롤하면 배너의 월과 주요 안내가 함께 바뀝니다.',
+      h('p', { class: 'hint' }, '날짜 칸의 빈 곳을 누르면 그 날짜로 바로 입력합니다. 위 배너의 월을 누르면 그 달로 이동하고, 스크롤하면 배너의 월과 주요 안내가 함께 바뀝니다.',
         ui.mode === 'month' ? ' 좌우로 밀거나 ← → 키로 달을 옮깁니다.' : ''));
     root.classList.add('cal-root');
     paintMonth();
@@ -203,6 +219,12 @@ export function renderCalendar(root, o) {
 function addButtons(o, date) {
   const targets = (o.add || []).filter((t) => canEdit(t.mod));
   if (!targets.length) return null;
+  // 많으면 첫 항목 + '추가…'(고르기)로 줄임
+  if (targets.length > 3) {
+    return h('div', { class: 'row-actions' },
+      h('button', { class: 'btn primary', onclick: () => openAdd(o, targets[0], date) }, `+ ${targets[0].label}`),
+      h('button', { class: 'btn', onclick: () => addAt(o, date) }, '+ 추가…'));
+  }
   return h('div', { class: 'row-actions' }, targets.map((t) => h('button', { class: 'btn primary', onclick: () => openAdd(o, t, date) }, `+ ${t.label}`)));
 }
 
@@ -222,25 +244,30 @@ function chip(o, it, d) {
     class: `chip ${it.review ? 'review' : ''} ${it.cancel ? 'cancel' : ''}`,
     style: { '--c': it.color },
     title: [it.label, it.sub, it.r.data.place].filter(Boolean).join(' · '),
-    onclick: (ev) => { ev.stopPropagation(); openRecordForm(it.mod, it.r, { onSaved: o.reload }); },
-  }, it.endDate && it.date !== d ? '↳ ' : '', it.label, it.sub ? h('span', { class: 'chip-sub' }, ` ${it.sub}`) : null);
+    onclick: (ev) => { ev.stopPropagation(); if (it.go) location.hash = it.go; else openRecordForm(it.mod, it.r, { onSaved: o.reload }); },
+  }, it.endDate && it.date !== d ? '↳ ' : '', it.label, it.sub ? h('span', { class: 'chip-sub' }, ` ${it.sub}`) : null,
+  it.r.data.source === '나이스' ? h('span', { class: 'neis-mark', title: '나이스에서 가져온 일정' }, 'N') : null);
 }
 
 function dayCell(o, d, items, now, extraClass = '') {
   const [y, m, dd] = d.split('-').map(Number);
   const dow = new Date(y, m - 1, dd).getDay();
   const holiday = items.some((it) => it.mod === 'events' && NO_SCHOOL_CATEGORIES.includes(it.cat));
-  const list = items.slice().sort((a, b) => order(a) - order(b));
+  const memos = items.filter((it) => it.memo);
+  const list = items.filter((it) => !it.memo).sort((a, b) => order(a) - order(b));
   const MAX = 6;
+  const canAdd = (o.add || []).some((t) => canEdit(t.mod));
+  // 빈 곳을 누르면 그 날짜로 바로 입력 (구글 캘린더처럼)
   const cell = h('div', {
-    class: `day ${dow === 0 || holiday ? 'sun' : ''} ${dow === 6 ? 'sat' : ''} ${d === now ? 'today' : ''} ${extraClass}`,
-    ondblclick: () => addAt(o, d),
+    class: `day ${dow === 0 || holiday ? 'sun' : ''} ${dow === 6 ? 'sat' : ''} ${d === now ? 'today' : ''} ${canAdd ? 'can-add' : ''} ${extraClass}`,
+    onclick: canAdd ? () => addAt(o, d) : null,
   },
   h('div', { class: 'day-head' },
     h('span', { class: 'dnum' }, dd === 1 ? `${m}/${dd}` : dd),
-    (o.add || []).some((t) => canEdit(t.mod)) ? h('button', { class: 'add-mini', title: '추가', onclick: () => addAt(o, d) }, '+') : null),
+    memos.map((it) => h('button', { class: 'memo', title: `메모: ${it.label}`, onclick: (e) => { e.stopPropagation(); openRecordForm('memos', it.r, { onSaved: o.reload }); } }, it.label)),
+    canAdd ? h('button', { class: 'add-mini', title: '추가', onclick: (e) => { e.stopPropagation(); addAt(o, d); } }, '+') : null),
   list.slice(0, MAX).map((it) => chip(o, it, d)),
-  list.length > MAX ? h('button', { class: 'more', onclick: (e) => { e.target.replaceWith(...list.slice(MAX).map((it) => chip(o, it, d))); } }, `+${list.length - MAX}개 더`) : null);
+  list.length > MAX ? h('button', { class: 'more', onclick: (e) => { e.stopPropagation(); e.target.replaceWith(...list.slice(MAX).map((it) => chip(o, it, d))); } }, `+${list.length - MAX}개 더`) : null);
   return cell;
 }
 

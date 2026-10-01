@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { MODULES, DEFAULT_LISTS, SELF_TOGGLE, yearRange, normalizeData } from '../public/js/modules.js';
-import { searchSchools, syncSchedule, getMeals } from './neis.js';
+import { searchSchools, syncSchedule, getMeals, getTimetable } from './neis.js';
 import { mountAuth, loadUser } from './auth.js';
 import { randomToken, encryptText, decryptText } from './crypto.js';
 
@@ -77,6 +77,16 @@ async function listRecords(db, moduleId, year) {
   return rows.results.map(toClient);
 }
 
+// 특별실 예약: 같은 날·장소·교시에 다른 예약이 있으면 막음
+async function reservationClash(db, m, data, id) {
+  if (m !== 'reservations') return null;
+  const row = await db.prepare("SELECT data FROM records WHERE module = 'reservations' AND date = ? AND id != ? AND json_extract(data, '$.place') = ? AND json_extract(data, '$.period') = ?")
+    .bind(data.date, id || '', data.place || '', data.period || '').first();
+  if (!row) return null;
+  const d = JSON.parse(row.data);
+  return `이미 예약되어 있습니다: ${data.place} ${data.period} (${d.user || ''}${d.className ? ` ${d.className}` : ''})`;
+}
+
 // ---------- 인증 미들웨어 ----------
 
 app.use('/api/*', async (c, next) => {
@@ -145,6 +155,8 @@ app.post('/api/records/:module', async (c) => {
   const year = body.year || (await getSettings(c.env.DB)).currentYear;
   const p = placement(m, data, year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
+  const clash = await reservationClash(c.env.DB, m, data);
+  if (clash) return c.json({ error: clash, conflict: true }, 409);
   const id = randomToken(8);
   await c.env.DB.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(id, m, p.year, p.date, Number(body.sort) || Date.now() % 1e9, JSON.stringify(data), user.email, user.email).run();
@@ -164,6 +176,8 @@ app.put('/api/records/:module/:id', async (c) => {
   const data = await encryptSecrets(c.env, m, normalizeData(m, body.data), JSON.parse(prev.data));
   const p = placement(m, data, prev.year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
+  const clash = await reservationClash(c.env.DB, m, data, id);
+  if (clash) return c.json({ error: clash, conflict: true }, 409);
   // 버전이 다르면 그사이 다른 사람이 저장한 것 → 덮어쓰지 않음
   const res = await c.env.DB.prepare("UPDATE records SET data = ?, date = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ? AND version = ?")
     .bind(JSON.stringify(data), p.date, user.email, id, body.version ?? prev.version).run();
@@ -230,7 +244,42 @@ async function toggleSelf(c, m) {
 app.post('/api/records/openClasses/:id/observe', (c) => toggleSelf(c, 'openClasses'));
 app.post('/api/records/:module/:id/self', (c) => toggleSelf(c, requireModule(c)));
 
+// 새 글 표시: since 이후 다른 사람이 만들거나 고친 기록 (메뉴 배지·홈 '새 소식')
+const LABEL_KEYS = ['title', 'agenda', 'item', 'name', 'text', 'program', 'site', 'content', 'teacher', 'requester'];
+app.get('/api/changes', async (c) => {
+  const now = (await c.env.DB.prepare("SELECT datetime('now') AS t").first()).t;
+  const since = String(c.req.query('since') || '');
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(since)) return c.json({ now, items: [] });
+  const rows = await c.env.DB.prepare(`SELECT r.id, r.module, r.date, r.data, r.updated_at, r.created_at, u.name FROM records r LEFT JOIN users u ON u.email = r.updated_by
+    WHERE r.updated_at > ? AND r.updated_by != ? AND r.updated_by != 'neis-auto' ORDER BY r.updated_at DESC LIMIT 300`).bind(since, c.get('user').email).all();
+  const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"'))).map((r) => {
+    const d = r.module === 'secrets' ? {} : JSON.parse(r.data);
+    const key = LABEL_KEYS.find((k) => d[k]);
+    return { id: r.id, module: r.module, date: r.date, at: r.updated_at, isNew: r.created_at === r.updated_at, by: r.name || '', label: key ? String(d[key]).split('\n')[0].slice(0, 60) : MODULES[r.module].label };
+  });
+  return c.json({ now, items });
+});
+
 // ---------- 나이스 ----------
+
+// 학급 시간표 (초등). cls = '3-1', 기간 = 한 주
+app.get('/api/neis/timetable', async (c) => {
+  const { neis } = await getSettings(c.env.DB);
+  if (!neis || !c.env.NEIS_API_KEY) return c.json({ configured: false, rows: [] });
+  const cls = String(c.req.query('cls') || '');
+  const from = c.req.query('from');
+  const to = c.req.query('to') || from;
+  const m = cls.match(/^(\d)\s*-\s*(\d+)$/);
+  if (!m) return c.json({ error: '학급은 "3-1" 형식이어야 합니다.' }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return c.json({ error: '날짜 형식 오류' }, 400);
+  const cache = caches.default;
+  const key = new Request(`https://cache.local/tt/${neis.atpt}/${neis.code}/${m[1]}-${m[2]}/${from}/${to}`);
+  const hit = await cache.match(key);
+  if (hit) return c.json({ configured: true, rows: await hit.json() });
+  const rows = await getTimetable(c.env, neis, m[1], m[2], from, to);
+  c.executionCtx.waitUntil(cache.put(key, new Response(JSON.stringify(rows), { headers: { 'cache-control': 'max-age=21600' } })));
+  return c.json({ configured: true, rows });
+});
 
 app.get('/api/neis/meals', async (c) => {
   const { neis } = await getSettings(c.env.DB);
@@ -344,7 +393,9 @@ app.post('/api/admin/import', async (c) => {
     stmts.push(db.prepare(`DELETE FROM records WHERE module NOT IN (${known.map(() => '?').join(',')})`).bind(...known));
     for (const m of modules) {
       const w = scopeWhere(m, year);
-      stmts.push(db.prepare(`DELETE FROM records WHERE ${w.sql}`).bind(...w.args));
+      // 나이스에서 가져온 일정은 남겨 둠 (엑셀에 없으므로)
+      const keepNeis = m === 'events' ? " AND COALESCE(json_extract(data, '$.source'), '') != '나이스'" : '';
+      stmts.push(db.prepare(`DELETE FROM records WHERE ${w.sql}${keepNeis}`).bind(...w.args));
     }
   }
   let n = 0;

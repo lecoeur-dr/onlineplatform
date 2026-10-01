@@ -26,5 +26,7 @@ export async function infoOverview(root) {
   await tableView(secretsBox, 'secrets', { rows: d.secrets, groupBy: 'category', embed: true, reload });
 }
 
+// 자료실: 서식·양식·매뉴얼 링크를 분류별로
+export const resourcesView = (root) => tableView(root, 'resources', { groupBy: 'category' });
 export const contactsView = (root) => tableView(root, 'contacts', { groupBy: 'dept' });
 export const rulesView = (root) => tableView(root, 'rules', { groupBy: 'section' });

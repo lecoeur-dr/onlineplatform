@@ -8,9 +8,12 @@ import { boardView } from './views/board.js';
 import { adminView } from './views/admin.js';
 import { scheduleOverview, eventsList, tripsView } from './views/schedule.js';
 import { classOverview, programsView, openClassesTab, substitutesView } from './views/classes.js';
+import { reservationsView } from './views/reservations.js';
+import { dutiesView } from './views/duties.js';
+import { loadNews, markSeen, paintBadges } from './news.js';
 import { noticeOverview, noticesView, meetingsView, collectionsView } from './views/notices.js';
 import { moneyOverview, purchasesView, budgetView } from './views/money.js';
-import { infoOverview, contactsView, rulesView } from './views/info.js';
+import { infoOverview, contactsView, rulesView, resourcesView } from './views/info.js';
 import { openRecordForm } from './form.js';
 import { modal } from './ui.js';
 import { today } from './ui.js';
@@ -27,16 +30,19 @@ const VIEWS = {
   'class/programs': programsView,
   'class/openClasses': openClassesTab,
   'class/substitutes': substitutesView,
+  'class/reservations': reservationsView,
   'notice/overview': noticeOverview,
   'notice/notices': noticesView,
   'notice/meetings': meetingsView,
   'notice/collections': collectionsView,
+  'notice/duties': dutiesView,
   'money/overview': moneyOverview,
   'money/purchases': purchasesView,
   'money/budget': budgetView,
   'money/contests': (el) => tableView(el, 'contests'),
   'money/contestInfo': (el) => tableView(el, 'contestInfo', { groupBy: 'topic' }),
   'info/overview': infoOverview,
+  'info/resources': resourcesView,
   'info/contacts': contactsView,
   'info/rules': rulesView,
   'info/boards': boardView,
@@ -144,6 +150,9 @@ function quickAddButton() {
     ['trips', '🚌 복무·출장', { date: today(), kind: '출장', person: state.me.name || '' }],
     ['substitutes', '🔁 보결', { date: today() }],
     ['collections', '📥 수합', {}],
+    ['reservations', '🏫 특별실 예약', { date: today(), user: state.me.name || '' }],
+    ['duties', '🧑‍🏫 담당 배정', { date: today() }],
+    ['memos', '✏️ 달력 메모', { date: today() }],
     ['programs', '🎨 특별수업', { date: today(), status: '예정' }],
     ['notices', '📢 공지', { category: '일반' }],
     ['meetings', '📝 회의 안건', { date: today(), meeting: '전체회의', status: '완료' }],
@@ -189,6 +198,9 @@ async function route() {
     group?.tabs.length ? h('div', { class: 'tabs-bar' }, group.tabs.map((t) => h('a', { href: `#/${gid}/${t.id}`, class: t.id === tid ? 'on' : '' }, t.label))) : null,
     content);
   content.append(h('p', { class: 'muted' }, '불러오는 중…'));
+  await loadNews();
+  if (tab?.module) markSeen(tab.module);
+  paintBadges();
   try {
     if (path === 'admin') {
       if (isAdmin()) await adminView(content, refresh);
