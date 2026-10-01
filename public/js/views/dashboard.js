@@ -73,8 +73,18 @@ export async function dashboardView(root) {
   };
   drawBoard();
 
+  const [, mm, dd2] = t.split('-').map(Number);
   clear(root,
     installHint(),
+    h('div', { class: 'hero' },
+      h('div', {}, h('div', { class: 'hero-date' }, `${mm}월 ${dd2}일 ${DOW[new Date(`${t}T00:00`).getDay()]}요일`), h('div', { class: 'hero-title' }, state.settings.schoolName || '우리 학교'),
+        h('div', { class: 'hero-sub' }, `오늘 일정 ${all.filter((it) => it.date <= t && (it.endDate || it.date) >= t).length}건 · 내 할 일 ${mySubs.length + myCols.length + myDuties.length}건`)),
+      h('div', { class: 'hero-actions' },
+        h('a', { class: 'qa', href: '#/schedule/overview' }, h('span', {}, '📅'), '달력'),
+        h('a', { class: 'qa', href: '#/schedule/trips' }, h('span', {}, '🚌'), '복무'),
+        h('a', { class: 'qa', href: '#/class/substitutes' }, h('span', {}, '🔁'), '보결'),
+        h('a', { class: 'qa', href: '#/notice/briefings' }, h('span', {}, '📣'), '전달'),
+        h('a', { class: 'qa', href: '#/class/reservations' }, h('span', {}, '🏫'), '예약'))),
     inRange ? null : h('p', { class: 'alert' }, `지금 ${state.year}학년도 기록을 보고 있습니다. 오늘 일정은 올해 학년도를 선택해야 보입니다.`),
     pinned.length ? h('section', { class: 'section' }, h('div', { class: 'cards' }, pinned.map((n) => noticeCard(n, reload, { compact: true })))) : null,
     ddays.length ? h('div', { class: 'dday-row' }, ddays.map((e) => h('button', { class: 'dday', style: { '--c': '#3b6fe0' }, onclick: () => openRecordForm('events', e, { onSaved: reload }) },

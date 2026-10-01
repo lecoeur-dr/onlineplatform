@@ -113,6 +113,9 @@ async function logout() {
 
 let main;
 let nav;
+let groupBar;
+
+const closeNav = () => document.body.classList.remove('nav-open');
 
 const spaceOfPath = (path) => (path.startsWith('desk') ? 'desk' : 'school');
 const currentPath = () => location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -121,12 +124,17 @@ function layout() {
   const years = [];
   for (let y = state.settings.currentYear - 2; y <= state.settings.currentYear + 1; y++) years.push(y);
   if (!years.includes(state.year)) years.push(state.year);
-  nav = h('nav', { class: 'nav' });
+  nav = h('nav', { class: 'nav', 'aria-label': '전체 메뉴' });
   main = h('main', { class: 'main' });
+  groupBar = h('nav', { class: 'group-bar', 'aria-label': '영역' });
+  document.body.classList.toggle('nav-pinned', !!remember('nav_pinned'));
   const schoolPick = state.schools.filter((s) => s.status === 'active' && ['admin', 'staff', 'viewer'].includes(s.role));
   clear(app,
     h('header', { class: 'top' },
-      h('button', { class: 'icon-btn menu-btn', 'aria-label': '메뉴', onclick: () => document.body.classList.toggle('nav-open') }, '☰'),
+      h('button', { class: 'icon-btn menu-btn', 'aria-label': '전체 메뉴', onclick: () => {
+        if (window.innerWidth > 900 && document.body.classList.contains('nav-pinned')) { document.body.classList.remove('nav-pinned'); remember('nav_pinned', false); return; }
+        document.body.classList.toggle('nav-open');
+      } }, h('span', { class: 'burger' }, h('i'), h('i'), h('i'))),
       h('div', { class: 'space-tabs', role: 'tablist' },
         h('a', { href: '#/home/', class: 'space-tab', 'data-space': 'school' }, h('span', { class: 'ico' }, '🏫'), h('span', { class: 'lbl' }, APP_NAME), h('span', { class: 'lbls' }, '학교')),
         h('a', { href: '#/desk/home', class: 'space-tab', 'data-space': 'desk' }, h('span', { class: 'ico' }, '🪴'), h('span', { class: 'lbl' }, DESK_NAME), h('span', { class: 'lbls' }, '내 책상'))),
@@ -139,17 +147,32 @@ function layout() {
       bellButton(),
       h('a', { class: 'who', href: '#/me', title: state.me.email }, state.me.name || state.me.email, state.me.role ? h('span', { class: 'tag ghost' }, ROLES[state.me.role]) : null),
       h('button', { class: 'btn small logout', onclick: logout }, '로그아웃')),
+    groupBar,
+    h('div', { class: 'scrim', onclick: closeNav }),
     h('div', { class: 'body' }, nav, main),
     bottomBar(),
     quickAddButton());
-  nav.addEventListener('click', (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); });
+  nav.addEventListener('click', (e) => { if (e.target.closest('a')) closeNav(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNav(); });
+}
+
+// 머리글 아래 영역 바: 지금 공간의 큰 항목을 알약 모양으로 (왼쪽 메뉴를 숨겨도 바로 이동)
+function drawGroupBar(space, activeGroup) {
+  const groups = space === 'desk' ? DESK_GROUPS : GROUPS;
+  const prefix = space === 'desk' ? '#/desk/' : '#/';
+  if (space === 'school' && !state.member) return clear(groupBar);
+  clear(groupBar, h('div', { class: 'gb-inner' },
+    groups.map((g) => h('a', { href: `${prefix}${g.id}/${g.tabs.length ? g.tabs[0].id : ''}`, class: `gb-item ${g.id === activeGroup ? 'on' : ''}` }, h('span', { class: 'gb-ico' }, g.icon), h('span', {}, g.label))),
+    space === 'school' && isAdmin() ? h('a', { href: '#/admin', class: `gb-item subtle ${activeGroup === 'admin' ? 'on' : ''}` }, h('span', { class: 'gb-ico' }, '⚙️'), h('span', {}, '관리')) : null));
+  groupBar.querySelector('.gb-item.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 // 왼쪽 메뉴: 공간(학교/내 책상)마다 다르고, 큰 항목별로 접고 펼 수 있음 (기억함)
 function drawNav(space, activeKey, activeGroup) {
   const groups = space === 'desk' ? DESK_GROUPS : GROUPS;
   const prefix = space === 'desk' ? 'desk/' : '';
-  const folded = new Set(remember(`nav_fold_${space}`) || []);
+  const saved = remember(`nav_fold_${space}`);
+  const folded = new Set(saved || groups.map((g) => g.id).filter((id) => id !== activeGroup));
   const toggle = (id, el) => {
     if (folded.has(id)) folded.delete(id); else folded.add(id);
     remember(`nav_fold_${space}`, [...folded]);
@@ -157,7 +180,13 @@ function drawNav(space, activeKey, activeGroup) {
   };
   const schoolLocked = space === 'school' && !state.member;
   clear(nav,
-    space === 'school' && state.member ? h('div', { class: 'nav-school' }, `🏫 ${state.settings.schoolName}`) : null,
+    h('div', { class: 'nav-top' },
+      h('span', { class: 'nav-school' }, space === 'desk' ? `🪴 ${DESK_NAME}` : state.member ? `🏫 ${state.settings.schoolName}` : `🏫 ${APP_NAME}`),
+      h('button', { class: 'pin-btn', title: '메뉴를 화면에 고정 (넓은 화면)', onclick: () => {
+        const on = !document.body.classList.contains('nav-pinned');
+        document.body.classList.toggle('nav-pinned', on); remember('nav_pinned', on); closeNav();
+      } }, '📌'),
+      h('button', { class: 'pin-btn close-x', 'aria-label': '닫기', onclick: closeNav }, '✕')),
     schoolLocked ? h('a', { href: '#/join', class: 'nav-head on' }, h('span', { class: 'ico' }, '🙋'), '학교 가입·개설') : null,
     schoolLocked ? null : groups.map((g) => {
       const subs = g.tabs.filter((t) => t.id !== 'overview' || g.tabs.length === 1);
@@ -245,6 +274,7 @@ async function route() {
   if (special || (space === 'school' && !state.member)) {
     const [title, view] = special || ['🙋 학교 가입·개설', joinView];
     drawNav(space === 'desk' ? 'desk' : 'school', path, '');
+    drawGroupBar(space, path.split('/')[0]);
     clear(main, h('h2', { class: 'page-title' }, title), content);
     try { await view(content, refresh); } catch (e) { showError(content, e); }
     return;
@@ -257,6 +287,7 @@ async function route() {
   const tid = tidRaw || (group?.tabs.length ? group.tabs[0].id : '');
   const key = `${gid}/${tid}`;
   drawNav(space, `${space === 'desk' ? 'desk/' : ''}${key}`, gid);
+  drawGroupBar(space, gid);
   for (const a of document.querySelectorAll('.bottom-bar a')) a.classList.toggle('on', space === 'desk' ? a.dataset.group === 'desk' : a.dataset.group === gid);
 
   const tab = group?.tabs.find((t) => t.id === tid);

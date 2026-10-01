@@ -320,6 +320,10 @@ export const MODULES = {
       { key: 'num', label: '번호', type: 'number' },
       { key: 'name', label: '이름', type: 'text', required: true },
       { key: 'gender', label: '성별', type: 'select', options: ['남', '여'] },
+      { key: 'birthday', label: '생일', type: 'text', hint: '예) 3-15 (월-일, 생일 축하 알림용)' },
+      { key: 'guardian', label: '보호자 연락처', type: 'text', enc: true, hint: '암호화 저장' },
+      { key: 'health', label: '알레르기·건강', type: 'text', enc: true, hint: '급식 알레르기 등 (암호화 저장)' },
+      { key: 'afterschool', label: '방과후·돌봄', type: 'text', hint: '예) 돌봄 2교실, 방과후 축구(화·목)' },
       { key: 'note', label: '특이사항', type: 'textarea', enc: true, hint: '암호화해 저장되며 본인만 봅니다' },
     ],
   },
@@ -336,6 +340,73 @@ export const MODULES = {
       { key: 'role', label: '역할', type: 'text', required: true, hint: '예) 칠판 정리, 우유 당번' },
       { key: 'students', label: '맡은 학생', type: 'names', hint: '이름을 쉼표로 구분' },
       { key: 'note', label: '하는 일', type: 'text' },
+    ],
+  },
+  attendance: {
+    label: '출결', icon: '🗓', scope: 'date', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'student', label: '학생', type: 'select', list: 'students', free: true, required: true },
+      { key: 'type', label: '구분', type: 'select', options: ['결석', '지각', '조퇴', '결과'], required: true },
+      { key: 'reason', label: '사유', type: 'select', options: ['질병', '미인정', '출석인정', '기타'] },
+      { key: 'doc', label: '증빙서류 제출', type: 'bool' },
+      { key: 'note', label: '메모', type: 'text', hint: '예) 독감, 체험학습' },
+    ],
+  },
+  checklists: {
+    label: '체크리스트', icon: '☑️', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'title', label: '제목', type: 'text', required: true, hint: '예) 가정통신문 회신, 수학 익힘책 검사' },
+      { key: 'due', label: '기한', type: 'date' },
+      { key: 'note', label: '메모', type: 'text' },
+      { key: 'done', label: '완료 학생', type: 'names' },
+    ],
+  },
+  points: {
+    label: '칭찬 점수', icon: '⭐', scope: 'date', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'student', label: '학생', type: 'select', list: 'students', free: true, required: true },
+      { key: 'points', label: '점수', type: 'number', required: true },
+      { key: 'reason', label: '이유', type: 'text' },
+    ],
+  },
+  dailyNotes: {
+    label: '알림장', icon: '📒', scope: 'date', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'content', label: '알림 내용', type: 'textarea', required: true, hint: '한 줄에 하나씩. 번호는 자동으로 붙습니다' },
+      { key: 'supplies', label: '준비물', type: 'text' },
+      { key: 'homework', label: '숙제', type: 'text' },
+    ],
+  },
+  weeklyPlans: {
+    label: '주간학습안내', icon: '🗒', scope: 'date', edit: 'staff', space: 'desk', extras: ['plan'],
+    fields: [
+      { key: 'date', label: '주 시작일(월)', type: 'date', required: true },
+      { key: 'title', label: '이번 주 주제', type: 'text' },
+      { key: 'notice', label: '가정 안내', type: 'textarea', hint: '학부모님께 알릴 내용' },
+    ],
+  },
+  counsels: {
+    label: '상담 기록', icon: '💬', scope: 'date', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'student', label: '학생', type: 'select', list: 'students', free: true, required: true },
+      { key: 'with', label: '상담 대상', type: 'select', options: ['학생', '보호자', '학생·보호자', '기타'] },
+      { key: 'method', label: '방법', type: 'select', options: ['대면', '전화', '문자·메신저', '온라인'] },
+      { key: 'topic', label: '주제', type: 'select', options: ['학업', '교우관계', '생활습관', '진로', '건강', '가정', '기타'], free: true },
+      { key: 'content', label: '상담 내용', type: 'textarea', required: true, enc: true },
+      { key: 'followup', label: '후속 조치', type: 'text', enc: true },
+    ],
+  },
+  remarks: {
+    label: '특기사항', icon: '✍️', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'student', label: '학생', type: 'select', list: 'students', free: true, required: true },
+      { key: 'area', label: '영역', type: 'select', options: ['교과학습발달상황', '행동특성 및 종합의견', '창체-자율', '창체-동아리', '창체-진로', '기타'], required: true },
+      { key: 'subject', label: '과목', type: 'text', hint: '교과학습발달상황일 때' },
+      { key: 'content', label: '내용', type: 'textarea', enc: true },
     ],
   },
   myTimetable: {
@@ -443,22 +514,30 @@ export const GROUPS = [
 export const DESK_GROUPS = [
   { id: 'home', label: '내 책상', icon: '🪴', tabs: [] },
   { id: 'class', label: '학급', icon: '🧒', tabs: [
-    { id: 'overview', label: '학급 한눈에' },
-    { id: 'students', label: '학생 명단', module: 'students' },
+    { id: 'overview', label: '학생 카드' },
+    { id: 'attendance', label: '출결', module: 'attendance' },
+    { id: 'checklists', label: '체크리스트', module: 'checklists' },
+    { id: 'points', label: '칭찬 점수', module: 'points' },
+    { id: 'students', label: '명단 관리', module: 'students' },
     { id: 'seats', label: '자리 배치', module: 'seatPlan' },
     { id: 'roles', label: '1인 1역', module: 'classRoles' },
     { id: 'tools', label: '뽑기·타이머' },
   ] },
   { id: 'lesson', label: '수업', icon: '📘', tabs: [
-    { id: 'overview', label: '오늘 수업' },
+    { id: 'overview', label: '이번 주' },
+    { id: 'notes', label: '알림장', module: 'dailyNotes' },
+    { id: 'weekly', label: '주간학습안내', module: 'weeklyPlans' },
     { id: 'timetable', label: '내 시간표', module: 'myTimetable' },
-    { id: 'progress', label: '진도표', module: 'progress' },
+    { id: 'progress', label: '진도·시수', module: 'progress' },
   ] },
   { id: 'eval', label: '평가', icon: '📝', tabs: [
     { id: 'overview', label: '평가 기록', module: 'evalPlans' },
+    { id: 'students', label: '학생별 결과' },
+    { id: 'remarks', label: '특기사항', module: 'remarks' },
   ] },
   { id: 'record', label: '기록', icon: '🗒', tabs: [
     { id: 'overview', label: '누가기록', module: 'notes' },
+    { id: 'counsels', label: '상담', module: 'counsels' },
     { id: 'todos', label: '할 일', module: 'todos' },
   ] },
   { id: 'market', label: '마켓', icon: '🛍', tabs: [
