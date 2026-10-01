@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseNeis, scheduleToEvents, searchSchools, getMeals, NeisError } from '../src/neis.js';
 
 const ok = (service, row) => ({ [service]: [{ head: [{ list_total_count: row.length }, { RESULT: { CODE: 'INFO-000', MESSAGE: '정상 처리되었습니다.' } }] }, { row }] });
-const fakeFetch = (body) => async () => ({ ok: true, status: 200, json: async () => body });
+const fakeFetch = (body) => async () => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
 
 test('나이스 응답 해석: 정상 · 데이터 없음 · 오류', () => {
   assert.equal(parseNeis('X', ok('X', [{ a: 1 }])).rows.length, 1);

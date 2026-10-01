@@ -25,16 +25,38 @@ export function parseNeis(service, json) {
   return { rows: body[1]?.row || [], total };
 }
 
+// 나이스 서버는 브라우저가 아닌 요청(User-Agent 없음)에 500을 돌려주는 경우가 있어 헤더를 붙이고,
+// https 실패 시 http로 한 번 더 시도함
+const HEADERS = {
+  accept: 'application/json, text/plain, */*',
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+  'accept-language': 'ko-KR,ko;q=0.9',
+};
+
+async function neisGet(path, fetchImpl) {
+  let last = '';
+  for (const base of [BASE, BASE.replace('https://', 'http://')]) {
+    let res;
+    try { res = await fetchImpl(`${base}/${path}`, { headers: HEADERS }); }
+    catch (e) { last = `연결 실패(${e.message || e})`; continue; }
+    const text = await res.text();
+    if (res.ok) {
+      try { return JSON.parse(text); }
+      catch { last = `응답 해석 실패: ${text.slice(0, 120)}`; continue; }
+    }
+    last = `${res.status} ${text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)}`;
+    console.error('neis', base, path.split('?')[0], last);
+  }
+  throw new NeisError(`나이스 서버 응답 오류: ${last}`, 502);
+}
+
 export async function neisFetch(env, service, params, fetchImpl = fetch) {
-  if (!env.NEIS_API_KEY) throw new NeisError('나이스 인증키(NEIS_API_KEY)가 등록되지 않았습니다. Cloudflare 비밀값에 등록해 주세요.', 412);
+  const key = String(env.NEIS_API_KEY || '').trim();
+  if (!key) throw new NeisError('나이스 인증키(NEIS_API_KEY)가 등록되지 않았습니다. Cloudflare 비밀값에 등록해 주세요.', 412);
   const all = [];
   for (let page = 1; page <= 10; page++) {
-    const q = new URLSearchParams({ KEY: env.NEIS_API_KEY, Type: 'json', pIndex: String(page), pSize: '1000', ...params });
-    let res;
-    try { res = await fetchImpl(`${BASE}/${service}?${q}`, { headers: { accept: 'application/json' } }); }
-    catch { throw new NeisError('나이스 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.', 502); }
-    if (!res.ok) throw new NeisError(`나이스 서버 응답 오류 (${res.status})`, 502);
-    const { rows, total } = parseNeis(service, await res.json());
+    const q = new URLSearchParams({ KEY: key, Type: 'json', pIndex: String(page), pSize: '1000', ...params });
+    const { rows, total } = parseNeis(service, await neisGet(`${service}?${q}`, fetchImpl));
     all.push(...rows);
     if (all.length >= total || rows.length < 1000) break;
   }
