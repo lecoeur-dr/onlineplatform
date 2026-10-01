@@ -116,6 +116,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 
 .alert { background: var(--primary-soft); border-radius: var(--radius); padding: 8px 12px; margin: 0 0 10px; }
 .alert.warn { background: var(--warn-soft); }
+.alert.install .row-actions { margin-bottom: 0; }
 .alert.error { background: #fde8e8; color: #9b1c1c; }
 
 /* 표 */
@@ -302,6 +303,9 @@ tr.dim td { opacity: .6; }
 .mini-kpi { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .more-link { display: inline-block; margin-top: 8px; font-size: 12px; text-decoration: none; }
 
+/* 휴대폰 하단 탭 · 빠른 추가 */
+.bottom-bar, .fab { display: none; }
+
 /* 모바일 */
 @media (max-width: 800px) {
   .menu-btn { display: inline-block; }
@@ -324,4 +328,18 @@ tr.dim td { opacity: .6; }
   .cal-banner .banner-row input[type=search] { width: auto; flex: 1; }
   .np-body.clamp-3 { -webkit-line-clamp: 2; }
   .cards { grid-template-columns: 1fr; }
+  .bottom-bar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .bottom-bar a, .bottom-bar button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0 5px; font-size: 11px; color: var(--muted); text-decoration: none; border: 0; background: none; font: inherit; font-size: 11px; cursor: pointer; }
+  .bottom-bar a.on { color: var(--primary); font-weight: 700; }
+  .bb-ico { font-size: 19px; line-height: 1.1; }
+  .fab { display: flex; align-items: center; justify-content: center; position: fixed; right: 16px; bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 41; width: 54px; height: 54px; border-radius: 50%; border: 0; background: var(--primary); color: #fff; font-size: 30px; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); cursor: pointer; }
+  .main { padding-bottom: 120px; }
+  .nav { bottom: 0; height: auto; padding-bottom: 70px; }
+  .modal-wrap { padding: 0; align-items: stretch; }
+  .modal, .modal.wide { width: 100%; border-radius: 0; min-height: 100%; display: flex; flex-direction: column; }
+  .modal-body { flex: 1; }
+  .modal-foot { position: sticky; bottom: 0; background: var(--panel); padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .modal-foot .btn { padding: 10px 16px; }
+  input, select, textarea { font-size: 16px; } /* 아이폰 입력 시 화면 확대 방지 */
+  .add-mini { opacity: 1; }
 }

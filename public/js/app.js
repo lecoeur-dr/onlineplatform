@@ -11,6 +11,10 @@ import { classOverview, programsView, openClassesTab } from './views/classes.js'
 import { noticeOverview, noticesView, meetingsView } from './views/notices.js';
 import { moneyOverview, purchasesView, budgetView } from './views/money.js';
 import { infoOverview, contactsView, rulesView } from './views/info.js';
+import { openRecordForm } from './form.js';
+import { modal } from './ui.js';
+import { today } from './ui.js';
+import { canEdit } from './state.js';
 
 // 영역/탭 → 화면
 const VIEWS = {
@@ -111,8 +115,42 @@ function layout() {
           years.sort().map((y) => h('option', { value: y, selected: y === state.year }, `${y}`)))),
       h('span', { class: 'who', title: state.me.email }, state.me.name || state.me.email, h('span', { class: 'tag ghost' }, ROLES[state.me.role])),
       h('button', { class: 'btn small', onclick: logout }, '로그아웃')),
-    h('div', { class: 'body' }, nav, main));
+    h('div', { class: 'body' }, nav, main),
+    bottomBar(),
+    quickAddButton());
   nav.addEventListener('click', (e) => { if (e.target.closest('a')) document.body.classList.remove('nav-open'); });
+}
+
+// 휴대폰 하단 탭 (넓은 화면에서는 숨김)
+const BOTTOM = [
+  { href: '#/home/', group: 'home', icon: '🏠', label: '홈' },
+  { href: '#/schedule/overview', group: 'schedule', icon: '📅', label: '달력' },
+  { href: '#/class/overview', group: 'class', icon: '🕘', label: '수업' },
+  { href: '#/notice/overview', group: 'notice', icon: '📢', label: '공지' },
+];
+function bottomBar() {
+  return h('nav', { class: 'bottom-bar', 'aria-label': '빠른 메뉴' },
+    BOTTOM.map((b) => h('a', { href: b.href, 'data-group': b.group }, h('span', { class: 'bb-ico' }, b.icon), h('span', {}, b.label))),
+    h('button', { onclick: () => document.body.classList.toggle('nav-open') }, h('span', { class: 'bb-ico' }, '☰'), h('span', {}, '전체')));
+}
+
+// 휴대폰 빠른 추가(+): 지금 날짜로 바로 입력
+function quickAddButton() {
+  const targets = [
+    ['events', '📅 일정', { date: today(), category: '전체행사' }],
+    ['trips', '🚌 출장', { date: today() }],
+    ['programs', '🎨 특별수업', { date: today(), status: '예정' }],
+    ['notices', '📢 공지', { category: '일반' }],
+    ['meetings', '📝 회의 안건', { date: today(), meeting: '전체회의', status: '완료' }],
+    ['purchases', '🛒 물품 신청', { requester: state.me.name || '' }],
+  ].filter(([m]) => canEdit(m));
+  if (!targets.length) return null;
+  return h('button', { class: 'fab', 'aria-label': '빠른 추가', onclick: () => {
+    const close = modal('빠른 추가', h('div', { class: 'choice' }, targets.map(([m, label, defaults]) => h('button', { class: 'btn big', onclick: () => {
+      close();
+      openRecordForm(m, null, { defaults: { ...defaults, date: defaults.date ? today() : undefined }, onSaved: () => route() });
+    } }, label))));
+  } }, '+');
 }
 
 async function route() {
@@ -132,6 +170,8 @@ async function route() {
   const tid = tidRaw || (group?.tabs.length ? 'overview' : '');
   const key = path === 'admin' ? 'admin' : `${gid}/${tid}`;
   for (const a of nav.querySelectorAll('a')) a.classList.toggle('on', a.dataset.id === key);
+  for (const a of document.querySelectorAll('.bottom-bar a')) a.classList.toggle('on', a.dataset.group === gid);
+  window.scrollTo(0, 0);
   for (const g of nav.querySelectorAll('.nav-group')) g.classList.toggle('open', g.dataset.group === gid);
 
   const content = h('div', { class: 'content' });
@@ -169,4 +209,7 @@ async function refresh() {
 }
 
 window.addEventListener('hashchange', () => { if (main) route(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// 안드로이드 크롬: '홈 화면에 추가' 창을 나중에 띄울 수 있도록 보관
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; });
 boot();

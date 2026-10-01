@@ -1,5 +1,5 @@
 // 🏠 홈: 전체 공지 · 오늘 · 이번 주 · 예산 요약 · 재논의 · 확인필요
-import { h, api, clear, fmtDate, addDays, today, won } from '../ui.js';
+import { h, api, clear, fmtDate, addDays, today, won, modal } from '../ui.js';
 import { state } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { eventItem, programItem, tripItem, openClassItem } from './calendar.js';
@@ -28,6 +28,7 @@ export async function dashboardView(root) {
   const inRange = new Date().getFullYear() === state.year || (new Date().getFullYear() === state.year + 1 && new Date().getMonth() < 2);
 
   clear(root,
+    installHint(),
     inRange ? null : h('p', { class: 'alert' }, `지금 ${state.year}학년도 기록을 보고 있습니다. 오늘 일정은 올해 학년도를 선택해야 보입니다.`),
     pinned.length ? h('section', { class: 'section' }, h('div', { class: 'cards' }, pinned.map((n) => noticeCard(n, reload, { compact: true })))) : null,
     h('div', { class: 'dash' },
@@ -47,4 +48,24 @@ export async function dashboardView(root) {
       review.length ? h('div', { class: 'card warn' }, h('h3', {}, `확인필요 일정 ${review.length}건`),
         h('p', { class: 'muted small' }, '가져올 때 담당·장소 줄이 행사와 맞지 않았던 일정입니다. 열어서 고친 뒤 "확인필요"를 해제하세요.'),
         h('ul', { class: 'list' }, review.slice(0, 12).map((e) => item({ ...eventItem(e), label: `${fmtDate(e.data.date)} ${eventItem(e).label}` })))) : null));
+}
+
+// 휴대폰에서 앱처럼 쓰도록 '홈 화면에 추가' 안내 (이미 설치했거나 PC면 숨김)
+function installHint() {
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('gy_install_hide') === '1'; } catch { /* 무시 */ }
+  if (standalone || dismissed || window.innerWidth > 800) return null;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const box = h('div', { class: 'alert install' },
+    h('strong', {}, '📲 휴대폰 홈 화면에 추가하면 앱처럼 바로 열립니다.'),
+    h('div', { class: 'row-actions' },
+      h('button', { class: 'btn primary small', onclick: async () => {
+        if (state.installPrompt) { state.installPrompt.prompt(); await state.installPrompt.userChoice; state.installPrompt = null; box.remove(); return; }
+        modal('홈 화면에 추가', h('ol', { class: 'steps' }, ios
+          ? [h('li', {}, 'Safari 아래쪽 [공유] 버튼(□↑)을 누릅니다.'), h('li', {}, '[홈 화면에 추가]를 누릅니다.'), h('li', {}, '오른쪽 위 [추가]를 누르면 홈 화면에 "교무실" 아이콘이 생깁니다.')]
+          : [h('li', {}, '크롬 오른쪽 위 [⋮] 메뉴를 누릅니다.'), h('li', {}, '[홈 화면에 추가] 또는 [앱 설치]를 누릅니다.'), h('li', {}, '홈 화면의 "교무실" 아이콘으로 바로 열 수 있습니다.')]));
+      } }, '추가 방법'),
+      h('button', { class: 'btn small', onclick: () => { try { localStorage.setItem('gy_install_hide', '1'); } catch { /* 무시 */ } box.remove(); } }, '닫기')));
+  return box;
 }
