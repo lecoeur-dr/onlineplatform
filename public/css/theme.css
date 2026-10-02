@@ -658,3 +658,35 @@ ol.left { text-align: left; max-width: 640px; margin: 8px auto; line-height: 1.7
 .board-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; color: #4b5563; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .board-post { background: hsl(var(--h) 35% 22%); color: #e5e7eb; } }
 html[data-theme="dark"] .board-post { background: hsl(var(--h) 35% 22%); color: #e5e7eb; }
+
+/* ===== 예산: 재원 카드 · 월별 차트 · 집행 입력 ===== */
+.kind-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.kind-card { --k: #2563eb; display: grid; gap: 10px; text-decoration: none; color: var(--text); border-top: 4px solid var(--k); }
+.kind-card.violet { --k: #7c3aed; }
+.kind-card:hover { box-shadow: var(--shadow); }
+.kc-head { display: flex; justify-content: space-between; align-items: center; font-size: 16px; }
+.kc-pct { font-size: 40px; font-weight: 900; color: var(--k); letter-spacing: -1px; line-height: 1; }
+.kind-card .bar { height: 14px; }
+.kind-card .bar span { background: var(--k); opacity: .8; }
+.kc-nums { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.kc-nums strong { color: var(--text); }
+.kc-nums strong.neg { color: var(--danger); }
+.tag.blue { background: #e0ecff; color: #1d4ed8; }
+.tag.violet { background: #efe7ff; color: #6d28d9; }
+html[data-theme="dark"] .tag.blue { background: #1e2a4a; color: #93c5fd; }
+html[data-theme="dark"] .tag.violet { background: #2c2147; color: #c4b5fd; }
+.kpi.warn .kpi-value { color: var(--danger); }
+.seg.wrap { flex-wrap: wrap; }
+.month-chart { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; align-items: end; height: 220px; padding: 10px 4px 0; }
+.mc-col { display: grid; grid-template-rows: auto 1fr auto; height: 100%; text-align: center; gap: 4px; }
+.mc-val { font-size: 10.5px; color: var(--muted); min-height: 14px; white-space: nowrap; }
+.mc-bar { position: relative; background: var(--bg-2); border-radius: 8px 8px 4px 4px; overflow: hidden; }
+.mc-bar span { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(180deg, var(--primary-2), var(--primary)); border-radius: 8px 8px 0 0; }
+.mc-lbl { font-size: 11px; color: var(--muted); }
+.spend-form { margin-bottom: 14px; border-top: 4px solid var(--primary); }
+.sf-grid { display: grid; grid-template-columns: 150px auto 1fr 1fr; gap: 10px 12px; align-items: end; }
+.sf-grid label { display: grid; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--text-2); }
+.sf-grid label.wide { grid-column: span 2; }
+.sf-grid input, .sf-grid select { width: 100%; }
+@media (max-width: 800px) { .sf-grid { grid-template-columns: 1fr 1fr; } .sf-grid label.wide { grid-column: span 2; } .month-chart { height: 170px; gap: 3px; } .mc-val { display: none; } }
+.spend-li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; } .spend-li .num { margin-left: auto; font-weight: 700; }

@@ -26,6 +26,7 @@ export const DEFAULT_LISTS = {
   leaveKinds: ['출장', '조퇴', '외출', '지참', '연가', '병가', '공가', '특별휴가', '기타'],
   periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '방과후'],
   resourceCategories: ['공문 서식', '업무 양식', '매뉴얼·지침', '수업 자료', '기타'],
+  budgetCategories: ['일반수용비', '운영수당', '강사수당', '여비', '업무추진비', '임차료', '일반용역비', '자산취득비', '도서구입비', '기타'],
   subjects: ['국어', '수학', '사회', '과학', '영어', '도덕', '실과', '체육', '음악', '미술', '바른 생활', '슬기로운 생활', '즐거운 생활', '창의적 체험활동'],
 };
 
@@ -263,7 +264,7 @@ export const MODULES = {
   purchases: {
     label: '물품 신청', icon: '🛒', scope: 'year', edit: 'staff',
     fields: [
-      { key: 'budget', label: '예산 구분(재원)', type: 'select', list: 'budgetSources', free: true, hint: '예산·공모사업 목록에서 고르면 사용 현황에 반영' },
+      { key: 'budget', label: '사업(재원)', type: 'select', list: 'budgetPrograms', free: true, hint: '학교본예산 세부사업 또는 공모사업명' },
       { key: 'requester', label: '신청자', type: 'text', required: true },
       { key: 'item', label: '품목', type: 'textarea', required: true },
       { key: 'price', label: '단가', type: 'money' },
@@ -281,6 +282,9 @@ export const MODULES = {
       { key: 'name', label: '공모사업명', type: 'text', required: true },
       { key: 'grades', label: '운영 대상 학년', type: 'text' },
       { key: 'budget', label: '받은 예산', type: 'money', sum: true },
+      { key: 'period', label: '운영 기간', type: 'text', hint: '예) 2026.4.~2027.2.' },
+      { key: 'agency', label: '주관 기관', type: 'text' },
+      { key: 'note', label: '비고', type: 'text' },
     ],
   },
   contestInfo: {
@@ -294,16 +298,31 @@ export const MODULES = {
     ],
   },
   budget: {
-    label: '예산', icon: '💰', scope: 'year', edit: 'staff',
+    label: '예산 편성', icon: '💰', scope: 'year', edit: 'staff',
     fields: [
-      { key: 'program', label: '세부사업', type: 'text' },
+      { key: 'source', label: '재원', type: 'select', options: ['학교본예산', '공모사업'], hint: '비우면 학교본예산' },
+      { key: 'program', label: '세부사업·공모사업명', type: 'select', list: 'budgetPrograms', free: true },
       { key: 'item', label: '세부항목', type: 'text' },
-      { key: 'category', label: '원가통계비목', type: 'text' },
+      { key: 'category', label: '비목', type: 'select', list: 'budgetCategories', free: true, hint: '원가통계비목 (예: 일반수용비)' },
       { key: 'detail', label: '산출내역', type: 'text' },
       { key: 'formula', label: '산출식', type: 'text' },
       { key: 'amount', label: '금액', type: 'money', sum: true },
       { key: 'consult', label: '협의', type: 'text' },
       { key: 'label', label: '항목', type: 'text' },
+      { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  // 집행(사용) 내역: 날짜별로 입력하면 재원·사업·비목별 대시보드에 반영
+  spending: {
+    label: '집행 내역', icon: '🧾', scope: 'date', edit: 'staff', extras: ['purchaseId'],
+    fields: [
+      { key: 'date', label: '집행일', type: 'date', required: true },
+      { key: 'source', label: '재원', type: 'select', options: ['학교본예산', '공모사업'], required: true },
+      { key: 'program', label: '세부사업·공모사업명', type: 'select', list: 'budgetPrograms', free: true, required: true },
+      { key: 'category', label: '비목', type: 'select', list: 'budgetCategories', free: true, required: true },
+      { key: 'content', label: '내용', type: 'text', required: true, hint: '예) 수학 교구 구입' },
+      { key: 'amount', label: '금액', type: 'money', sum: true, required: true },
+      { key: 'person', label: '담당', type: 'select', list: 'staff', free: true },
       { key: 'note', label: '비고', type: 'text' },
     ],
   },
@@ -568,10 +587,11 @@ export const GROUPS = [
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },
   { id: 'money', label: '예산·물품', icon: '💰', tabs: [
-    { id: 'overview', label: '사용 현황' },
-    { id: 'purchases', label: '물품 신청', module: 'purchases' },
-    { id: 'budget', label: '예산', module: 'budget' },
+    { id: 'overview', label: '전체 대시보드' },
+    { id: 'school', label: '학교본예산', module: 'budget' },
     { id: 'contests', label: '공모사업', module: 'contests' },
+    { id: 'spend', label: '집행 입력', module: 'spending' },
+    { id: 'purchases', label: '물품 신청', module: 'purchases' },
     { id: 'contestInfo', label: '공모 안내', module: 'contestInfo' },
   ] },
   { id: 'info', label: '학교 정보', icon: '🗂', tabs: [

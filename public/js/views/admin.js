@@ -99,7 +99,7 @@ export async function showQr(target) {
 
 async function settings(root, refreshApp) {
   const s = state.settings;
-  const LABELS = { depts: '부서', places: '장소', classes: '학급', programs: '특별수업 프로그램', meetingTypes: '회의 종류', linkCategories: '바로가기 분류', leaveKinds: '복무 구분', periods: '교시', resourceCategories: '자료실 분류', subjects: '교과' };
+  const LABELS = { depts: '부서', places: '장소', classes: '학급', programs: '특별수업 프로그램', meetingTypes: '회의 종류', linkCategories: '바로가기 분류', leaveKinds: '복무 구분', periods: '교시', resourceCategories: '자료실 분류', subjects: '교과', budgetCategories: '예산 비목' };
   const form = h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

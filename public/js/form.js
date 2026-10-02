@@ -95,7 +95,7 @@ export function openRecordForm(moduleId, record, { defaults = {}, onSaved, extra
     try {
       const saved = record
         ? await api(`/api/records/${moduleId}/${record.id}`, { method: 'PUT', body: { data: { ...record.data, ...body }, version: record.version } })
-        : await api(`/api/records/${moduleId}`, { method: 'POST', body: { data: body, year: state.year } });
+        : await api(`/api/records/${moduleId}`, { method: 'POST', body: { data: { ...(def.extras || []).reduce((o, k) => (defaults[k] !== undefined ? { ...o, [k]: defaults[k] } : o), {}), ...body }, year: state.year } });
       toast('저장했습니다.');
       close();
       onSaved?.(saved);

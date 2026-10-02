@@ -122,3 +122,29 @@ test('평가 도구: AI 채점 결과·시험문제 읽기, 평가계획 점검'
   assert.ok(bad.some((x) => x.msg.includes('학년군')));
   assert.ok(bad.some((x) => x.msg.includes('빈 칸')));
 });
+
+test('예산: 학교본예산·공모사업 편성 대비 날짜별 집행, 비목별 사용률', async () => {
+  globalThis.document ||= undefined;
+  const { buildMoney } = await import('../public/js/views/money.js').catch(() => ({}));
+  if (!buildMoney) return; // 화면 모듈을 node에서 못 읽는 환경이면 건너뜀
+  const r = (data, id = Math.random().toString(36)) => ({ id, data });
+  const d = {
+    budget: [r({ source: '학교본예산', program: '기초학력', category: '일반수용비', amount: 1000 }), r({ program: '기초학력', category: '강사수당', amount: 2000 }), r({ source: '공모사업', program: 'AI 선도', category: '일반수용비', amount: 500 })],
+    contests: [r({ name: 'AI 선도', budget: 800 }), r({ name: '생태 공모', budget: 300 })],
+    spending: [r({ date: '2026-04-01', source: '학교본예산', program: '기초학력', category: '일반수용비', amount: 400 }), r({ date: '2026-05-01', source: '공모사업', program: 'AI 선도', category: '일반수용비', amount: 100, purchaseId: 'p1' })],
+    purchases: [r({ budget: '기초학력', price: 10, qty: 3 }, 'p0'), r({ budget: 'AI 선도', price: 50, qty: 2 }, 'p1')],
+  };
+  const m = buildMoney(d);
+  const school = m.byKind('학교본예산');
+  assert.equal(school.length, 1);
+  assert.equal(school[0].assigned, 3000);
+  assert.equal(school[0].used, 400);
+  assert.equal(school[0].pending, 30);
+  const ai = m.programs.get('공모사업|AI 선도');
+  assert.equal(ai.assigned, 800); // 편성 500 + 미배분 300
+  assert.equal(ai.cats.get('(미배분)').assigned, 300);
+  assert.equal(ai.pending, 0); // 집행 등록된 물품은 대기에서 빠짐
+  assert.equal(m.programs.get('공모사업|생태 공모').cats.get('(비목 미지정)').assigned, 300);
+  const cats = m.catsOf([...m.programs.values()]);
+  assert.equal(cats.find((c) => c.name === '일반수용비').used, 500);
+});

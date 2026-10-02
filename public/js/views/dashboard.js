@@ -4,7 +4,7 @@ import { state, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { eventItem, programItem, tripItem, openClassItem, substituteItem } from './calendar.js';
 import { noticeCard, isMyTask, dday } from './notices.js';
-import { budgetSources } from './money.js';
+import { buildMoney } from './money.js';
 import { seg } from './schedule.js';
 import { unseen, tabOf } from '../news.js';
 import { MODULES } from '../modules.js';
@@ -13,7 +13,7 @@ const monthEnd = (ym) => { const [y, m] = ym.split('-').map(Number); return `${y
 const weekStart = (d) => { const [y, m, dd] = d.split('-').map(Number); return addDays(d, -new Date(y, m - 1, dd).getDay()); };
 
 export async function dashboardView(root) {
-  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,purchases,budget,contests,substitutes,collections,duties,reservations,briefings`);
+  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,purchases,budget,contests,spending,substitutes,collections,duties,reservations,briefings`);
   const t = today();
   const ym = t.slice(0, 7);
   const me = myName();
@@ -29,9 +29,9 @@ export async function dashboardView(root) {
   const pinned = d.notices.filter((n) => n.data.pinned && (!n.data.month || n.data.month === ym));
   const redo = d.meetings.filter((m) => m.data.status === '재논의').slice(-5);
   const review = d.events.filter((e) => e.data.review);
-  const sources = budgetSources(d.budget, d.contests);
-  const assign = sources.reduce((a, s) => a + s.amount, 0);
-  const req = d.purchases.reduce((a, p) => a + (Number(p.data.price) || 0) * (Number(p.data.qty) || 0), 0);
+  const money = [...buildMoney(d).programs.values()];
+  const assign = money.reduce((a, p) => a + p.assigned, 0);
+  const used = money.reduce((a, p) => a + p.used, 0);
   const waiting = d.purchases.filter((p) => !p.data.received).length;
 
   // 내 할 일: 내 보결(7일 안) · 내가 낼 수합 · 내 복무
@@ -109,10 +109,10 @@ export async function dashboardView(root) {
         !state.me.name ? h('p', { class: 'muted small' }, '학교 관리 → 사용자에서 내 이름(실명)이 등록되어야 내 할 일이 보입니다.') : null),
       mealBox,
       h('div', { class: 'card' }, h('h3', {}, '💰 예산·물품'),
-        h('div', { class: 'mini-kpi' }, h('span', {}, '배정'), h('strong', {}, won(assign))),
-        h('div', { class: 'mini-kpi' }, h('span', {}, '물품 신청'), h('strong', {}, won(req))),
+        h('div', { class: 'mini-kpi' }, h('span', {}, '편성'), h('strong', {}, won(assign))),
+        h('div', { class: 'mini-kpi' }, h('span', {}, '집행'), h('strong', {}, `${won(used)} (${assign ? Math.round((used / assign) * 1000) / 10 : 0}%)`)),
         h('div', { class: 'mini-kpi' }, h('span', {}, '미수령'), h('strong', {}, `${waiting}건`)),
-        h('a', { href: '#/money/overview', class: 'more-link' }, '사용 현황 →')),
+        h('a', { href: '#/money/overview', class: 'more-link' }, '예산 대시보드 →')),
       h('div', { class: 'card' }, h('h3', {}, '📝 재논의 안건'),
         redo.length ? h('ul', { class: 'list' }, redo.map((m) => h('li', { class: 'click', onclick: () => openRecordForm('meetings', m, { onSaved: reload }) }, m.data.agenda.split('\n')[0], h('span', { class: 'muted' }, ` ${fmtDate(m.data.date)}`)))) : h('p', { class: 'muted' }, '재논의 안건이 없습니다.'),
         h('a', { href: '#/notice/meetings', class: 'more-link' }, '회의록 →')),

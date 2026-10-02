@@ -8,7 +8,9 @@ export const state = {
   settings: null, // { currentYear, schoolName, lists, neis }
   space: 'school', // school(OnlineFlatform) | desk(Deskterior)
   year: null,     // 화면에서 보고 있는 학년도
-  budgetSources: [], // 물품 신청의 '예산 구분' 드롭다운 (예산·공모사업 이름)
+  budgetSources: [], // (예전) 예산·공모사업 이름
+  budgetPrograms: [], // 사업 드롭다운: 학교본예산 세부사업 + 공모사업명
+  budgetCategories: [], // 이미 쓰인 비목 (설정 목록과 합쳐 보여 줌)
   staff: [],         // 승인된 교직원 [{name, dept}] — 이름 드롭다운용
   students: [],      // Deskterior 학생 이름 (누가기록 드롭다운)
   push: null,        // 웹 푸시 공개키 (없으면 휴대폰 알림 미설정)
@@ -29,6 +31,8 @@ export const hasSchool = () => !!state.member;
 export function listOf(field) {
   if (field.options) return field.options;
   if (field.list === 'budgetSources') return state.budgetSources;
+  if (field.list === 'budgetPrograms') return state.budgetPrograms.length ? state.budgetPrograms : state.budgetSources;
+  if (field.list === 'budgetCategories') return [...new Set([...(state.settings?.lists?.budgetCategories || DEFAULT_LISTS.budgetCategories), ...state.budgetCategories])];
   if (field.list === 'staff') return state.staff.map((x) => x.name).filter(Boolean);
   if (field.list === 'students') return state.students;
   if (field.list) return state.settings?.lists?.[field.list] || DEFAULT_LISTS[field.list] || [];
