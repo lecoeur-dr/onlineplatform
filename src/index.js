@@ -341,7 +341,7 @@ app.post('/api/records/:module', async (c) => {
   if (!canWrite(c, t)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   const body = await c.req.json();
   const clean = normalizeData(m, body.data);
-  if (m === 'market') clean.likes = [];
+  if (m === 'market') { clean.likes = []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); }
   const year = body.year || (t.member ? (await getSettings(c.env.DB, t.member.schoolId)).currentYear : new Date().getFullYear());
   const p = placement(m, clean, year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
@@ -366,7 +366,7 @@ app.put('/api/records/:module/:id', async (c) => {
   const body = await c.req.json();
   const prevData = JSON.parse(prev.data);
   const clean = normalizeData(m, body.data);
-  if (m === 'market') clean.likes = prevData.likes || []; // 좋아요는 각자 버튼으로만
+  if (m === 'market') { clean.likes = prevData.likes || []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); } // 좋아요는 각자 버튼으로만
   const p = placement(m, clean, prev.year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
   const clash = t.member && await reservationClash(c.env.DB, m, clean, t.member.schoolId, id);

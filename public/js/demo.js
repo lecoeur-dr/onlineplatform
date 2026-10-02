@@ -164,8 +164,9 @@ function seed() {
   const wp = { cells: grid([]).periods.map(() => Array(5).fill('')) };
   ['국어\n글의 짜임 알기', '수학\n소수의 나눗셈', '사회\n민주주의의 의미', '과학\n전기 회로', '음악\n리코더 합주'].forEach((c, i) => { wp.cells[0][i] = c; });
   put('weeklyPlans', { date: monday, title: '함께 만드는 우리 반', notice: '이번 주 금요일은 운동회입니다. 체육복을 입고 등교해 주세요.', plan: wp });
-  put('market', { category: '학급 운영', title: '1인 1역 역할 카드 (예시)', grades: '전 학년', desc: '교실 게시용 역할 카드 템플릿', link: 'https://www.example.com/roles', likes: ['t1@example.com', 't2@example.com'] }, { owner: 't1@example.com', author: '이서준' });
-  put('market', { category: '수업 자료', title: '소수의 나눗셈 놀이 활동지 (예시)', grades: '6학년 수학', desc: '모둠별 카드 게임으로 익히는 소수 나눗셈', link: 'https://www.example.com/math', likes: [] }, { owner: ME.email, author: ME.name });
+  put('market', { kind: '자료 링크', category: '학급 운영', title: '1인 1역 역할 카드 (예시)', grades: '전 학년', desc: '교실 게시용 역할 카드 템플릿', link: 'https://www.example.com/roles', likes: ['t1@example.com', 't2@example.com'] }, { owner: 't1@example.com', author: '이서준' });
+  put('market', { kind: 'HTML 도구', category: '수업 활동', title: '이름 카드 뒤집기 (예시)', grades: '전 학년', desc: '학생 이름 카드를 하나씩 뒤집으며 발표자를 정하는 놀이', html: "<!doctype html><html><body style=\"font-family:sans-serif;text-align:center;padding:30px;background:#fff8ef\"><h2>🃏 이름 카드 뒤집기</h2><div id=g style=\"display:flex;flex-wrap:wrap;gap:10px;justify-content:center\"></div><p id=m>[학생 명단 보내기]를 눌러 주세요</p><script>window.addEventListener('message',e=>{if(e.data&&e.data.type==='roster'){m.textContent=e.data.students.length+'명';g.innerHTML='';e.data.students.forEach(s=>{const b=document.createElement('button');b.textContent='?';b.style.cssText='width:90px;height:60px;font-size:18px;border-radius:10px;border:0;background:#e07b39;color:#fff';b.onclick=()=>{b.textContent=s.name;b.style.background='#30a46c'};g.append(b)})}})</script></body></html>", likes: ['t3@example.com', 't4@example.com', 't5@example.com'] }, { owner: 't3@example.com', author: '박지우' });
+  put('market', { kind: '자료 링크', category: '학습지', title: '소수의 나눗셈 놀이 활동지 (예시)', grades: '6학년 수학', desc: '모둠별 카드 게임으로 익히는 소수 나눗셈', link: 'https://www.example.com/math', likes: [] }, { owner: ME.email, author: ME.name });
 
   db.inbox = [
     { id: 3, title: '🔁 보결 배정', body: `5교시 5-1 국어 (조하준 출장)`, url: '/#/class/substitutes', read: 0, created_at: `${TODAY} 08:05:00`, school_name: SCHOOL },

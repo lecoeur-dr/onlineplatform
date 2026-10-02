@@ -258,7 +258,7 @@ function quickAddButton() {
       ['todos', '✅ 할 일', { due: today(), repeat: '없음' }],
       ['notes', '🗒 누가기록', { date: today(), category: '관찰' }],
       ['progress', '📘 진도', { date: today() }],
-      ['market', '🛍 마켓에 자료 올리기', {}],
+      ['market', '🧰 수업공방에 올리기', { kind: 'HTML 도구', category: '수업 도구' }],
     ];
     const list = state.space === 'desk' ? [...desk, ...school] : [...school, ...desk];
     const close = modal('빠른 추가', h('div', { class: 'choice' }, list.map(([m, label, defaults]) => h('button', { class: 'btn big', onclick: () => {
@@ -290,7 +290,7 @@ async function preloadStudents() {
 async function route() {
   state.rerender = route;
   preloadStudents();
-  const cur = currentPath() || 'home/';
+  const cur = location.hash.replace(/^#\/?/, '') || 'home/';
   if (trail[trail.length - 1] !== cur) { trail.push(cur); if (trail.length > 30) trail.shift(); }
   const ys = document.getElementById('year-select');
   if (ys && ![...ys.options].some((op) => Number(op.value) === state.year)) ys.append(h('option', { value: state.year }, `${state.year}`));

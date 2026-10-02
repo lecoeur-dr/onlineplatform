@@ -395,6 +395,7 @@ export async function toolsView(root) {
     timerId = setInterval(() => { s--; show(); if (s <= 0 || !root.isConnected) { clearInterval(timerId); if (s <= 0) { try { navigator.vibrate?.(400); } catch { /* 무시 */ } } } }, 1000);
   };
   clear(root,
+    h('div', { class: 'alert' }, '🧰 모둠 편성·퀴즈 쇼·팀 점수판·빈칸 학습지 등 더 많은 도구는 ', h('a', { href: '#/desk/market/overview' }, '수업공방 →')),
     h('div', { class: 'dash' },
       h('div', { class: 'card' }, h('h3', {}, '🎲 발표 뽑기'), out,
         h('div', { class: 'row-actions' }, h('button', { class: 'btn primary big', onclick: pick }, '뽑기'),

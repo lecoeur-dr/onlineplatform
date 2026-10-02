@@ -7,7 +7,7 @@
 //   global : 연도와 무관한 기록 (연락처, 위임전결 등)
 //
 // edit : 수정 가능한 최소 권한 (staff | admin)
-// space: school(기본, 학교 공유) | desk(Deskterior 개인 공간, 본인만) | market(모든 선생님 공유)
+// space: school(기본, 학교 공유) | desk(Deskterior 개인 공간, 본인만) | market(수업공방: 모든 선생님 공유)
 // enc  : 필드에 enc:true → 서버에 암호화해 저장 (학생 관련 기록)
 
 export const APP_NAME = 'OnlineFlatform';
@@ -471,13 +471,15 @@ export const MODULES = {
   },
   // ---------- 마켓 (모든 학교 선생님 공유) ----------
   market: {
-    label: '마켓', icon: '🛍', scope: 'global', edit: 'staff', space: 'market',
+    label: '수업공방', icon: '🧰', scope: 'global', edit: 'staff', space: 'market',
     fields: [
-      { key: 'category', label: '분류', type: 'select', options: ['학급 운영', '수업 자료', '평가 자료', '업무 서식', '에듀테크', '기타'] },
+      { key: 'kind', label: '종류', type: 'select', options: ['자료 링크', 'HTML 도구'], hint: 'HTML 도구: 직접 만든(또는 AI로 만든) 한 장짜리 HTML 수업 도구를 붙여넣으면 공방에서 바로 실행됩니다' },
+      { key: 'category', label: '분류', type: 'select', options: ['수업 도구', '수업 활동', '학급 운영', '평가', '학습지', '업무 서식', '기타'] },
       { key: 'title', label: '제목', type: 'text', required: true },
-      { key: 'grades', label: '학년·과목', type: 'text', hint: '예) 5학년 수학' },
+      { key: 'grades', label: '학년·과목', type: 'text', hint: '예) 5학년 수학, 전학년' },
       { key: 'desc', label: '설명', type: 'textarea' },
-      { key: 'link', label: '자료 링크', type: 'url', hint: '드라이브·패들렛 등 공유 링크 (학생 개인정보가 담긴 자료는 올리지 마세요)' },
+      { key: 'link', label: '자료 링크', type: 'url', hint: '자료 링크일 때: 드라이브·패들렛 등 공유 링크' },
+      { key: 'html', label: 'HTML 코드', type: 'textarea', hint: 'HTML 도구일 때: <html>…</html> 전체. 안전 상자(sandbox) 안에서 실행되며, 학생 명단은 선생님이 [명단 보내기]를 눌렀을 때만 전달됩니다 (최대 300KB)' },
       { key: 'likes', label: '좋아요', type: 'names' },
     ],
   },
@@ -554,8 +556,9 @@ export const DESK_GROUPS = [
     { id: 'counsels', label: '상담', module: 'counsels' },
     { id: 'todos', label: '할 일', module: 'todos' },
   ] },
-  { id: 'market', label: '마켓', icon: '🛍', tabs: [
-    { id: 'overview', label: '자료 마켓', module: 'market' },
+  { id: 'market', label: '수업공방', icon: '🧰', tabs: [
+    { id: 'overview', label: '공방 둘러보기' },
+    { id: 'mine', label: '내가 올린 도구' },
   ] },
 ];
 
