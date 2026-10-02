@@ -1,4 +1,4 @@
-// 🧰 수업공방: 기본 도구 + 선생님들이 올린 HTML 도구·자료를 우리 반 명단과 함께 바로 실행
+// 🧰 Teachshop: 기본 도구 + 선생님들이 올린 HTML 도구·자료를 우리 반 명단과 함께 바로 실행
 import { h, api, clear, toast, modal } from '../ui.js';
 import { state, remember } from '../state.js';
 import { openRecordForm } from '../form.js';
@@ -52,6 +52,7 @@ export async function workshopHome(root) {
   };
   const count = (v) => items.filter((it) => (v === 'builtin' ? it.builtin : v === 'shared' ? !it.builtin && it.html : v === 'links' ? !it.builtin && !it.html : fav.has(it.key))).length;
   clear(root,
+    h('p', { class: 'ws-sub' }, '선생님이 만들고 나누는 수업 도구 공방 — 우리 반 명단과 연결해 바로 실행합니다'),
     h('div', { class: 'toolbar' },
       h('input', { type: 'search', class: 'grow', placeholder: '도구 이름·설명·만든 선생님으로 찾기', value: remember('ws_q') || '', onchange: (e) => { remember('ws_q', e.target.value); reload(); } }),
       h('span', { class: 'muted small' }, '정렬'),
@@ -79,7 +80,7 @@ export async function workshopHome(root) {
         h('div', { class: 'muted small' }, `${it.builtin ? '🧰' : '👤'} ${it.maker}${it.builtin ? '' : ' 선생님'}${it.date ? ` · ${it.date}` : ''}`),
         it.mine ? h('button', { class: 'link-btn', onclick: (e) => { e.stopPropagation(); openRecordForm('market', it.r, { onSaved: reload }); } }, '수정') : null)))) :
       h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🧰'), h('p', {}, '조건에 맞는 도구가 없습니다.')),
-    h('p', { class: 'hint' }, '수업공방은 OnlineFlatform을 쓰는 모든 학교 선생님이 함께 보는 공간입니다. 자료에 학생 개인정보를 담지 마세요. ', h('button', { class: 'link-btn', onclick: makerGuide }, 'HTML 도구 만드는 법')));
+    h('p', { class: 'hint' }, 'Teachshop은 OnlineFlatform을 쓰는 모든 학교 선생님이 함께 보는 공간입니다. 자료에 학생 개인정보를 담지 마세요. ', h('button', { class: 'link-btn', onclick: makerGuide }, 'HTML 도구 만드는 법')));
 }
 
 export async function myTools(root) {
@@ -102,7 +103,7 @@ export async function toolRunner(root) {
   const qs = new URLSearchParams(location.hash.split('?')[1] || '');
   const stage = h('div', { class: 'tool-stage' });
   const full = () => (document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen?.().catch(() => {}));
-  const back = h('a', { class: 'btn', href: '#/desk/market/overview' }, '← 공방');
+  const back = h('a', { class: 'btn', href: '#/desk/market/overview' }, '← Teachshop');
   const builtin = toolById(qs.get('tool'));
   if (builtin) {
     const students = await roster().catch(() => []);
@@ -153,7 +154,7 @@ function makerGuide() {
   modal('🧩 HTML 도구 만드는 법', h('div', { class: 'form' },
     h('ol', {},
       h('li', {}, '한 장짜리 HTML 파일로 수업 도구를 만듭니다. (AI에게 "초등 수업용 ○○ 도구를 HTML 한 파일로 만들어 줘"라고 부탁해도 됩니다)'),
-      h('li', {}, '수업공방 → [+ 올리기] → 종류 "HTML 도구" → HTML 코드 칸에 전체를 붙여넣습니다.'),
+      h('li', {}, 'Teachshop → [+ 올리기] → 종류 "HTML 도구" → HTML 코드 칸에 전체를 붙여넣습니다.'),
       h('li', {}, '학생 이름이 필요하면 아래처럼 message를 받으세요. 선생님이 [학생 명단 보내기]를 누를 때만 { type: "roster", students: [{ num, name }] }가 전달됩니다.')),
     h('pre', { class: 'code' }, code),
     h('p', { class: 'hint' }, '도구는 안전 상자(sandbox)에서 실행되어 OnlineFlatform 로그인·자료에 접근할 수 없습니다. 외부 서버로 학생 정보를 보내는 도구는 올리지 마세요.')), [], { wide: true });

@@ -1,4 +1,4 @@
-// 🧰 수업공방 기본 도구: 우리 반 명단(Deskterior 학생 명단)과 자동 연동
+// 🧰 Teachshop 기본 도구: 우리 반 명단(Deskterior 학생 명단)과 자동 연동
 //   각 도구 = { id, name, icon, desc, cat, color, roster(명단 사용 여부), run(el, ctx) }
 //   ctx = { students: [{ num, name, gender }], save(key, value), load(key) }
 import { h, clear, toast } from './ui.js';

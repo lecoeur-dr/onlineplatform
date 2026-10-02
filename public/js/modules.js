@@ -7,11 +7,12 @@
 //   global : 연도와 무관한 기록 (연락처, 위임전결 등)
 //
 // edit : 수정 가능한 최소 권한 (staff | admin)
-// space: school(기본, 학교 공유) | desk(Deskterior 개인 공간, 본인만) | market(수업공방: 모든 선생님 공유)
+// space: school(기본, 학교 공유) | desk(Deskterior 개인 공간, 본인만) | market(Teachshop: 모든 선생님 공유)
 // enc  : 필드에 enc:true → 서버에 암호화해 저장 (학생 관련 기록)
 
 export const APP_NAME = 'OnlineFlatform';
 export const DESK_NAME = 'Deskterior';
+export const SHOP_NAME = 'Teachshop';
 export const ROLES = { admin: '관리자', staff: '교직원', viewer: '열람', pending: '승인대기', blocked: '차단' };
 
 // 설정에서 관리하는 목록(드롭다운) 기본값
@@ -471,7 +472,7 @@ export const MODULES = {
   },
   // ---------- 마켓 (모든 학교 선생님 공유) ----------
   market: {
-    label: '수업공방', icon: '🧰', scope: 'global', edit: 'staff', space: 'market',
+    label: 'Teachshop', icon: '🧰', scope: 'global', edit: 'staff', space: 'market',
     fields: [
       { key: 'kind', label: '종류', type: 'select', options: ['자료 링크', 'HTML 도구'], hint: 'HTML 도구: 직접 만든(또는 AI로 만든) 한 장짜리 HTML 수업 도구를 붙여넣으면 공방에서 바로 실행됩니다' },
       { key: 'category', label: '분류', type: 'select', options: ['수업 도구', '수업 활동', '학급 운영', '평가', '학습지', '업무 서식', '기타'] },
@@ -556,7 +557,7 @@ export const DESK_GROUPS = [
     { id: 'counsels', label: '상담', module: 'counsels' },
     { id: 'todos', label: '할 일', module: 'todos' },
   ] },
-  { id: 'market', label: '수업공방', icon: '🧰', tabs: [
+  { id: 'market', label: 'Teachshop', icon: '🧰', tabs: [
     { id: 'overview', label: '공방 둘러보기' },
     { id: 'mine', label: '내가 올린 도구' },
   ] },

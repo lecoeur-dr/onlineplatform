@@ -409,7 +409,7 @@ html[data-accent="warm"]:not([data-theme="dark"]) .top { background: rgba(255, 2
 .cards.market .card { min-height: 190px; }
 
 /* =========================================================
-   🧰 수업공방
+   🧰 Teachshop
    ========================================================= */
 .roster-band { display: flex; align-items: center; gap: 14px; padding: 14px 18px; margin-bottom: 16px; border-radius: 16px; border: 1px solid color-mix(in srgb, #f5a524 35%, var(--line)); background: color-mix(in srgb, #f5a524 9%, var(--panel)); }
 .roster-band.ok { border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); background: color-mix(in srgb, var(--ok) 8%, var(--panel)); }
@@ -460,3 +460,4 @@ html[data-accent="warm"]:not([data-theme="dark"]) .top { background: rgba(255, 2
 .tool-frame { width: 100%; height: 72vh; border: 0; border-radius: 12px; background: #fff; }
 .tool-stage:fullscreen .tool-frame { height: 92vh; }
 pre.code { background: var(--bg-2); padding: 12px; border-radius: 10px; overflow: auto; font-size: 12px; white-space: pre; }
+.ws-sub { margin: -6px 0 14px; color: var(--muted); font-weight: 600; }
