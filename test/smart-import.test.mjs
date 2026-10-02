@@ -35,3 +35,15 @@ test('업무분장: 머리글로 칸 찾기, 부서 이어받기, 학급 정리'
   assert.equal(r[2].duties, '수업 공개');
   assert.equal(normClass('3학년 2반'), '3-2');
 });
+
+test('평가 계획: 머리글 표·코드 분리·교과 이어받기', async () => {
+  const { parseEvalPlans } = await import('../public/js/smart-import.js');
+  const r = parseEvalPlans(readText('교과\t영역\t성취기준\t평가 요소\t평가 방법\t시기\n국어\t읽기\t[6국02-01] 읽기는 배경지식을 활용하여 의미를 구성하는 과정임을 이해하고 글을 읽는다.\t배경지식 활용하여 읽기\t서술형\t4월\n\t쓰기\t[6국03-02] 목적이나 주제에 따라 알맞은 내용과 매체를 선정하여 글을 쓴다.\t알맞은 내용 선정\t논술형\t5월'));
+  assert.equal(r.length, 2);
+  assert.equal(r[0].code, '[6국02-01]');
+  assert.equal(r[1].subject, '국어');
+  assert.ok(!r[0].standard.includes('['));
+  const r2 = parseEvalPlans(readText('수학 | 분수의 나눗셈 | [6수01-01] 분수의 나눗셈을 할 수 있다. | 3월 | 서술형'));
+  assert.equal(r2[0].subject, '수학');
+  assert.equal(r2[0].method, '서술형');
+});

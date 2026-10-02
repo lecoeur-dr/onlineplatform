@@ -66,9 +66,11 @@ export async function workshopHome(root) {
       h('div', { class: 'grow' }, h('strong', {}, students.length ? `우리 반 명단 ${students.length}명이 연결되어 있습니다` : '명단을 입력하면 모든 도구에서 학생 이름이 자동으로 쓰입니다'),
         h('div', { class: 'muted small' }, '이름 뽑기 · 모둠 편성 · 발표 순서 · 퀴즈 · 학습지 · 선생님 도구(명단 보내기)')),
       h('a', { class: 'btn small primary', href: '#/desk/class/students' }, students.length ? '명단 보기' : '+ 학생 명단')),
-    shown.length ? h('div', { class: 'ws-grid' }, shown.map((it) => h('div', { class: 'ws-card', onclick: () => open(it) },
+    view === 'all' && !q && !cat ? featured(items, open) : null,
+    view === 'all' && !q && !cat ? recentRow(items, open) : null,
+    shown.length ? h('div', { class: 'ws-grid' }, shown.filter((it) => !(view === 'all' && !q && !cat && it.t?.featured)).map((it) => h('div', { class: 'ws-card', onclick: () => open(it) },
       h('button', { class: `mk-fav ws-star ${fav.has(it.key) ? 'on' : ''}`, title: '즐겨찾기', onclick: (e) => { e.stopPropagation(); toggleFav(it.key); reload(); } }, fav.has(it.key) ? '★' : '☆'),
-      it.builtin ? thumb(it.t.icon, it.t.color) : thumb(it.html ? '🧩' : '🔗', it.html ? '#8b5cf6' : '#64748b'),
+      it.builtin ? thumb(it.t.icon, it.t.color) : thumb(it.r.data.icon || (it.html ? '🧩' : '🔗'), it.html ? '#8b5cf6' : '#64748b'),
       h('div', { class: 'ws-body' },
         h('strong', {}, it.title),
         h('div', { class: 'muted small clamp' }, it.desc),
@@ -81,6 +83,27 @@ export async function workshopHome(root) {
         it.mine ? h('button', { class: 'link-btn', onclick: (e) => { e.stopPropagation(); openRecordForm('market', it.r, { onSaved: reload }); } }, '수정') : null)))) :
       h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🧰'), h('p', {}, '조건에 맞는 도구가 없습니다.')),
     h('p', { class: 'hint' }, 'Teachshop은 OnlineFlatform을 쓰는 모든 학교 선생님이 함께 보는 공간입니다. 자료에 학생 개인정보를 담지 마세요. ', h('button', { class: 'link-btn', onclick: makerGuide }, 'HTML 도구 만드는 법')));
+}
+
+// 교실 화면 큰 카드
+function featured(items, open) {
+  const it = items.find((x) => x.t?.featured);
+  if (!it) return null;
+  return h('div', { class: 'ws-hero', onclick: () => open(it) },
+    h('div', { class: 'ws-hero-ico' }, it.t.icon),
+    h('div', { class: 'grow' }, h('div', { class: 'ws-hero-k' }, '추천'), h('div', { class: 'ws-hero-t' }, it.title), h('div', { class: 'ws-hero-d' }, it.desc)),
+    h('span', { class: 'btn primary' }, '열기 →'));
+}
+
+// 최근·자주 쓰는 도구 (이 기기 기준)
+function recentRow(items, open) {
+  const uses = remember('ws_uses') || {};
+  const recent = (remember('ws_recent') || []).map((k) => items.find((x) => x.key === k)).filter(Boolean);
+  const top = Object.entries(uses).sort((a, b) => b[1] - a[1]).map(([k]) => items.find((x) => x.key === k)).filter(Boolean).slice(0, 6);
+  const list = [...new Set([...recent.slice(0, 6), ...top])].slice(0, 8);
+  if (!list.length) return null;
+  return h('div', { class: 'ws-recent' }, h('span', { class: 'muted small' }, '🕒 최근·자주 쓴 도구'),
+    list.map((it) => h('button', { class: 'ws-pill', onclick: () => open(it) }, it.builtin ? it.t.icon : '🧩', ' ', it.title, uses[it.key] ? h('span', { class: 'muted small' }, ` ${uses[it.key]}`) : null)));
 }
 
 export async function myTools(root) {
@@ -105,6 +128,9 @@ export async function toolRunner(root) {
   const full = () => (document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen?.().catch(() => {}));
   const back = h('a', { class: 'btn', href: '#/desk/market/overview' }, '← Teachshop');
   const builtin = toolById(qs.get('tool'));
+  const key = builtin ? `b:${builtin.id}` : `r:${qs.get('id')}`;
+  remember('ws_recent', [key, ...(remember('ws_recent') || []).filter((k) => k !== key)].slice(0, 8));
+  const uses = remember('ws_uses') || {}; uses[key] = (uses[key] || 0) + 1; remember('ws_uses', uses);
   if (builtin) {
     const students = await roster().catch(() => []);
     const ctx = {

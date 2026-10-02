@@ -26,7 +26,18 @@ export const DEFAULT_LISTS = {
   leaveKinds: ['출장', '조퇴', '외출', '지참', '연가', '병가', '공가', '특별휴가', '기타'],
   periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '방과후'],
   resourceCategories: ['공문 서식', '업무 양식', '매뉴얼·지침', '수업 자료', '기타'],
+  subjects: ['국어', '수학', '사회', '과학', '영어', '도덕', '실과', '체육', '음악', '미술', '바른 생활', '슬기로운 생활', '즐거운 생활', '창의적 체험활동'],
 };
+
+// 평가 단계 체계: 앞쪽일수록 높은 단계
+export const EVAL_SCALES = {
+  '3단계': ['잘함', '보통', '노력 요함'],
+  '4단계': ['매우 잘함', '잘함', '보통', '노력 요함'],
+  '상중하': ['상', '중', '하'],
+  'A~E': ['A', 'B', 'C', 'D', 'E'],
+  '도달/미도달': ['도달', '미도달'],
+};
+export const scaleOf = (plan) => EVAL_SCALES[plan?.data?.scale] || EVAL_SCALES['3단계'];
 
 // 학사일정 색 분류 (순서 = 범례 순서)
 export const CATEGORIES = [
@@ -442,13 +453,16 @@ export const MODULES = {
     ],
   },
   evalPlans: {
-    label: '평가', icon: '📝', scope: 'year', edit: 'staff', space: 'desk', extras: ['scores'],
+    label: '평가', icon: '📝', scope: 'year', edit: 'staff', space: 'desk', extras: ['scores', 'rubric'],
     fields: [
-      { key: 'subject', label: '과목', type: 'text', required: true },
-      { key: 'area', label: '영역·단원', type: 'text' },
-      { key: 'standard', label: '성취기준·평가 요소', type: 'textarea' },
+      { key: 'subject', label: '과목', type: 'select', list: 'subjects', free: true, required: true },
+      { key: 'area', label: '영역·단원', type: 'text', hint: '예) 3. 글의 짜임' },
+      { key: 'code', label: '성취기준 코드', type: 'text', hint: '예) [6국03-02]' },
+      { key: 'standard', label: '성취기준', type: 'textarea' },
+      { key: 'element', label: '평가 요소', type: 'text', hint: '예) 글의 짜임을 생각하며 내용 간추리기' },
+      { key: 'method', label: '평가 방법', type: 'select', options: ['서술형', '논술형', '구술', '실기', '관찰', '포트폴리오', '프로젝트', '자기평가', '동료평가', '기타'], free: true },
       { key: 'timing', label: '시기', type: 'text', hint: '예) 4월 2주' },
-      { key: 'method', label: '방법', type: 'select', options: ['서술형', '논술형', '구술', '실기', '관찰', '포트폴리오', '프로젝트', '기타'], free: true },
+      { key: 'scale', label: '평가 단계', type: 'select', options: ['3단계', '4단계', '상중하', 'A~E', '도달/미도달'] },
     ],
   },
   notes: {
@@ -477,6 +491,7 @@ export const MODULES = {
       { key: 'kind', label: '종류', type: 'select', options: ['자료 링크', 'HTML 도구'], hint: 'HTML 도구: 직접 만든(또는 AI로 만든) 한 장짜리 HTML 수업 도구를 붙여넣으면 공방에서 바로 실행됩니다' },
       { key: 'category', label: '분류', type: 'select', options: ['수업 도구', '수업 활동', '학급 운영', '평가', '학습지', '업무 서식', '기타'] },
       { key: 'title', label: '제목', type: 'text', required: true },
+      { key: 'icon', label: '아이콘', type: 'text', hint: '이모지 하나 (예: 🧩 🎯 📚 🧪) — 카드 그림으로 쓰입니다' },
       { key: 'grades', label: '학년·과목', type: 'text', hint: '예) 5학년 수학, 전학년' },
       { key: 'desc', label: '설명', type: 'textarea' },
       { key: 'link', label: '자료 링크', type: 'url', hint: '자료 링크일 때: 드라이브·패들렛 등 공유 링크' },
@@ -548,7 +563,7 @@ export const DESK_GROUPS = [
     { id: 'progress', label: '진도·시수', module: 'progress' },
   ] },
   { id: 'eval', label: '평가', icon: '📝', tabs: [
-    { id: 'overview', label: '평가 기록', module: 'evalPlans' },
+    { id: 'overview', label: '평가 현황·기록', module: 'evalPlans' },
     { id: 'students', label: '학생별 결과' },
     { id: 'remarks', label: '특기사항', module: 'remarks' },
   ] },

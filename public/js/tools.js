@@ -223,6 +223,212 @@ export const TOOLS = [
       paint();
     },
   },
+
+  {
+    id: 'screen', name: '교실 화면', icon: '🖥', color: '#4f46e5', cat: '학급 운영', roster: true, featured: true,
+    desc: '시계·타이머·활동 신호·오늘 시간표·알림장·이름 뽑기를 한 화면에. 교실 TV에 띄워 두는 대시보드',
+    run(el, ctx) { renderScreen(el, ctx); },
+  },
+  {
+    id: 'roulette', name: '룰렛', icon: '🎡', color: '#f59e0b', cat: '수업 도구', roster: true,
+    desc: '학생 이름이나 직접 쓴 항목으로 돌리는 룰렛. 벌칙·역할·주제 정하기',
+    run(el, ctx) {
+      const src = h('textarea', { rows: 4, placeholder: '비우면 학생 명단 사용. 직접 쓰려면 한 줄에 하나', value: ctx.load('items') || '' });
+      const cv = h('canvas', { width: 420, height: 420, class: 'wheel' });
+      const res = h('div', { class: 'tool-big', style: { fontSize: '48px', padding: '10px 0' } }, '');
+      let angle = 0; let spinning = false;
+      const items = () => { const t = src.value.split('\n').map((x) => x.trim()).filter(Boolean); return t.length ? t : ctx.students.map((s) => s.name); };
+      const colors = ['#f87171', '#fb923c', '#facc15', '#4ade80', '#38bdf8', '#818cf8', '#e879f9', '#f472b6'];
+      const draw = () => {
+        const list = items(); const g = cv.getContext('2d'); const n = Math.max(1, list.length); const r = 200;
+        g.clearRect(0, 0, 420, 420); g.save(); g.translate(210, 210); g.rotate(angle);
+        list.forEach((t, i) => {
+          g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, r, (i / n) * 2 * Math.PI, ((i + 1) / n) * 2 * Math.PI); g.fillStyle = colors[i % colors.length]; g.fill();
+          g.save(); g.rotate(((i + 0.5) / n) * 2 * Math.PI); g.fillStyle = '#1f2937'; g.font = `bold ${n > 24 ? 11 : 15}px sans-serif`; g.textAlign = 'right'; g.fillText(t.slice(0, 8), r - 12, 5); g.restore();
+        });
+        g.restore(); g.beginPath(); g.moveTo(400, 210); g.lineTo(420, 198); g.lineTo(420, 222); g.fillStyle = '#111827'; g.fill();
+      };
+      const spin = () => {
+        if (spinning) return; const list = items(); if (!list.length) return;
+        spinning = true; ctx.save('items', src.value); res.textContent = '';
+        const start = angle; const total = 8 * Math.PI + Math.random() * 2 * Math.PI; const t0 = performance.now(); const dur = 3800;
+        const step = (now) => {
+          const k = Math.min(1, (now - t0) / dur); angle = start + total * (1 - (1 - k) ** 3); draw();
+          if (k < 1 && el.isConnected) return requestAnimationFrame(step);
+          spinning = false;
+          const n = list.length; const a = ((2 * Math.PI - (angle % (2 * Math.PI))) % (2 * Math.PI));
+          res.textContent = `🎉 ${list[Math.floor(a / (2 * Math.PI / n)) % n]}`;
+        };
+        requestAnimationFrame(step);
+      };
+      src.addEventListener('input', draw);
+      clear(el, h('div', { class: 'two-col' }, h('div', { class: 'center' }, cv, res, h('button', { class: 'btn primary big', onclick: spin }, '돌리기')),
+        h('div', { class: 'form' }, h('div', { class: 'row' }, h('label', {}, '항목'), src), h('p', { class: 'hint' }, '비워 두면 우리 반 학생 이름으로 돌립니다.'))));
+      draw();
+    },
+  },
+  {
+    id: 'dice', name: '주사위', icon: '🎯', color: '#0ea5e9', cat: '수업 도구', roster: false,
+    desc: '주사위 1~4개 굴리기. 보드게임·수학 확률 수업',
+    run(el) {
+      const FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+      const n = h('select', {}, [1, 2, 3, 4].map((k) => h('option', { value: k }, `${k}개`)));
+      const out = h('div', { class: 'dice-row' });
+      const sum = h('div', { class: 'muted', style: { fontSize: '22px' } });
+      const roll = () => {
+        let k = 0;
+        const t = setInterval(() => {
+          const v = Array.from({ length: Number(n.value) }, () => Math.floor(Math.random() * 6));
+          clear(out, v.map((x) => h('span', {}, FACES[x]))); sum.textContent = `합계 ${v.reduce((a, x) => a + x + 1, 0)}`;
+          if (++k > 10) clearInterval(t);
+        }, 70);
+      };
+      clear(el, out, sum, h('div', { class: 'tool-bar' }, n, h('button', { class: 'btn primary big', onclick: roll }, '굴리기')));
+      roll();
+    },
+  },
+  {
+    id: 'pairs', name: '짝 정하기', icon: '🤝', color: '#10b981', cat: '수업 활동', roster: true,
+    desc: '무작위 짝 만들기. 지난번 짝은 되도록 피하고, 홀수면 3인 1조',
+    run(el, ctx) {
+      const out = h('div', { class: 'group-grid' });
+      const make = () => {
+        const hist = new Set(ctx.load('hist') || []);
+        let best = null; let bestScore = Infinity;
+        for (let t = 0; t < 200; t++) {
+          const order = shuffle(ctx.students.map((s) => s.name)); const pairs = [];
+          for (let i = 0; i < order.length; i += 2) pairs.push(order.slice(i, i + 2));
+          if (pairs.length > 1 && pairs.at(-1).length === 1) pairs.at(-2).push(pairs.pop()[0]);
+          const score = pairs.reduce((a, p) => a + (hist.has([...p].sort().join('|')) ? 1 : 0), 0);
+          if (score < bestScore) { best = pairs; bestScore = score; if (!score) break; }
+        }
+        clear(out, best.map((p, i) => h('div', { class: 'group-card' }, h('strong', {}, `${i + 1}`), p.join(' · '))));
+        out._pairs = best;
+      };
+      clear(el, needRoster(ctx), h('div', { class: 'tool-bar' }, h('button', { class: 'btn primary', onclick: make }, '🔀 짝 정하기'),
+        h('button', { class: 'btn', onclick: () => { if (!out._pairs) return; const hist = new Set(ctx.load('hist') || []); out._pairs.forEach((p) => hist.add([...p].sort().join('|'))); ctx.save('hist', [...hist].slice(-300)); toast('이 짝을 기억했습니다. 다음에는 되도록 피합니다.'); } }, '이 짝으로 확정'),
+        h('button', { class: 'btn small', onclick: () => { ctx.save('hist', []); toast('지난 짝 기록을 지웠습니다.'); } }, '기록 지우기')), out);
+      if (ctx.students.length) make();
+    },
+  },
+  {
+    id: 'vote', name: '손들기 투표', icon: '📊', color: '#8b5cf6', cat: '수업 활동', roster: false,
+    desc: '선택지를 쓰고 손 든 수를 눌러 세면 막대그래프로. 의견 모으기·예상하기',
+    run(el, ctx) {
+      const src = h('input', { value: ctx.load('opts') || '찬성, 반대, 잘 모르겠음', placeholder: '선택지를 쉼표로' });
+      const box = h('div', { class: 'vote-box' });
+      let counts = {};
+      const draw = () => {
+        const opts = src.value.split(',').map((x) => x.trim()).filter(Boolean); ctx.save('opts', src.value);
+        const max = Math.max(1, ...opts.map((o) => counts[o] || 0)); const total = opts.reduce((a, o) => a + (counts[o] || 0), 0);
+        clear(box, opts.map((o, i) => h('div', { class: 'vote-row' },
+          h('span', { class: 'vote-label' }, o),
+          h('div', { class: 'vote-bar' }, h('i', { style: { width: `${((counts[o] || 0) / max) * 100}%`, background: ['#8b5cf6', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#64748b'][i % 6] } })),
+          h('strong', { class: 'vote-num' }, counts[o] || 0, total ? h('span', { class: 'muted small' }, ` ${Math.round(((counts[o] || 0) / total) * 100)}%`) : null),
+          h('button', { class: 'btn small', onclick: () => { counts[o] = Math.max(0, (counts[o] || 0) - 1); draw(); } }, '−'),
+          h('button', { class: 'btn small primary', onclick: () => { counts[o] = (counts[o] || 0) + 1; draw(); } }, '+'))));
+      };
+      src.addEventListener('change', draw);
+      clear(el, h('div', { class: 'tool-bar' }, src, h('button', { class: 'btn small', onclick: () => { counts = {}; draw(); } }, '초기화')), box);
+      draw();
+    },
+  },
+  {
+    id: 'flash', name: '단어 카드', icon: '🃏', color: '#ec4899', cat: '수업 활동', roster: false,
+    desc: '단어|뜻을 붙여넣으면 카드 뒤집기 복습. 영어 단어·한자·개념어',
+    run(el, ctx) {
+      const ta = h('textarea', { rows: 5, value: ctx.load('src') || 'apple | 사과\nlibrary | 도서관\nphotosynthesis | 광합성' });
+      const card = h('button', { class: 'flash-card' });
+      let cards = []; let i = 0; let back = false;
+      const parse = () => { ctx.save('src', ta.value); cards = ta.value.split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((p) => p[0]); i = 0; back = false; show(); };
+      const show = () => { const c = cards[i]; clear(card, c ? h('div', {}, h('div', { class: 'muted small' }, `${i + 1} / ${cards.length} · ${back ? '뜻' : '단어'}`), h('div', { class: 'flash-text' }, back ? c[1] || '' : c[0])) : '카드가 없습니다'); card.classList.toggle('back', back); };
+      card.onclick = () => { back = !back; show(); };
+      clear(el, card, h('div', { class: 'tool-bar' },
+        h('button', { class: 'btn', onclick: () => { i = (i - 1 + cards.length) % cards.length; back = false; show(); } }, '◀'),
+        h('button', { class: 'btn primary', onclick: () => { back = !back; show(); } }, '뒤집기'),
+        h('button', { class: 'btn', onclick: () => { i = (i + 1) % cards.length; back = false; show(); } }, '▶'),
+        h('button', { class: 'btn', onclick: () => { cards = shuffle(cards); i = 0; back = false; show(); } }, '🔀 섞기')),
+      h('details', { class: 'card' }, h('summary', {}, '카드 편집 (한 줄에 "단어 | 뜻")'), ta, h('button', { class: 'btn small', onclick: parse }, '적용')));
+      parse();
+    },
+  },
+  {
+    id: 'signal', name: '활동 신호', icon: '🤫', color: '#64748b', cat: '학급 운영', roster: false,
+    desc: '지금 할 활동을 크게: 조용히 혼자 · 짝 활동 · 모둠 활동 · 손 들고 말하기 · 정리 시간',
+    run(el, ctx) {
+      const SIG = [['🤫', '조용히 혼자', '#334155'], ['👫', '짝과 함께', '#0ea5e9'], ['👥', '모둠 활동', '#10b981'], ['🙋', '손 들고 말하기', '#f59e0b'], ['👀', '선생님 보기', '#8b5cf6'], ['🧹', '정리 시간', '#ef4444']];
+      const big = h('div', { class: 'signal-big' });
+      const set = (k) => { ctx.save('k', k); const [ic, t, c] = SIG[k]; big.style.setProperty('--c', c); clear(big, h('div', { class: 'signal-ico' }, ic), h('div', { class: 'signal-text' }, t)); };
+      clear(el, big, h('div', { class: 'tool-bar' }, SIG.map(([ic, t], k) => h('button', { class: 'btn', onclick: () => set(k) }, `${ic} ${t}`))));
+      set(ctx.load('k') || 0);
+    },
+  },
+  {
+    id: 'qr', name: 'QR 만들기', icon: '🔳', color: '#111827', cat: '수업 도구', roster: false,
+    desc: '링크를 크게 QR로 띄우기. 패들렛·설문·자료를 학생 기기로 바로',
+    run(el, ctx) {
+      const url = h('input', { value: ctx.load('url') || 'https://', style: { minWidth: '320px' } });
+      const box = h('div', { class: 'qr-big' });
+      const make = async () => {
+        ctx.save('url', url.value);
+        if (!window.qrcode) await new Promise((r) => { const s = document.createElement('script'); s.src = '/vendor/qrcode.js'; s.onload = r; document.head.append(s); });
+        const q = window.qrcode(0, 'M'); q.addData(url.value || ' '); q.make(); box.innerHTML = q.createSvgTag({ cellSize: 10, margin: 2, scalable: true });
+      };
+      url.addEventListener('change', make);
+      clear(el, h('div', { class: 'tool-bar' }, url, h('button', { class: 'btn primary', onclick: make }, '만들기')), box, h('p', { class: 'center muted' }, '휴대폰·태블릿 카메라로 비추면 열립니다.'));
+      make();
+    },
+  },
+  {
+    id: 'board', name: '판서 칠판', icon: '✏️', color: '#15803d', cat: '수업 도구', roster: false,
+    desc: '전자칠판처럼 손·펜으로 쓰기. 색·지우개·전체 지우기',
+    run(el) {
+      const cv = h('canvas', { class: 'chalk' });
+      let color = '#ffffff'; let size = 4; let drawing = false; let last = null;
+      const fit = () => { const r = cv.getBoundingClientRect(); const img = cv.width ? cv.getContext('2d').getImageData(0, 0, cv.width, cv.height) : null; cv.width = r.width; cv.height = r.height; if (img) cv.getContext('2d').putImageData(img, 0, 0); };
+      const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+      cv.addEventListener('pointerdown', (e) => { drawing = true; last = pos(e); cv.setPointerCapture(e.pointerId); });
+      cv.addEventListener('pointermove', (e) => { if (!drawing) return; const g = cv.getContext('2d'); const p = pos(e); g.strokeStyle = color; g.lineWidth = color === 'erase' ? 28 : size; g.lineCap = 'round'; g.globalCompositeOperation = color === 'erase' ? 'destination-out' : 'source-over'; g.beginPath(); g.moveTo(...last); g.lineTo(...p); g.stroke(); last = p; });
+      cv.addEventListener('pointerup', () => { drawing = false; });
+      clear(el, h('div', { class: 'tool-bar' },
+        ['#ffffff', '#fde047', '#f87171', '#60a5fa', '#4ade80'].map((c) => h('button', { class: 'swatch', style: { background: c, width: '30px', height: '30px' }, onclick: () => { color = c; } })),
+        h('button', { class: 'btn small', onclick: () => { color = 'erase'; } }, '지우개'),
+        h('select', { onchange: (e) => { size = Number(e.target.value); } }, [[4, '보통'], [2, '가늘게'], [8, '굵게']].map(([v, l]) => h('option', { value: v }, l))),
+        h('button', { class: 'btn small', onclick: () => cv.getContext('2d').clearRect(0, 0, cv.width, cv.height) }, '전체 지우기')), cv);
+      requestAnimationFrame(fit); window.addEventListener('resize', () => el.isConnected && fit());
+    },
+  },
 ];
 
 export const toolById = (id) => TOOLS.find((t) => t.id === id);
+
+// 🖥 교실 화면: 위젯을 골라 한 화면에 (선택은 이 기기에 저장)
+const WIDGETS = [
+  ['clock', '🕘 시계'], ['timer', '⏱ 타이머'], ['signal', '🤫 활동 신호'], ['lessons', '🗓 오늘 시간표'], ['note', '📒 오늘 알림장'], ['picker', '🎲 이름 뽑기'], ['text', '📝 메모'],
+];
+async function renderScreen(el, ctx) {
+  const on = new Set(ctx.load('w') || ['clock', 'timer', 'signal', 'lessons', 'note', 'picker']);
+  const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+  const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  let extra = { lessons: null, note: null };
+  try {
+    const { api } = await import('./ui.js'); const { state } = await import('./state.js');
+    const d = await api(`/api/bundle?year=${state.year}&modules=myTimetable,dailyNotes`);
+    const tt = d.myTimetable[0]?.data.grid; const di = tt ? tt.days.indexOf(DOW[today.getDay()]) : -1;
+    extra.lessons = tt && di >= 0 ? tt.periods.map((p, pi) => [p, tt.cells[pi]?.[di] || '']) : [];
+    extra.note = d.dailyNotes.find((n) => n.data.date === ymd)?.data || null;
+  } catch { /* 체험·오프라인 */ }
+  const grid = h('div', { class: 'screen-grid' });
+  const W = {
+    clock: () => { const t = h('div', { class: 'scr-clock' }); const d = h('div', { class: 'muted' }); const tick = () => { if (!t.isConnected) return; const n = new Date(); t.textContent = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; d.textContent = `${n.getMonth() + 1}월 ${n.getDate()}일 ${DOW[n.getDay()]}요일`; setTimeout(tick, 1000 * 15); }; setTimeout(tick); return [t, d]; },
+    timer: () => { const box = h('div', {}); toolById('timer').run(box, ctx); return box; },
+    signal: () => { const box = h('div', {}); toolById('signal').run(box, ctx); return box; },
+    lessons: () => (extra.lessons?.length ? h('ul', { class: 'scr-lessons' }, extra.lessons.map(([p, t]) => h('li', {}, h('span', { class: 'muted' }, p), ' ', t || '-'))) : h('p', { class: 'muted' }, 'Deskterior → 수업 → 내 시간표를 만들면 보입니다.')),
+    note: () => (extra.note ? h('div', {}, h('ol', { class: 'scr-note' }, String(extra.note.content).split('\n').filter(Boolean).map((l) => h('li', {}, l))), extra.note.supplies ? h('div', {}, '🎒 ', extra.note.supplies) : null) : h('p', { class: 'muted' }, '오늘 알림장이 없습니다.')),
+    picker: () => { const out = h('div', { class: 'scr-pick' }, '🎲'); return [out, h('button', { class: 'btn primary', onclick: () => { const s = ctx.students; if (s.length) out.textContent = s[Math.floor(Math.random() * s.length)].name; } }, '뽑기')]; },
+    text: () => h('div', { class: 'scr-text', contenteditable: 'true', oninput: (e) => ctx.save('text', e.target.innerText) }, ctx.load('text') || '여기에 적으세요 ✍️'),
+  };
+  const draw = () => clear(grid, WIDGETS.filter(([k]) => on.has(k)).map(([k, name]) => h('section', { class: `scr-card scr-w-${k}` }, h('div', { class: 'scr-title' }, name), W[k]())));
+  clear(el, h('div', { class: 'tool-bar' }, WIDGETS.map(([k, name]) => h('label', { class: 'inline' }, h('input', { type: 'checkbox', checked: on.has(k), onchange: (e) => { if (e.target.checked) on.add(k); else on.delete(k); ctx.save('w', [...on]); draw(); } }), ` ${name}`))), grid);
+  draw();
+}

@@ -230,3 +230,52 @@ export function normClass(s) {
   const m = t.match(/(\d)\s*(?:학년|-)\s*(\d{1,2})\s*반?/);
   return m ? `${m[1]}-${m[2]}` : t;
 }
+
+// ---------- 평가 계획 인식 ----------
+//   표: 머리글(교과·영역·성취기준·평가 요소·방법·시기)로 칸 찾기 / 줄글: "과목 | 영역 | 성취기준 | 시기 | 방법"
+const EV_COLS = {
+  subject: /^(교\s*과|과\s*목|교과목)$/,
+  area: /^(영\s*역|단\s*원|영역\s*\(단원\)|단원명|영역·단원)$/,
+  standard: /(성취\s*기준)/,
+  element: /(평가\s*요소|평가\s*내용)/,
+  method: /^(평가\s*방법|방\s*법|평가\s*유형)$/,
+  timing: /^(시\s*기|평가\s*시기|월|시행\s*시기)$/,
+};
+const CODE_RE = /\[(\d{1,2}[가-힣]{1,3}\s?\d{2}-\d{2}(?:-\d{2})?)\]/;
+
+export function parseEvalPlans(src) {
+  const out = [];
+  const push = (o) => {
+    const std = String(o.standard || '').trim();
+    const m = std.match(CODE_RE);
+    const code = o.code || (m ? `[${m[1].replace(/\s/g, '')}]` : '');
+    const standard = m ? std.replace(m[0], '').trim() : std;
+    if (!o.subject || !(standard || o.element || o.area)) return;
+    out.push({ subject: o.subject.trim(), area: (o.area || '').trim(), code, standard, element: (o.element || '').trim(), method: (o.method || '').trim(), timing: (o.timing || '').trim() });
+  };
+  for (const table of src.tables) {
+    let map = null;
+    let last = {};
+    for (const row of table) {
+      const cells = row.map((c) => String(c || '').replace(/\s+/g, ' ').trim());
+      const cand = {};
+      cells.forEach((c, i) => { for (const [k, re] of Object.entries(EV_COLS)) if (cand[k] === undefined && re.test(c)) cand[k] = i; });
+      if (cand.standard !== undefined && Object.keys(cand).length >= 2) { map = cand; last = {}; continue; }
+      if (!map) {
+        // 머리글이 없는 붙여넣기: 과목 | 영역 | 성취기준 | 시기 | 방법
+        if (cells.length >= 3 && CODE_RE.test(cells.join(' '))) push({ subject: cells[0], area: cells[1], standard: cells[2], timing: cells[3], method: cells[4] });
+        continue;
+      }
+      const get = (k) => (map[k] !== undefined ? cells[map[k]] || '' : '');
+      const o = { subject: get('subject') || last.subject, area: get('area') || last.area, standard: get('standard'), element: get('element'), method: get('method'), timing: get('timing') || last.timing };
+      if (!o.standard && !o.element) continue;
+      last = o;
+      push(o);
+    }
+  }
+  for (const line of src.lines) {
+    const p = line.split('|').map((x) => x.trim());
+    if (p.length >= 3) push({ subject: p[0], area: p[1], standard: p[2], timing: p[3], method: p[4] });
+  }
+  return out;
+}
