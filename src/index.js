@@ -342,6 +342,7 @@ app.post('/api/records/:module', async (c) => {
   const body = await c.req.json();
   const clean = normalizeData(m, body.data);
   if (m === 'market') { clean.likes = []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); }
+  if (m === 'activities') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
   const year = body.year || (t.member ? (await getSettings(c.env.DB, t.member.schoolId)).currentYear : new Date().getFullYear());
   const p = placement(m, clean, year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
@@ -366,6 +367,7 @@ app.put('/api/records/:module/:id', async (c) => {
   const body = await c.req.json();
   const prevData = JSON.parse(prev.data);
   const clean = normalizeData(m, body.data);
+  if (m === 'activities') clean.token = prevData.token || randomToken(16);
   if (m === 'market') { clean.likes = prevData.likes || []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); } // 좋아요는 각자 버튼으로만
   const p = placement(m, clean, prev.year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
@@ -395,6 +397,7 @@ app.delete('/api/records/:module/:id', async (c) => {
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
+  if (m === 'activities') await c.env.DB.prepare('DELETE FROM submissions WHERE activity_id = ?').bind(id).run();
   if (t.space === 'school') await audit(c, 'delete', m, id, m === 'secrets' ? null : prev.data);
   return c.json({ ok: true });
 });
@@ -748,6 +751,73 @@ app.get('/api/admin/export', async (c) => {
 app.all('/api/*', (c) => c.json({ error: '없는 주소입니다.' }, 404));
 
 // 매일 새벽 자동: 학교마다 나이스 학사일정 동기화 (wrangler.toml [triggers])
+// ---------- 학생 제출 (로그인 없이 링크로) ----------
+//   /pub/a/:token  GET  활동 정보(+보드 글) · POST 제출. 교사 화면은 /api/activities/:id/submissions
+const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map((x) => x.toString(16).padStart(2, '0')).join('');
+async function activityByToken(db, token) {
+  if (!/^[a-f0-9]{24,64}$/.test(String(token))) return null;
+  const row = await db.prepare("SELECT id, owner, data FROM records WHERE module = 'activities' AND json_extract(data, '$.token') = ?").bind(token).first();
+  return row ? { id: row.id, owner: row.owner, data: JSON.parse(row.data) } : null;
+}
+const subLimit = (a) => Number(a.data.limit) || (a.data.kind === '클래스 보드' ? 300 : 2000);
+async function boardPosts(env, a) {
+  const rows = (await env.DB.prepare('SELECT id, num, name, body, created_at FROM submissions WHERE activity_id = ? AND hidden = 0 ORDER BY id DESC LIMIT 200').bind(a.id).all()).results;
+  const out = [];
+  for (const r of rows) out.push({ id: r.id, name: a.data.showNames ? await decryptText(env, r.name).catch(() => '') : '', body: await decryptText(env, r.body).catch(() => ''), at: r.created_at });
+  return out;
+}
+app.get('/pub/a/:token', async (c) => {
+  const a = await activityByToken(c.env.DB, c.req.param('token'));
+  if (!a) return c.json({ error: '활동을 찾을 수 없습니다. 선생님께 링크를 다시 받아 주세요.' }, 404);
+  const base = { title: a.data.title, kind: a.data.kind, subject: a.data.subject || '', question: a.data.question || '', open: !!a.data.open, limit: subLimit(a), showNames: !!a.data.showNames };
+  if (a.data.kind === '클래스 보드') base.posts = await boardPosts(c.env, a);
+  return c.json(base);
+});
+app.post('/pub/a/:token', async (c) => {
+  if (c.req.header('x-requested-with') !== 'gyomusil-pub') return c.json({ error: '잘못된 요청입니다.' }, 400);
+  const a = await activityByToken(c.env.DB, c.req.param('token'));
+  if (!a) return c.json({ error: '활동을 찾을 수 없습니다.' }, 404);
+  if (!a.data.open) return c.json({ error: '지금은 제출을 받지 않습니다.' }, 403);
+  const b = await c.req.json().catch(() => ({}));
+  const num = String(b.num || '').trim().slice(0, 4);
+  const name = String(b.name || '').trim().slice(0, 20);
+  const body = String(b.body || '').trim();
+  if (!body) return c.json({ error: '내용을 입력해 주세요.' }, 400);
+  if ([...body].length > subLimit(a)) return c.json({ error: `${subLimit(a)}자 이내로 써 주세요.` }, 400);
+  if (a.data.kind !== '클래스 보드' && !name) return c.json({ error: '이름을 입력해 주세요.' }, 400);
+  const recent = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM submissions WHERE activity_id = ? AND created_at > datetime('now', '-1 minute')").bind(a.id).first();
+  if ((recent?.n || 0) > 150) return c.json({ error: '잠시 후 다시 시도해 주세요.' }, 429);
+  const encName = await encryptText(c.env, name);
+  const encBody = await encryptText(c.env, body);
+  if (a.data.kind === '클래스 보드') {
+    await c.env.DB.prepare('INSERT INTO submissions (activity_id, owner, num, name, body) VALUES (?, ?, ?, ?, ?)').bind(a.id, a.owner, num, encName, encBody).run();
+    return c.json({ ok: true, posts: await boardPosts(c.env, a) });
+  }
+  const who = await sha(`${a.id}|${num}|${name.replace(/\s/g, '')}`);
+  const prev = await c.env.DB.prepare('SELECT id FROM submissions WHERE activity_id = ? AND who = ?').bind(a.id, who).first();
+  if (prev) await c.env.DB.prepare("UPDATE submissions SET body = ?, name = ?, num = ?, hidden = 0, updated_at = datetime('now') WHERE id = ?").bind(encBody, encName, num, prev.id).run();
+  else await c.env.DB.prepare('INSERT INTO submissions (activity_id, owner, who, num, name, body) VALUES (?, ?, ?, ?, ?, ?)').bind(a.id, a.owner, who, num, encName, encBody).run();
+  return c.json({ ok: true, updated: !!prev });
+});
+app.get('/api/activities/:id/submissions', async (c) => {
+  const id = c.req.param('id');
+  const a = await c.env.DB.prepare("SELECT id FROM records WHERE id = ? AND module = 'activities' AND owner = ?").bind(id, c.get('user').email).first();
+  if (!a) return c.json({ error: '활동을 찾을 수 없습니다.' }, 404);
+  const rows = (await c.env.DB.prepare('SELECT * FROM submissions WHERE activity_id = ? ORDER BY id').bind(id).all()).results;
+  const out = [];
+  for (const r of rows) out.push({ id: r.id, num: r.num, name: await decryptText(c.env, r.name).catch(() => ''), body: await decryptText(c.env, r.body).catch(() => '(복호화 실패)'), hidden: !!r.hidden, createdAt: r.created_at, updatedAt: r.updated_at });
+  return c.json(out);
+});
+app.post('/api/activities/:id/submissions/:sid/hide', async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const r = await c.env.DB.prepare('UPDATE submissions SET hidden = ? WHERE id = ? AND activity_id = ? AND owner = ?').bind(b.hidden === false ? 0 : 1, Number(c.req.param('sid')), c.req.param('id'), c.get('user').email).run();
+  return r.meta.changes ? c.json({ ok: true }) : c.json({ error: '찾을 수 없습니다.' }, 404);
+});
+app.delete('/api/activities/:id/submissions', async (c) => {
+  await c.env.DB.prepare('DELETE FROM submissions WHERE activity_id = ? AND owner = ?').bind(c.req.param('id'), c.get('user').email).run();
+  return c.json({ ok: true });
+});
+
 async function scheduled(_event, env, ctx) {
   ctx.waitUntil((async () => {
     if (!env.NEIS_API_KEY) return;

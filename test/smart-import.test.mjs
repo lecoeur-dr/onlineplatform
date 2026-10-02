@@ -104,3 +104,21 @@ test('분석적 루브릭: 같은 수준이라도 관점·근거에 따라 다�
   assert.equal(r.criteria[0].rubric['잘함'], '나');
   assert.equal(suggestCriteria('실험 보고서')[0], '탐구 계획과 수행');
 });
+
+test('평가 도구: AI 채점 결과·시험문제 읽기, 평가계획 점검', async () => {
+  const { parseAiScores, parseAiExam, checkPlan } = await import('../public/js/eval-text.js');
+  const L = ['매우 잘함', '잘함', '보통', '노력 요함'];
+  const r = parseAiScores('S01 | 원리=매우 잘함; 수행=보통 | 근거: 근거함 | 피드백: 좋아요\n잡담\nS02 | 종합=보 통', L, ['원리', '수행']);
+  assert.deepEqual(r.get('S01').crit, { 원리: '매우 잘함', 수행: '보통' });
+  assert.equal(r.get('S01').level, '잘함');
+  assert.equal(r.get('S01').evidence, '근거함');
+  assert.equal(r.get('S02').level, '보통');
+  const ex = parseAiExam('답: {"items":[{"q":"문제","choices":["가","나"],"answer":"1"},{"q":""}]}');
+  assert.equal(ex.length, 1);
+  assert.equal(ex[0].type, '객관식');
+  const ok = checkPlan({ standard: '[6과05-01] 가', element: '요소', method: '보고서', timing: '9월', unit: '1. 단원', semester: '2학기', criteria: [{ name: 'A', rubric: { 상: 'x', 중: 'y', 하: 'z' } }] }, { levels: ['상', '중', '하'] });
+  assert.equal(ok.length, 0);
+  const bad = checkPlan({ standard: '[4과01-01] 가', element: '요소', method: '보고서', timing: '9월', unit: 'u', semester: '1학기', rubric: { 상: 'a', 중: 'a' } }, { levels: ['상', '중', '하'], classGrade: '6학년', bandOf: (g) => (g.startsWith('6') ? '5~6학년' : ''), bandOfCode: () => '3~4학년' });
+  assert.ok(bad.some((x) => x.msg.includes('학년군')));
+  assert.ok(bad.some((x) => x.msg.includes('빈 칸')));
+});

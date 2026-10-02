@@ -27,13 +27,41 @@ export async function studentCards(root) {
   };
   const q = remember('sc_q') || '';
   const shown = students.filter((s) => !q || s.data.name.includes(q));
+  // 오늘 현황 (선생님의 책상 학급 홈 참고): 출석·지각·결석·조퇴 + 이번 주 누가기록
+  const todayAtt = d.attendance.filter((a) => a.data.date === t);
+  const attOf = (name) => todayAtt.find((a) => a.data.student === name)?.data.type || '';
+  const wk = [addDays(t, -((dowOf(t) + 6) % 7)), addDays(t, 6 - ((dowOf(t) + 6) % 7))];
+  const weekNotes = (name) => (notes.get(name) || []).filter((n) => n.data.date >= wk[0] && n.data.date <= wk[1]).length;
+  const absent = (k) => todayAtt.filter((a) => a.data.type === k).length;
+  const view = remember('sc_view') || 'card';
+  const phone = (g) => String(g || '').match(/01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}/)?.[0];
+  const kpis = h('div', { class: 'kpi-grid' },
+    h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '오늘 출석'), h('div', { class: 'kpi-value' }, students.length - absent('결석'), h('span', { class: 'muted small' }, ` / ${students.length}명`))),
+    h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '지각·조퇴'), h('div', { class: 'kpi-value' }, absent('지각') + absent('조퇴') + absent('결과'), h('span', { class: 'muted small' }, ' 명'))),
+    h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '결석'), h('div', { class: `kpi-value ${absent('결석') ? 'danger' : ''}` }, absent('결석'), h('span', { class: 'muted small' }, ' 명'))),
+    h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '이번 주 누가기록'), h('div', { class: 'kpi-value' }, d.notes.filter((n) => n.data.date >= wk[0] && n.data.date <= wk[1]).length, h('span', { class: 'muted small' }, ' 건'))));
+  const table = () => h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+    h('thead', {}, h('tr', {}, ['번호', '이름', '오늘 출결', '칭찬', '이번 주 기록', '보호자'].map((x) => h('th', {}, x)))),
+    h('tbody', {}, shown.map((s) => {
+      const name = s.data.name;
+      const a = attOf(name);
+      const tel = phone(s.data.guardian);
+      return h('tr', { class: 'click', onclick: () => studentProfile(s, d, reload) },
+        h('td', { class: 'num' }, String(s.data.num ?? '').padStart(2, '0')), h('td', {}, h('strong', {}, name), s.data.health ? h('span', { class: 'sc-alert', title: s.data.health }, ' ⚠') : null),
+        h('td', {}, h('span', { class: 'tag', style: { '--c': a ? ATT_COLOR[a] : 'var(--ok)', color: a ? ATT_COLOR[a] : 'var(--ok)' } }, a || '출석')),
+        h('td', {}, h('span', { class: 'tag' }, `⭐ ${(pts.get(name) || []).reduce((x, p) => x + (Number(p.data.points) || 0), 0)}`)),
+        h('td', {}, `${weekNotes(name)}건`),
+        h('td', { onclick: (e) => e.stopPropagation() }, tel ? h('a', { class: 'link-btn', href: `tel:${tel.replace(/\D/g, '')}` }, '📞 보호자') : h('span', { class: 'muted small' }, '-')));
+    }))));
   clear(root,
+    kpis,
     h('div', { class: 'toolbar' },
+      h('div', { class: 'seg' }, [['card', '카드'], ['table', '표']].map(([v, l]) => h('button', { class: view === v ? 'on' : '', onclick: () => { remember('sc_view', v); reload(); } }, l))),
       h('input', { type: 'search', placeholder: '이름 검색', value: q, oninput: (e) => { remember('sc_q', e.target.value); clearTimeout(root._t); root._t = setTimeout(reload, 300); } }),
       h('span', { class: 'muted' }, `${students.length}명 · 남 ${students.filter((s) => s.data.gender === '남').length} · 여 ${students.filter((s) => s.data.gender === '여').length}`),
       h('span', { class: 'grow' }),
       h('a', { class: 'btn', href: '#/desk/class/students' }, '명단 관리')),
-    h('div', { class: 'student-grid' }, shown.map((s) => {
+    view === 'table' ? table() : h('div', { class: 'student-grid' }, shown.map((s) => {
       const name = s.data.name;
       const monthAtt = (att.get(name) || []).filter((a) => monthOf(a.data.date) === ym);
       const total = (pts.get(name) || []).reduce((a, p) => a + (Number(p.data.points) || 0), 0);

@@ -475,6 +475,19 @@ export const MODULES = {
       { key: 'scale', label: '평가 수준', type: 'select', options: Object.keys(EVAL_SCALES) },
     ],
   },
+  // 학생 참여 활동(로그인 없이 링크로 제출): 서·논술형 답안 · 클래스 보드. 제출물은 submissions 표에 암호화
+  activities: {
+    label: '학생 활동', icon: '🔗', scope: 'year', edit: 'staff', space: 'desk', extras: ['token', 'planId'],
+    fields: [
+      { key: 'title', label: '제목', type: 'text', required: true },
+      { key: 'kind', label: '종류', type: 'select', options: ['서·논술형', '클래스 보드'], required: true },
+      { key: 'subject', label: '과목', type: 'select', list: 'subjects', free: true },
+      { key: 'question', label: '문항·안내', type: 'textarea', hint: '학생 화면에 그대로 보입니다' },
+      { key: 'open', label: '제출 받는 중', type: 'bool' },
+      { key: 'showNames', label: '보드에서 이름 보이기', type: 'bool' },
+      { key: 'limit', label: '글자 수 제한', type: 'number', hint: '비우면 서·논술형 2000자, 보드 300자' },
+    ],
+  },
   // 성취기준 DB: 과목·학년군마다 한 묶음(items: [{area, code, text}]). 평가계획 가져오기·교육과정 문서 붙여넣기로 채움
   standards: {
     label: '성취기준', icon: '🎯', scope: 'global', edit: 'staff', space: 'desk', extras: ['items'],
@@ -588,11 +601,13 @@ export const DESK_GROUPS = [
     { id: 'overview', label: '이번 주' },
     { id: 'notes', label: '알림장', module: 'dailyNotes' },
     { id: 'weekly', label: '주간학습안내', module: 'weeklyPlans' },
+    { id: 'board', label: '클래스 보드', module: 'activities' },
     { id: 'timetable', label: '내 시간표', module: 'myTimetable' },
     { id: 'progress', label: '진도·시수', module: 'progress' },
   ] },
   { id: 'eval', label: '평가', icon: '📝', tabs: [
     { id: 'overview', label: '평가 현황·기록', module: 'evalPlans' },
+    { id: 'tools', label: '평가 도구' },
     { id: 'plan', label: '평가계획서', module: 'evalPlans' },
     { id: 'standards', label: '성취기준 DB', module: 'standards' },
     { id: 'students', label: '학생별 결과' },

@@ -9,6 +9,7 @@ import { loadStudents, sortStudents, todoItem, lessonsOn, dowOf, ATT_COLOR, mont
 import { studentCards, attendanceView, checklistsView, pointsView, studentsView, seatsView, rolesView, toolsView } from './desk-class.js';
 import { weekBoard, dailyNotesView, weeklyView, myTimetableView, progressView } from './desk-lesson.js';
 import { evalView, studentEvalView, remarksView, planDocView, standardsView } from './desk-eval.js';
+import { evalToolsView, boardView } from './desk-tools.js';
 import { workshopHome, myTools, toolRunner } from './workshop.js';
 
 // ---------- 내 책상 (홈) ----------
@@ -142,9 +143,11 @@ export const DESK_VIEWS = {
   'lesson/overview': (el) => weekBoard(el),
   'lesson/notes': dailyNotesView,
   'lesson/weekly': (el) => weeklyView(el),
+  'lesson/board': boardView,
   'lesson/timetable': myTimetableView,
   'lesson/progress': progressView,
   'eval/overview': (el) => evalView(el),
+  'eval/tools': evalToolsView,
   'eval/plan': planDocView,
   'eval/standards': standardsView,
   'eval/students': studentEvalView,

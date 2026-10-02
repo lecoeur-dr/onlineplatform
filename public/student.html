@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>학생 제출</title>
+<style>
+  :root { --bg: #f5f7fb; --panel: #fff; --line: #e3e8f0; --text: #141a26; --muted: #677085; --primary: #0f9d6e; --soft: #e6f7ef; --danger: #e5484d; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1218; --panel: #171b23; --line: #29303c; --text: #e8ebf1; --muted: #8a93a5; --soft: #14302a; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 18px 16px 60px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+  h1 { font-size: 22px; margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .q { white-space: pre-wrap; font-size: 17px; }
+  label { display: block; font-weight: 700; font-size: 14px; margin: 10px 0 4px; }
+  input, textarea { width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  textarea { min-height: 200px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 90px 1fr; gap: 10px; }
+  button { font: inherit; font-weight: 800; border: 0; border-radius: 12px; padding: 12px 18px; background: var(--primary); color: #fff; cursor: pointer; width: 100%; margin-top: 12px; }
+  button:disabled { opacity: .5; }
+  .msg { margin-top: 10px; font-weight: 700; }
+  .ok { color: var(--primary); } .err { color: var(--danger); }
+  .posts { columns: 2 240px; column-gap: 12px; }
+  .post { break-inside: avoid; background: var(--soft); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; white-space: pre-wrap; }
+  .post .who { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .count { text-align: right; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main id="app"><div class="card">불러오는 중…</div></main>
+<script>
+  // 로그인 없이 쓰는 학생 화면: 주소의 #t=토큰 으로 활동을 찾음 (서버에는 토큰만 보냄)
+  const token = (location.hash.match(/t=([a-f0-9]+)/) || [])[1] || '';
+  const app = document.getElementById('app');
+  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'text') e.textContent = v; else e.setAttribute(k, v); } for (const k of kids.flat()) if (k != null) e.append(k); return e; };
+  const store = { get: (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* 무시 */ } } };
+  async function call(method, body) {
+    const r = await fetch(`/pub/a/${token}`, { method, headers: { 'content-type': 'application/json', 'x-requested-with': 'gyomusil-pub' }, body: body ? JSON.stringify(body) : undefined });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || '오류가 났습니다.');
+    return j;
+  }
+  function postsView(list, a) {
+    return el('div', { class: 'posts' }, list.length ? list.map((p) => el('div', { class: 'post' }, p.body, a.showNames && p.name ? el('div', { class: 'who', text: p.name }) : null)) : el('p', { class: 'muted', text: '아직 글이 없어요. 첫 글을 남겨 보세요!' }));
+  }
+  async function render() {
+    if (!token) { app.innerHTML = '<div class="card">링크가 올바르지 않아요. 선생님께 다시 받아 주세요.</div>'; return; }
+    let a;
+    try { a = await call('GET'); } catch (e) { app.replaceChildren(el('div', { class: 'card err', text: e.message })); return; }
+    document.title = a.title;
+    const board = a.kind === '클래스 보드';
+    const num = el('input', { inputmode: 'numeric', placeholder: '번호', value: store.get('pub_num') });
+    const name = el('input', { placeholder: board ? '이름 (선택)' : '이름', value: store.get('pub_name') });
+    const body = el('textarea', { placeholder: board ? '생각을 적어 보세요' : '답안을 쓰세요', maxlength: String(a.limit) });
+    if (board) body.style.minHeight = '110px';
+    else body.value = store.get(`pub_draft_${token}`);
+    const count = el('div', { class: 'count' });
+    const paintCount = () => { count.textContent = `${[...body.value].length} / ${a.limit}자`; if (!board) store.set(`pub_draft_${token}`, body.value); };
+    body.addEventListener('input', paintCount); paintCount();
+    const msg = el('div', { class: 'msg' });
+    const postsBox = el('div', {}, board ? postsView(a.posts || [], a) : null);
+    const send = el('button', { onclick: async () => {
+      send.disabled = true; msg.textContent = ''; msg.className = 'msg';
+      try {
+        store.set('pub_num', num.value); store.set('pub_name', name.value);
+        const r = await call('POST', { num: num.value, name: name.value, body: body.value });
+        msg.className = 'msg ok';
+        if (board) { body.value = ''; paintCount(); postsBox.replaceChildren(postsView(r.posts || [], a)); msg.textContent = '올렸어요!'; }
+        else msg.textContent = r.updated ? '수정해서 다시 냈어요. (마지막에 낸 답안이 저장돼요)' : '제출했어요! 고칠 게 있으면 고쳐서 다시 내도 돼요.';
+      } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+      send.disabled = false;
+    } }, board ? '올리기' : '제출하기');
+    app.replaceChildren(
+      el('div', { class: 'card' }, el('div', { class: 'muted', text: [a.subject, board ? '클래스 보드' : '서·논술형 평가'].filter(Boolean).join(' · ') }), el('h1', { text: a.title }), a.question ? el('div', { class: 'q', text: a.question }) : null),
+      a.open ? el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', {}, el('label', { text: '번호' }), num), el('div', {}, el('label', { text: '이름' }), name)), el('label', { text: board ? '글' : '답안' }), body, count, send, msg)
+        : el('div', { class: 'card muted', text: '지금은 제출을 받지 않아요.' }),
+      postsBox);
+    if (board) setInterval(async () => { if (document.hidden) return; try { const r = await call('GET'); postsBox.replaceChildren(postsView(r.posts || [], r)); } catch { /* 무시 */ } }, 6000);
+  }
+  render();
+</script>
+</body>
+</html>

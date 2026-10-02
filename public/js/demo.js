@@ -36,16 +36,18 @@ const STAFF = [
 const STUDENTS = ['강다온', '김가람', '김나래', '노을빛', '류하늘', '문별님', '박새롬', '배단비', '서누리', '송한결', '신바름', '안솔빛', '양초롱', '엄다솜', '오가온', '유보람', '이슬기', '전아라', '정해솔', '최미르'];
 
 function seed() {
-  const db = { seq: 1, records: [], members: [], inbox: [], audit: [], settings: { currentYear: YEAR, schoolName: SCHOOL, lists: { ...DEFAULT_LISTS, classes: ['1-1', '2-1', '3-1', '4-1', '5-1', '6-1'] } }, name: ME.name };
+  const db = { seq: 1, records: [], members: [], inbox: [], audit: [], subs: {}, settings: { currentYear: YEAR, schoolName: SCHOOL, lists: { ...DEFAULT_LISTS, classes: ['1-1', '2-1', '3-1', '4-1', '5-1', '6-1'] } }, name: ME.name };
   const put = (module, data, extra = {}) => {
     const scope = MODULES[module].scope;
     const clean = normalizeData(module, data);
-    db.records.push({
+    const rec = {
       id: `d${db.seq++}`, module, data: clean, version: 1, sort: db.seq,
       year: scope === 'year' ? (extra.year || YEAR) : null, date: scope === 'date' ? clean.date : null,
       owner: spaceOf(module) === 'school' ? null : (extra.owner || ME.email), author: extra.author,
       updatedBy: extra.by || ME.email, updatedAt: nowStamp(),
-    });
+    };
+    db.records.push(rec);
+    return rec;
   };
   db.members = STAFF.map(([name, dept], i) => ({ email: i === 0 ? ME.email : `t${i}@example.com`, name, dept, role: i === 0 ? 'admin' : 'staff', created_at: `${YEAR}-03-02 08:30:00`, last_login: i < 8 ? `${TODAY} 08:${pad(10 + i)}:00` : null }));
   db.members.push({ email: 'new1@example.com', name: '백새봄', dept: '', role: 'pending', created_at: `${TODAY} 07:50:00`, last_login: `${TODAY} 07:50:00` });
@@ -184,6 +186,13 @@ function seed() {
   put('notes', { date: wd(-2), student: '김가람', category: '학습', content: '소수의 나눗셈에서 자릿값을 헷갈려 함 → 개별 지도' });
   put('counsels', { date: wd(-1), student: '노을빛', with: '보호자', method: '전화', topic: '교우관계', content: '최근 친구 관계에 대한 고민을 보호자와 나눔', followup: '짝 활동 늘리고 2주 뒤 다시 연락' });
   put('remarks', { student: '강다온', area: '행동특성 및 종합의견', content: '배려심이 깊고 모둠 활동에서 친구들의 의견을 조율하는 능력이 뛰어남.' }, { year: YEAR });
+  // 학생 참여 활동 (체험용 가상 답안·글)
+  const sciPlan = db.records.find((r) => r.module === 'evalPlans' && r.data.subject === '과학');
+  const essay = put('activities', { title: '혼합물 분리 방법 설명하기', kind: '서·논술형', subject: '과학', question: '모래, 소금, 철가루가 섞인 혼합물을 분리하는 방법을 순서대로 쓰고, 각 방법을 쓴 까닭을 설명하세요.', open: true, token: 'demo0essay0000000000000', planId: sciPlan?.id || '' }, { year: YEAR });
+  const ans = ['먼저 자석으로 철가루를 분리합니다. 철은 자석에 붙기 때문입니다. 그다음 물에 녹여 거름종이로 모래를 거르고, 남은 소금물을 증발시켜 소금을 얻습니다.', '물에 넣고 거르면 모래가 남아요. 소금물은 끓이면 소금이 나와요.', '자석으로 철을 빼고 체로 거른다.', '철가루는 자석, 모래는 거름, 소금은 증발. 알갱이 크기와 녹는 성질이 다르기 때문이다.'];
+  db.subs = { [essay.id]: STUDENTS.slice(0, 4).map((name, i) => ({ id: i + 1, num: String(i + 1), name, body: ans[i], hidden: false, createdAt: `${YEAR}-10-02 10:0${i}:00`, updatedAt: `${YEAR}-10-02 10:0${i}:00` })) };
+  const board = put('activities', { title: '오늘 배운 점 한 줄', kind: '클래스 보드', question: '오늘 과학 시간에 새롭게 안 것은 무엇인가요?', open: true, showNames: true, token: 'demo0board0000000000000' }, { year: YEAR });
+  db.subs[board.id] = ['자석으로 철을 분리할 수 있다는 것!', '소금물을 증발시키면 소금이 남아요', '거름종이는 물은 통과시키고 모래는 막아요', '혼합물은 성질을 이용해서 분리한다'].map((body, i) => ({ id: 100 + i, num: String(i + 5), name: STUDENTS[i + 4], body, hidden: false, createdAt: `${YEAR}-10-02 11:0${i}:00` }));
   put('classRoles', { role: '칠판 정리', students: ['강다온', '김가람'] }, { year: YEAR });
   put('classRoles', { role: '우유 당번', students: ['김나래', '노을빛'] }, { year: YEAR });
   put('classRoles', { role: '화분 물 주기', students: ['류하늘'] }, { year: YEAR });
@@ -265,6 +274,14 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
       settings: { ...d.settings, neis: { name: d.settings.schoolName, demo: true }, neisKey: true }, push: null };
   }
   if (p === '/api/me' && method === 'PUT') return write(() => { d.name = body.name; return { ok: true }; });
+  m = p.match(/^\/api\/activities\/([^/]+)\/submissions(?:\/(\d+)\/hide)?$/);
+  if (m) {
+    d.subs ||= {};
+    const list = d.subs[m[1]] ||= [];
+    if (method === 'GET') return list;
+    if (method === 'DELETE') return write(() => { d.subs[m[1]] = []; return { ok: true }; });
+    return write(() => { const x = list.find((s) => s.id === Number(m[2])); if (x) x.hidden = body?.hidden !== false; return { ok: true }; });
+  }
   if (p === '/api/staff') {
     const out = d.members.filter((x) => x.role !== 'pending').map(({ name, dept }) => ({ name, dept }));
     for (const r of d.records) if (r.module === 'assignments' && r.data.name && !out.some((x) => x.name === r.data.name)) out.push({ name: r.data.name, dept: r.data.dept || '' });
@@ -296,6 +313,7 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
       const data = normalizeData(mod, body.data);
       if (MODULES[mod].scope === 'date' && !data.date) fail(400, '날짜를 입력해 주세요.');
       clash(mod, data);
+      if (mod === 'activities') data.token = Math.random().toString(16).slice(2).padEnd(24, '0');
       const r = { id: `d${d.seq++}`, module: mod, data, version: 1, sort: d.seq, year: MODULES[mod].scope === 'year' ? Number(body.year || year) : null, date: MODULES[mod].scope === 'date' ? data.date : null, owner: spaceOf(mod) === 'school' ? null : ME.email, author: d.name, updatedBy: ME.email, updatedAt: nowStamp() };
       if (mod === 'market') r.data.likes = [];
       d.records.push(r);

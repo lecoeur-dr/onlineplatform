@@ -181,3 +181,83 @@ export function parseAiRubric(text, levels) {
   }).filter((c) => c.name);
   return crit.length ? { criteria: crit, good: (v.good || v.강점 || []).map(String), need: (v.need || v.보완 || []).map(String) } : null;
 }
+
+// ---------- AI 초안 채점 결과 읽기 ----------
+//   "S01 | 관점A=잘함; 관점B=보통 | 종합=잘함 | 근거: … | 피드백: …"  (칸 순서·일부 생략 허용)
+export function parseAiScores(text, levels, critNames = []) {
+  const out = new Map();
+  const norm = (x) => String(x || '').replace(/\s/g, '');
+  const findLv = (x) => levels.find((l) => norm(l) === norm(x)) || '';
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.replace(/^[\s*>\-]+/, '').trim();
+    const m = line.match(/^\[?(S\d{1,3})\]?\s*[|:：]\s*(.+)$/i);
+    if (!m) continue;
+    const r = { crit: {}, level: '', evidence: '', feedback: '' };
+    for (const part of m[2].split('|').map((x) => x.trim()).filter(Boolean)) {
+      const kv = part.match(/^(종합|근거|피드백|총평)\s*[:=：]\s*(.+)$/);
+      if (kv) { if (kv[1] === '종합') r.level = findLv(kv[2]); else if (kv[1] === '근거') r.evidence = kv[2].trim(); else r.feedback = kv[2].trim(); continue; }
+      for (const pair of part.split(/[;；]/)) {
+        const p = pair.match(/^\s*(.+?)\s*[=:：]\s*(.+?)\s*$/);
+        if (!p) continue;
+        const name = critNames.find((c) => norm(c) === norm(p[1])) || (critNames.length ? '' : p[1].trim());
+        const lv = findLv(p[2]);
+        if (name && lv) r.crit[name] = lv;
+      }
+    }
+    if (!r.level && Object.keys(r.crit).length) r.level = overallLevel(levels, r.crit);
+    out.set(m[1].toUpperCase(), r);
+  }
+  return out;
+}
+
+// ---------- AI 시험문제 결과 읽기 ----------
+export function parseAiExam(text) {
+  const m = String(text || '').match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (!m) return [];
+  let v; try { v = JSON.parse(m[0]); } catch { return []; }
+  const items = Array.isArray(v) ? v : v.items || v.문항 || [];
+  return items.map((x) => ({
+    type: String(x.type || x.유형 || (Array.isArray(x.choices) && x.choices.length ? '객관식' : '단답형')),
+    level: String(x.level || x.난이도 || ''),
+    q: String(x.q || x.question || x.문제 || '').trim(),
+    choices: (x.choices || x.보기 || []).map(String),
+    answer: String(x.answer ?? x.정답 ?? ''),
+    explain: String(x.explain || x.해설 || ''),
+  })).filter((x) => x.q);
+}
+
+// ---------- 평가계획 점검 ----------
+//   계획 하나마다 [{lv:'error'|'warn'|'info', msg, fix}] — fix: 'form' | 'rubric' | 'criteria'
+export function checkPlan(d, { levels, classGrade = '', bandOfCode, bandOf } = {}) {
+  const out = [];
+  const add = (lv, msg, fix) => out.push({ lv, msg, fix });
+  const codes = [...String(d.standard || '').matchAll(/\[([^\]]+)\]/g)].map((x) => x[1]);
+  if (!String(d.standard || '').trim()) add('error', '성취기준이 비어 있음', 'form');
+  else if (!codes.length && !d.code) add('warn', '성취기준 코드([6과05-01] 형식)가 없음', 'form');
+  if (!d.element) add('error', '평가 요소가 비어 있음', 'form');
+  if (!d.method) add('error', '평가 방법이 비어 있음', 'form');
+  if (!d.timing) add('warn', '평가 시기가 비어 있음', 'form');
+  if (!d.unit) add('warn', '단원명이 비어 있음', 'form');
+  if (!d.semester) add('info', '학기가 비어 있음', 'form');
+  const crits = d.criteria || [];
+  if (crits.length) {
+    for (const c of crits) {
+      const miss = levels.filter((l) => !String(c.rubric?.[l] || '').trim());
+      if (miss.length) add('warn', `관점 「${c.name}」의 수준별 기준 빈 칸: ${miss.join(', ')}`, 'criteria');
+      const vals = levels.map((l) => String(c.rubric?.[l] || '').trim()).filter(Boolean);
+      if (new Set(vals).size < vals.length) add('warn', `관점 「${c.name}」에 같은 문장인 수준이 있음 (수준 차이가 드러나지 않음)`, 'criteria');
+    }
+  } else {
+    const miss = levels.filter((l) => !String(d.rubric?.[l] || '').trim());
+    if (miss.length === levels.length) add('error', '수준별 기준(채점 기준)이 없음', 'rubric');
+    else if (miss.length) add('warn', `수준별 기준 빈 칸: ${miss.join(', ')}`, 'rubric');
+    add('info', '평가 관점(분석적 루브릭)이 없음 → 학생별 교과발달 문장이 비슷해질 수 있음', 'criteria');
+  }
+  const grade = d.grade || classGrade;
+  if (grade && bandOf && bandOfCode) {
+    const want = bandOf(grade);
+    const off = codes.filter((c) => bandOfCode(`[${c}]`) && bandOfCode(`[${c}]`) !== want);
+    if (off.length) add('warn', `${grade}과 학년군이 다른 성취기준: ${off.map((c) => `[${c}]`).join(' ')}`, 'form');
+  }
+  return out;
+}

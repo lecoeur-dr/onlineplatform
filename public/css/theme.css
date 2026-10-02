@@ -626,3 +626,35 @@ ol.left { text-align: left; max-width: 640px; margin: 8px auto; line-height: 1.7
 .ai-bar { background: var(--panel-2); border: 1px dashed var(--line-2); border-radius: 12px; padding: 6px 10px; }
 @media (max-width: 600px) { .crit-lv { grid-template-columns: 1fr; } }
 .student-card .ev-chips .chip-btn { font-size: 13px; padding: 4px 11px; }
+
+/* ===== 평가 도구 · 학생 참여 ===== */
+.tool-list { display: grid; gap: 12px; }
+.tool-row { display: flex; align-items: center; gap: 16px; text-align: left; padding: 18px 20px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel); font: inherit; color: var(--text); cursor: pointer; box-shadow: var(--shadow-sm); }
+.tool-row:hover { border-color: var(--primary); }
+.tool-row strong { font-size: 16px; }
+.tool-row-ico { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font-size: 24px; flex: none; }
+.link-box { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.link-qr { width: 132px; flex: none; }
+.link-qr svg { width: 100%; height: auto; background: #fff; border-radius: 8px; }
+.link-url { display: block; word-break: break-all; font-size: 12px; background: var(--bg-2); padding: 6px 8px; border-radius: 8px; margin: 4px 0 8px; }
+.check-card { border-left: 4px solid var(--ok); margin-bottom: 10px; }
+.check-card.warn { border-left-color: #f59e0b; }
+.check-card.error { border-left-color: var(--danger); }
+.check-items { list-style: none; margin: 8px 0 0; padding: 0; }
+.check-items li { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-size: 13.5px; }
+.check-items li.info { color: var(--muted); }
+.tag.ok { background: color-mix(in srgb, var(--ok) 14%, var(--panel)); color: var(--ok); }
+.kpi-value.danger { color: var(--danger); }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.essay-cell { max-width: 520px; }
+.essay-cell summary { cursor: pointer; }
+.feedback { margin-top: 6px; color: var(--primary); }
+.exam-frame { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.board-stage { background: var(--bg-2); border-radius: 18px; padding: 16px; min-height: 50vh; }
+.board-stage:fullscreen { padding: 28px; overflow: auto; }
+.board-q { font-size: clamp(20px, 3vw, 30px); font-weight: 900; margin-bottom: 14px; white-space: pre-wrap; }
+.board-wall { columns: 4 220px; column-gap: 14px; }
+.board-post { --h: 150; break-inside: avoid; margin-bottom: 14px; padding: 14px 16px; border-radius: 16px; background: hsl(var(--h) 80% 93%); color: #1f2937; font-size: 16px; line-height: 1.55; box-shadow: var(--shadow-sm); }
+.board-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; color: #4b5563; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .board-post { background: hsl(var(--h) 35% 22%); color: #e5e7eb; } }
+html[data-theme="dark"] .board-post { background: hsl(var(--h) 35% 22%); color: #e5e7eb; }
