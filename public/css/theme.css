@@ -610,3 +610,19 @@ ol.left { text-align: left; max-width: 640px; margin: 8px auto; line-height: 1.7
 .mood-ico { font-size: 34px; }
 @media (max-width: 600px) { .tool-two { grid-template-columns: 1fr; } .ladder-cv { height: 260px; } }
 .mood-ico.empty { width: 34px; height: 34px; border-radius: 50%; border: 2px dashed var(--line-2); margin: 3px 0; }
+
+/* ===== 분석적 루브릭 · 학생 평가 카드 · AI 브리지 ===== */
+.crit-card { margin: 8px 0; display: grid; gap: 6px; }
+.crit-card .card-head input { font-weight: 700; }
+.crit-lv { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: start; }
+.crit-lv .tag { justify-self: start; margin-top: 6px; color: var(--c); }
+.crit-row { display: grid; gap: 6px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.crit-row .seg { flex-wrap: wrap; }
+.student-card .ev-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn.on.good { background: color-mix(in srgb, var(--ok) 16%, var(--panel)); border-color: var(--ok); color: var(--ok); font-weight: 700; }
+.chip-btn.on.need { background: color-mix(in srgb, #f59e0b 16%, var(--panel)); border-color: #f59e0b; color: #b45309; font-weight: 700; }
+.card.preview { background: var(--primary-soft); border-color: transparent; line-height: 1.6; }
+.ai-box > summary, .crit-matrix > summary { cursor: pointer; font-weight: 700; }
+.ai-bar { background: var(--panel-2); border: 1px dashed var(--line-2); border-radius: 12px; padding: 6px 10px; }
+@media (max-width: 600px) { .crit-lv { grid-template-columns: 1fr; } }
+.student-card .ev-chips .chip-btn { font-size: 13px; padding: 4px 11px; }

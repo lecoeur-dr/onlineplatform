@@ -459,7 +459,7 @@ export const MODULES = {
     ],
   },
   evalPlans: {
-    label: '평가', icon: '📝', scope: 'year', edit: 'staff', space: 'desk', extras: ['scores', 'rubric', 'levels'],
+    label: '평가', icon: '📝', scope: 'year', edit: 'staff', space: 'desk', extras: ['scores', 'rubric', 'levels', 'criteria', 'chips'],
     fields: [
       { key: 'subject', label: '과목', type: 'select', list: 'subjects', free: true, required: true },
       { key: 'semester', label: '학기', type: 'select', options: ['1학기', '2학기'] },

@@ -8,7 +8,8 @@ import { EVAL_SCALES, EVAL_METHODS, GRADES, DEFAULT_LISTS, scaleOf, bandOf } fro
 import { openRecordForm } from '../form.js';
 import { readSource, readText, parseEvalPlans, parseStandards, splitStandards, joinStandards, matchScale, bandOfCode, subjectOfCode } from '../smart-import.js';
 import { loadStudents, emptyStudents, byteLen, copyText } from './desk-common.js';
-import { josa, endDot, elementFrom, autoRubric, toRecordStyle, timingKey } from '../eval-text.js';
+import { josa, endDot, elementFrom, autoRubric, toRecordStyle, timingKey, composeRemark, overallLevel } from '../eval-text.js';
+import { editCriteria, studentCard, hasCriteria, remarkRequest, importAiRemarks, downloadGuide } from './desk-rubric.js';
 
 const LV_COLORS = ['#30a46c', '#0091ff', '#f5a524', '#e5484d', '#8e4ec6'];
 const MARKS = ['◎', '○', '△', '▽', '✕'];
@@ -364,6 +365,7 @@ function scoreSheet(root, plan, reload) {
   const tile = (s, i) => {
     scores[s] ||= {};
     const el = h('button', { class: 'eval-tile', onclick: () => {
+      if (hasCriteria(plan)) { studentCard(plan, s, scores[s], () => { paint(); drawSum(); persist(); }); return; }
       const cur = scale.indexOf(scores[s].level);
       scores[s].level = cur === scale.length - 1 ? '' : scale[cur + 1];
       paint(); drawSum(); persist();
@@ -372,7 +374,7 @@ function scoreSheet(root, plan, reload) {
       const lv = scores[s].level;
       el.style.setProperty('--c', lvColor(plan, lv));
       el.classList.toggle('set', !!lv);
-      clear(el, h('span', { class: 'muted small' }, i + 1), h('strong', {}, s), h('span', { class: 'ev-lv' }, lv ? `${lvMark(plan, lv)} ${lv}` : '—'), scores[s].note ? h('span', { class: 'ev-note' }, '📝') : null);
+      clear(el, h('span', { class: 'muted small' }, i + 1), h('strong', {}, s), h('span', { class: 'ev-lv' }, lv ? `${lvMark(plan, lv)} ${lv}` : '—'), (scores[s].note || scores[s].evidence || scores[s].good?.length) ? h('span', { class: 'ev-note' }, '📝') : null);
     };
     paint();
     return el;
@@ -381,7 +383,26 @@ function scoreSheet(root, plan, reload) {
   const draw = () => {
     if (mode === 'tap') {
       clear(body, h('div', { class: 'eval-grid' }, names.map(tile)),
-        h('p', { class: 'hint' }, `학생을 누를 때마다 ${scale.join(' → ')} → 지움 순서로 바뀌고 자동 저장됩니다. 체육·음악 실기처럼 그 자리에서 평가할 때 쓰세요.`));
+        h('p', { class: 'hint' }, hasCriteria(plan) ? '학생을 누르면 평가 카드가 열립니다: 관점별 수준 · 강점/보완 칩 · 산출물 근거 → 교과발달 문장 미리보기.' : `학생을 누를 때마다 ${scale.join(' → ')} → 지움 순서로 바뀌고 자동 저장됩니다. 체육·음악 실기처럼 그 자리에서 평가할 때 쓰세요. 학생마다 다른 문장이 필요하면 [🧩 평가 관점 만들기]를 쓰세요.`));
+    } else if (hasCriteria(plan)) {
+      const crits = plan.data.criteria;
+      clear(body, h('div', { class: 'table-wrap' }, h('table', { class: 'table score' },
+        h('thead', {}, h('tr', {}, ['번호', '이름', ...crits.map((c) => c.name), '종합', '근거 (강점·보완·산출물)'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, names.map((s, i) => {
+          scores[s] ||= {};
+          const sc = scores[s];
+          const tr = h('tr', {});
+          const paintRow = () => clear(tr, h('td', { class: 'num' }, i + 1), h('td', {}, h('strong', {}, s)),
+            crits.map((c) => h('td', {}, h('select', { onchange: (e) => { (sc.crit ||= {})[c.name] = e.target.value; if (!e.target.value) delete sc.crit[c.name]; if (!sc.manual) sc.level = overallLevel(scale, sc.crit) || sc.level; paintRow(); drawSum(); persist(); } },
+              h('option', { value: '' }, '-'), scale.map((lv) => h('option', { value: lv, selected: sc.crit?.[c.name] === lv }, lv))))),
+            h('td', {}, h('select', { style: sc.level ? { color: lvColor(plan, sc.level), fontWeight: '800' } : {}, onchange: (e) => { sc.level = e.target.value; sc.manual = !!e.target.value; paintRow(); drawSum(); persist(); } },
+              h('option', { value: '' }, '-'), scale.map((lv) => h('option', { value: lv, selected: sc.level === lv }, lv)))),
+            h('td', {}, h('button', { class: 'link-btn small', onclick: () => studentCard(plan, s, sc, () => { paintRow(); drawSum(); persist(); }) },
+              [sc.good?.length ? `👍${sc.good.length}` : '', sc.need?.length ? `🌱${sc.need.length}` : '', sc.evidence ? '📎' : '', sc.note ? '📝' : ''].filter(Boolean).join(' ') || '+ 근거')));
+          paintRow();
+          return tr;
+        })))),
+        h('p', { class: 'hint' }, '관점별 수준을 고르면 종합 수준이 자동 계산됩니다(직접 바꾸면 그 값 유지). [근거]에서 강점·보완 칩과 산출물 내용을 남기면 학생마다 다른 교과발달 문장이 만들어집니다.'));
     } else {
       clear(body, h('div', { class: 'table-wrap' }, h('table', { class: 'table score' },
         h('thead', {}, h('tr', {}, ['번호', '이름', ...scale, '관찰 메모 (특기사항 참고)'].map((x) => h('th', {}, x)))),
@@ -407,6 +428,7 @@ function scoreSheet(root, plan, reload) {
       h('div', { class: 'seg' }, [['tap', '즉석 평가'], ['table', '표·메모']].map(([v, l]) => h('button', { class: mode === v ? 'on' : '', onclick: () => { remember('ev_mode', v); reload(plan.id); } }, l))),
       status, h('span', { class: 'grow' }),
       fillRest,
+      h('button', { class: `btn ${hasCriteria(plan) ? '' : 'primary'}`, onclick: () => editCriteria(plan, async (patch) => { try { const saved = await api(`/api/records/evalPlans/${plan.id}`, { method: 'PUT', body: { data: { ...plan.data, ...patch, scores }, version } }); toast('저장했습니다.'); reload(saved.id); } catch (e) { toast(e.message, 'error'); } }) }, hasCriteria(plan) ? `🧩 평가 관점 ${plan.data.criteria.length}` : '🧩 평가 관점 만들기'),
       h('button', { class: 'btn', onclick: () => editRubric(plan, (p) => reload(p.id)) }, '📏 성취수준'),
       h('button', { class: 'btn', onclick: () => openRecordForm('evalPlans', plan, { onSaved: (r) => reload(r?.id) }) }, '계획 수정'),
       h('button', { class: 'btn', onclick: csv }, 'CSV (나이스 입력용)')),
@@ -414,6 +436,9 @@ function scoreSheet(root, plan, reload) {
       h('div', { class: 'muted small' }, [plan.data.grade, plan.data.semester, plan.data.timing, plan.data.area, plan.data.method].filter(Boolean).join(' · ')),
       standardsOf(plan).map((x) => h('div', {}, x.code ? h('span', { class: 'tag ghost' }, x.code) : h('span', { class: 'muted small' }, '성취기준 '), ' ', x.text)),
       plan.data.element ? h('div', {}, h('span', { class: 'muted small' }, '평가 요소 '), h('strong', {}, plan.data.element)) : null,
+      hasCriteria(plan) ? h('details', { class: 'crit-matrix' }, h('summary', {}, `🧩 평가 관점 ${plan.data.criteria.length}개 · 수준별 기준 보기`),
+        h('div', { class: 'table-wrap' }, h('table', { class: 'table compact' }, h('thead', {}, h('tr', {}, h('th', {}, '관점'), scale.map((lv) => h('th', { style: { color: lvColor(plan, lv) } }, lv)))),
+          h('tbody', {}, plan.data.criteria.map((c) => h('tr', {}, h('td', {}, h('strong', {}, c.name)), scale.map((lv) => h('td', { class: 'small' }, c.rubric?.[lv] || '')))))))) : null,
       Object.keys(rubric).length ? h('div', { class: 'rubric-row' }, scale.map((lv) => rubric[lv] ? h('div', { class: 'rubric-cell', style: { '--c': lvColor(plan, lv) } }, h('strong', {}, `${lvMark(plan, lv)} ${lv}`), h('div', { class: 'small' }, rubric[lv])) : null))
         : h('button', { class: 'link-btn', onclick: () => editRubric(plan, (p) => reload(p.id)) }, '+ 성취수준별 기준 정하기')),
     !names.length ? emptyStudents() : [sum, body]);
@@ -461,6 +486,10 @@ export function draftFor(name, plans) {
     const sc = p.data.scores?.[name];
     if (!sc?.level) continue;
     const scale = scaleOf(p);
+    if (hasCriteria(p) || sc.good?.length || sc.need?.length || sc.evidence || p.data.rubric?.[sc.level]) {
+      const t = composeRemark({ ...p.data, levels: scale }, sc, name);
+      if (t) { parts.push(t); continue; }
+    }
     const i = scale.indexOf(sc.level);
     const elem = p.data.element || p.data.area || '학습 내용';
     const u = unitName(p);
@@ -548,6 +577,11 @@ export async function remarksView(root) {
       h('button', { class: 'btn primary', onclick: bulk }, '✨ 빈칸 모두 초안 채우기'),
       h('button', { class: 'btn', onclick: () => copyText(students.map((s) => `${s.data.num ?? ''}\t${s.data.name}\t${find(s.data.name)?.data.content || ''}`).join('\n')) }, '전체 복사'),
       h('button', { class: 'btn', onclick: exportCsv }, 'CSV')),
+    area === '교과학습발달상황' ? h('div', { class: 'toolbar ai-bar' },
+      h('span', { class: 'small' }, '🤖 AI와 주고받기 (Claude 프로젝트·스킬, 젬스 등 · 학생 이름은 보내지 않음)'), h('span', { class: 'grow' }),
+      h('button', { class: 'btn small', onclick: () => { if (!subjPlans.length) { toast('이 과목의 평가 기록이 없습니다.', 'error'); return; } copyText(remarkRequest({ subject, plans: subjPlans, students, limit })); } }, '① 📋 AI 요청문 복사'),
+      h('button', { class: 'btn small', onclick: () => importAiRemarks(students, (get, over) => { let n = 0; rows.forEach((x, i) => { const t = get(i); if (t && t !== '기록 없음' && (over || !x.ta.value.trim())) { x.ta.value = t; x.save(); n++; } }); return n; }) }, '② 📥 AI 결과 붙여넣기'),
+      h('button', { class: 'btn small', onclick: () => downloadGuide(limit) }, '⬇ AI 지침(스킬) 파일')) : null,
     area === '교과학습발달상황' && !subjPlans.length ? h('p', { class: 'alert warn' }, `${subject || '이 교과'}의 평가 기록이 없어 자동 초안을 만들 수 없습니다. 평가 → 평가 현황·기록에서 먼저 기록해 주세요.`) : null,
     h('div', { class: 'remarks' }, students.map(row)),
     h('p', { class: 'hint' }, '✨ 교과학습발달상황 초안은 평가계획의 단원 + 학생이 받은 성취수준의 기준 문장(생활기록부 문체 ~함/~음으로 바꿈)과 관찰 메모를 시기 순서로 이어 붙인 것이며, 기록에 없는 내용은 만들지 않습니다. 반드시 읽고 다듬어 주세요. 입력하면 자동 저장(암호화)됩니다. 바이트는 한글 3·영문 1·줄바꿈 2로 계산한 참고값입니다 [확인 필요].'));

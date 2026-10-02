@@ -86,3 +86,21 @@ test('평가 문장: 평가 요소 명사형, 생활기록부 문체, 시기 정
   assert.ok(timingKey('9월 3주') < timingKey('12월 1주') && timingKey('12월 1주') < timingKey('2월 1주'));
   assert.equal(Object.keys(autoRubric('요소', ['상', '중', '하'])).length, 3);
 });
+
+test('분석적 루브릭: 같은 수준이라도 관점·근거에 따라 다른 문장, AI 결과 읽기', async () => {
+  const { composeRemark, overallLevel, parseAiRemarks, parseAiRubric, suggestCriteria } = await import('../public/js/eval-text.js');
+  const L = ['매우 잘함', '잘함', '보통', '노력 요함'];
+  const d = { unit: '1. 가상 단원', levels: L, criteria: [{ name: '원리 설명', rubric: { '매우 잘함': '원리를 근거를 들어 설명할 수 있다.' } }, { name: '실험 수행', rubric: { '매우 잘함': '실험을 능숙하게 수행한다.' } }] };
+  const a = composeRemark(d, { level: '잘함', crit: { '원리 설명': '매우 잘함', '실험 수행': '보통' }, evidence: '새 방법을 제안함' }, '가');
+  const b = composeRemark(d, { level: '잘함', crit: { '원리 설명': '보통', '실험 수행': '매우 잘함' } }, '나');
+  assert.notEqual(a, b);
+  assert.ok(a.includes('설명할 수 있음.') && a.includes('새 방법을 제안함.'));
+  assert.ok(b.includes('능숙하게 수행함.'));
+  assert.ok(!/대회|수상/.test(a + b));
+  assert.equal(overallLevel(L, { x: '매우 잘함', y: '보통' }), '잘함');
+  assert.deepEqual([...parseAiRemarks('S01 | 가함.\n- S02: 나임.\n설명 줄')], [['S01', '가함.'], ['S02', '나임.']]);
+  assert.equal(parseAiRemarks('[{"id":"S03","text":"다음."}]').get('S03'), '다음.');
+  const r = parseAiRubric('```json\n{"criteria":[{"name":"관점","levels":{"매우 잘함":"가","잘함":"나"}}],"good":["g"],"need":["n"]}\n```', ['매우 잘함', '잘함']);
+  assert.equal(r.criteria[0].rubric['잘함'], '나');
+  assert.equal(suggestCriteria('실험 보고서')[0], '탐구 계획과 수행');
+});
