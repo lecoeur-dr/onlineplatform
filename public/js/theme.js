@@ -11,6 +11,7 @@ export const ACCENTS = [
   { id: 'rose', label: '로즈', color: '#e11d48' },
   { id: 'orange', label: '주황', color: '#ea580c' },
   { id: 'slate', label: '차분한 회색', color: '#334155' },
+  { id: 'warm', label: '따뜻한 베이지', color: '#e07b39' },
 ];
 export const MODES = [['light', '☀️ 밝게'], ['dark', '🌙 어둡게'], ['auto', '💻 기기 설정 따름']];
 

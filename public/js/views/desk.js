@@ -135,33 +135,46 @@ async function marketView(root) {
   const reload = () => marketView(root);
   const cat = remember('mk_cat') || '';
   const q = (remember('mk_q') || '').toLowerCase();
-  const mine = remember('mk_mine') || false;
+  const view = remember('mk_view') || 'all'; // all | fav | mine
+  const sort = remember('mk_sort') || 'popular';
+  const fav = new Set(remember('mk_fav') || []);
   const me = state.me.email;
   const cats = ['학급 운영', '수업 자료', '평가 자료', '업무 서식', '에듀테크', '기타'];
-  const shown = rows.filter((r) => (!cat || r.data.category === cat) && (!mine || r.owner === me) && (!q || JSON.stringify(r.data).toLowerCase().includes(q)));
+  const likes = (r) => (r.data.likes || []).length;
+  const shown = rows
+    .filter((r) => (!cat || r.data.category === cat) && (view !== 'mine' || r.owner === me) && (view !== 'fav' || fav.has(r.id)) && (!q || JSON.stringify(r.data).toLowerCase().includes(q) || String(r.author).includes(q)))
+    .sort((a, b) => (sort === 'popular' ? likes(b) - likes(a) : 0) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
   const like = async (r) => {
     const on = !(r.data.likes || []).includes(me);
     try { await api(`/api/records/market/${r.id}/self`, { method: 'POST', body: { on } }); reload(); } catch (e) { toast(e.message, 'error'); }
   };
+  const toggleFav = (id) => { if (fav.has(id)) fav.delete(id); else fav.add(id); remember('mk_fav', [...fav]); reload(); };
   clear(root,
     h('div', { class: 'toolbar' },
-      h('div', { class: 'seg' }, ['', ...cats].map((c) => h('button', { class: cat === c ? 'on' : '', onclick: () => { remember('mk_cat', c); reload(); } }, c || '전체'))),
-      h('input', { type: 'search', placeholder: '검색', value: remember('mk_q') || '', onchange: (e) => { remember('mk_q', e.target.value); reload(); } }),
-      h('label', { class: 'inline' }, h('input', { type: 'checkbox', checked: mine, onchange: (e) => { remember('mk_mine', e.target.checked); reload(); } }), ' 내 자료'),
-      h('span', { class: 'grow' }),
-      h('button', { class: 'btn primary', onclick: () => openRecordForm('market', null, { defaults: { category: cat || '수업 자료' }, onSaved: reload }) }, '+ 자료 올리기')),
+      h('input', { type: 'search', class: 'grow', placeholder: '자료 이름·설명·올린 선생님으로 찾기', value: remember('mk_q') || '', onchange: (e) => { remember('mk_q', e.target.value); reload(); } }),
+      h('span', { class: 'muted small' }, '정렬'),
+      seg([['popular', '🔥 인기순'], ['new', '🕒 최신순']], sort, (v) => { remember('mk_sort', v); reload(); }),
+      h('button', { class: 'btn primary', onclick: () => openRecordForm('market', null, { defaults: { category: cat || '수업 자료' }, onSaved: reload }) }, '+ 올리기')),
+    h('div', { class: 'toolbar' },
+      seg([['all', `전체 ${rows.length}`], ['fav', `☆ 즐겨찾기 ${fav.size}`], ['mine', `내 자료 ${rows.filter((r) => r.owner === me).length}`]], view, (v) => { remember('mk_view', v); reload(); }),
+      h('div', { class: 'seg' }, ['', ...cats].map((c) => h('button', { class: cat === c ? 'on' : '', onclick: () => { remember('mk_cat', c); reload(); } }, c || '모든 분류')))),
+    h('div', { class: 'alert' }, '🧒 Deskterior에 학생 명단을 한 번 넣으면 뽑기·자리 배치·모둠·평가·체크리스트에 자동으로 쓰입니다. ', h('a', { href: '#/desk/class/students' }, '명단 입력 →')),
     shown.length ? h('div', { class: 'cards market' }, shown.map((r) => {
       const liked = (r.data.likes || []).includes(me);
       return h('div', { class: 'card' },
-        h('div', { class: 'card-head' }, h('span', { class: 'tag ghost' }, r.data.category || '기타'), r.owner === me ? h('button', { class: 'link-btn', onclick: () => openRecordForm('market', r, { onSaved: reload }) }, '수정') : null),
-        h('strong', {}, r.data.title), r.data.grades ? h('div', { class: 'muted small' }, r.data.grades) : null,
-        r.data.desc ? h('div', { class: 'small pre clamp' }, r.data.desc) : null,
+        h('div', { class: 'card-head' },
+          h('button', { class: `mk-fav ${fav.has(r.id) ? 'on' : ''}`, title: '즐겨찾기', onclick: () => toggleFav(r.id) }, fav.has(r.id) ? '★' : '☆'),
+          h('span', { class: 'tag ghost' }, r.data.category || '기타'),
+          r.owner === me ? h('button', { class: 'link-btn', onclick: () => openRecordForm('market', r, { onSaved: reload }) }, '수정') : h('span', {})),
+        h('strong', { style: { fontSize: '16px' } }, r.data.title),
+        r.data.desc ? h('div', { class: 'small pre clamp muted' }, r.data.desc) : null,
         h('div', { class: 'row-actions' },
-          r.data.link && /^https?:/.test(r.data.link) ? h('a', { class: 'btn small primary', href: r.data.link, target: '_blank', rel: 'noopener' }, '자료 열기') : null,
-          h('button', { class: `btn small ${liked ? 'liked' : ''}`, onclick: () => like(r) }, `${liked ? '♥' : '♡'} ${(r.data.likes || []).length}`),
-          h('span', { class: 'muted small' }, `${r.author} · ${String(r.updatedAt || '').slice(0, 10)}`)));
-    })) : h('p', { class: 'muted' }, '자료가 없습니다. 첫 자료를 올려 보세요!'),
-    h('p', { class: 'hint' }, '마켓은 OnlineFlatform을 쓰는 모든 학교 선생님이 함께 보는 공간입니다. 자료는 링크(드라이브·패들렛 등)로 공유하며, 학생 개인정보가 담긴 자료는 올리지 마세요.'));
+          r.data.grades ? h('span', { class: 'tag' }, r.data.grades) : null,
+          r.data.link && /^https?:/.test(r.data.link) ? h('a', { class: 'btn small primary', href: r.data.link, target: '_blank', rel: 'noopener' }, '열기') : null,
+          h('button', { class: `btn small ${liked ? 'liked' : ''}`, onclick: () => like(r) }, `${liked ? '♥' : '♡'} ${likes(r)}`)),
+        h('div', { class: 'mk-meta' }, h('span', {}, `👤 ${r.author} 선생님`), h('span', {}, String(r.updatedAt || '').slice(0, 10))));
+    })) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🛍'), h('p', {}, view === 'fav' ? '즐겨찾기한 자료가 없습니다. 카드의 ☆를 눌러 보세요.' : '자료가 없습니다. 첫 자료를 올려 보세요!')),
+    h('p', { class: 'hint' }, '마켓은 OnlineFlatform을 쓰는 모든 학교 선생님이 함께 보는 공간입니다. 자료는 링크(드라이브·패들렛 등)로 공유하며, 학생 개인정보가 담긴 자료는 올리지 마세요. 즐겨찾기는 이 기기에 저장됩니다.'));
 }
 
 export const DESK_VIEWS = {

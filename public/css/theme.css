@@ -114,12 +114,7 @@ body.nav-open .scrim { opacity: 1; pointer-events: auto; }
 .nav a.on { background: var(--primary-soft); color: var(--primary); }
 .nav-sub { padding: 6px 10px 6px 40px !important; }
 .nav .admin-link { border-top: 0; margin-top: 4px; padding-top: 8px; }
-@media (min-width: 901px) {
-  body.nav-pinned .nav { position: sticky; top: calc(var(--header-h) + 50px); height: calc(100vh - var(--header-h) - 50px); transform: none; box-shadow: none; z-index: 10; float: left; padding-bottom: 20px; }
-  body.nav-pinned .close-x { display: none; }
-  body.nav-pinned .main { margin-left: var(--nav-w); }
-  body.nav-pinned .pin-btn:first-of-type { color: var(--primary); }
-}
+
 
 /* ---------- 본문 ---------- */
 .main { padding: 22px 24px 60px; max-width: 1400px; margin: 0 auto; }
@@ -361,3 +356,54 @@ html[data-theme="dark"] { color-scheme: dark; }
 .smart-preview input, .smart-preview select, .smart-preview textarea { width: 100%; padding: 5px 7px; font-size: 13px; }
 .smart-preview tr.off td { opacity: .4; }
 @media (max-width: 900px) { .smart-in { grid-template-columns: 1fr; } }
+
+/* =========================================================
+   넓은 화면(1101px~): 왼쪽 메뉴 고정 · ◀ 로 아이콘만(레일)
+   좁은 화면: ☰ 서랍 + 알약 영역 바 + 하단 탭
+   ========================================================= */
+.nav-brand { display: flex; align-items: center; gap: 8px; flex: 1; font-weight: 800; font-size: 14px; color: var(--text); min-width: 0; }
+.nav-brand .nt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav .nt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav .ico { width: 22px; flex: none; text-align: center; }
+.nav-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.rail-btn { display: none; align-items: center; gap: 8px; border: 0; background: none; color: var(--muted); padding: 8px 10px; border-radius: 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.rail-btn:hover { background: var(--bg-2); color: var(--text); }
+@media (min-width: 1101px) {
+  .group-bar { display: none !important; }
+  .scrim { display: none; }
+  .body { display: flex; align-items: flex-start; }
+  .nav {
+    position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h)); transform: none !important; box-shadow: none !important;
+    z-index: 10; flex: none; width: var(--nav-w); padding: 14px 12px 16px; display: flex; flex-direction: column; transition: width .18s ease;
+    background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+  }
+  .nav-foot { margin-top: auto; }
+  .main { flex: 1; min-width: 0; margin: 0; max-width: 1360px; }
+  .close-x { display: none; }
+  .rail-btn { display: flex; }
+  /* 레일: 아이콘만 */
+  body.nav-rail .nav { width: 68px; padding: 14px 8px; }
+  body.nav-rail .nav .nt, body.nav-rail .nav .fold, body.nav-rail .nav .nav-subs, body.nav-rail .nav .nav-sub, body.nav-rail .nav .nav-logout { display: none !important; }
+  body.nav-rail .nav a, body.nav-rail .nav .rail-btn { justify-content: center; padding: 10px 0; }
+  body.nav-rail .nav .ico { width: auto; font-size: 18px; }
+  body.nav-rail .rail-btn .ico { transform: rotate(180deg); }
+  body.nav-rail .nav-top { justify-content: center; }
+}
+@media (max-width: 1100px) {
+  .nav { display: block; }
+}
+
+/* 따뜻한 베이지 테마 (tdesk 느낌) */
+html[data-accent="warm"]:not([data-theme="dark"]) {
+  --primary: #e07b39; --primary-2: #f0954f; --primary-soft: #fdebdc; --accent: #e07b39; --accent-2: #f0954f;
+  --bg: #faf6f1; --bg-2: #f3ece3; --panel: #fffdfa; --panel-2: #fcf8f2; --line: #efe6da; --line-2: #e4d8c8; --text: #2b2118; --text-2: #4a3d31; --muted: #8a7b6c;
+}
+html[data-accent="warm"][data-theme="dark"] { --primary: #ffa66b; --primary-2: #ffbb8c; --primary-soft: #3b2616; --accent: #e07b39; --accent-2: #f0954f; }
+html[data-accent="warm"]:not([data-theme="dark"]) .card, html[data-accent="warm"]:not([data-theme="dark"]) .table-wrap { border-color: #f0e7dc; }
+html[data-accent="warm"]:not([data-theme="dark"]) .top { background: rgba(255, 253, 250, .92); }
+
+/* 마켓 */
+.mk-fav { border: 0; background: none; cursor: pointer; font-size: 18px; color: var(--muted); padding: 0 2px; }
+.mk-fav.on { color: #f5a524; }
+.mk-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-top: auto; }
+.cards.market .card { min-height: 190px; }
