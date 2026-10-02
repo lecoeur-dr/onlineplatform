@@ -147,11 +147,25 @@ function seed() {
   [['수학', '3. 소수의 나눗셈 (1/8차시)', -2, true], ['수학', '3. 소수의 나눗셈 (2/8차시)', 0, false], ['수학', '3. 소수의 나눗셈 (3/8차시)', 1, false], ['국어', '4. 글의 짜임 (3/10차시)', 0, false], ['국어', '4. 글의 짜임 (2/10차시)', -1, true], ['사회', '2. 우리나라의 민주주의 (4/9차시)', 2, false]]
     .forEach(([subject, unit, d, done]) => put('progress', { subject, unit, date: wd(d), done }, { year: YEAR }));
   const sc = (pattern) => Object.fromEntries(STUDENTS.map((s, i) => [s, pattern(i)]).filter(([, v]) => v));
-  put('evalPlans', { subject: '체육', area: '뜀틀 운동', code: '[6체02-03]', standard: '뜀틀 운동의 기본 동작을 익혀 자신 있게 넘는다.', element: '뜀틀 넘기 기본 동작', method: '실기', timing: '이번 주', scale: '3단계',
+  put('myClass', { grade: '6학년', room: '1반', semester: '2학기' }, { year: YEAR });
+  // 성취기준 DB 체험용: 실제 교육과정 문장이 아닌 예시 (코드의 '예' = 예시)
+  put('standards', { subject: '과학', band: '5~6학년', curriculum: '체험용 예시', source: '체험용 예시 — 실제 교육과정 성취기준이 아닙니다', items: [
+    { area: '물질', code: '[6예01-01]', text: '여러 가지 혼합물을 관찰하고 성질을 이용해 분리하는 방법을 탐구할 수 있다.' },
+    { area: '물질', code: '[6예01-02]', text: '물질이 탈 때 나타나는 현상을 관찰하고 안전하게 실험할 수 있다.' },
+    { area: '지구와 우주', code: '[6예02-01]', text: '하루 동안 그림자의 길이 변화를 측정하고 규칙을 찾을 수 있다.' },
+    { area: '지구와 우주', code: '[6예02-02]', text: '우리 지역의 날씨를 조사하고 생활에 주는 영향을 설명한다.' },
+    { area: '운동과 에너지', code: '[6예03-01]', text: '전기 회로를 꾸미고 전구의 밝기를 비교할 수 있다.' },
+    { area: '과학과 사회', code: '[6예04-01]', text: '생활 속 자원을 조사하고 아껴 쓰는 방법을 실천하려는 태도를 기른다.' },
+  ] });
+  put('evalPlans', { subject: '과학', grade: '6학년', semester: '2학기', timing: '10월 3주', unit: '2. 혼합물의 분리', content: '혼합물의 성질을 살펴보고 알맞은 분리 방법을 정해 실험을 수행한 뒤 결과를 정리함.', element: '혼합물의 성질을 이용해 분리하기', area: '물질', method: '실험 보고서',
+    standard: '[6예01-01] 여러 가지 혼합물을 관찰하고 성질을 이용해 분리하는 방법을 탐구할 수 있다.', code: '[6예01-01]', scale: '4단계', levels: ['매우 잘함', '잘함', '보통', '노력 요함'],
+    rubric: { '매우 잘함': '혼합물의 성질을 정확히 파악하여 알맞은 분리 방법을 스스로 정하고 실험 결과를 근거를 들어 설명할 수 있다.', '잘함': '혼합물의 성질을 알고 알맞은 방법으로 분리하는 실험을 바르게 수행할 수 있다.', '보통': '안내에 따라 혼합물을 분리하는 실험을 수행할 수 있다.', '노력 요함': '혼합물을 분리하는 실험 활동에 참여한다.' },
+    scores: sc((i) => (i < 18 ? { level: ['매우 잘함', '잘함', '잘함', '보통', '노력 요함'][i % 5], note: i === 1 ? '실험 결과를 표로 깔끔하게 정리함' : '' } : null)) }, { year: YEAR });
+  put('evalPlans', { subject: '체육', grade: '6학년', semester: '2학기', unit: '3. 뜀틀 운동', area: '운동', code: '[6체02-03]', standard: '[6체02-03] 뜀틀 운동의 기본 동작을 익혀 자신 있게 넘는다.', element: '뜀틀 넘기 기본 동작', method: '실기·실습 평가', timing: '10월 2주', scale: '3단계',
     rubric: { '잘함': '도움닫기·구름판 딛기·착지를 자연스럽게 연결하여 뜀틀을 자신 있게 넘음', '보통': '뜀틀 넘기의 기본 동작을 알고 안전하게 넘을 수 있음', '노력 요함': '뜀틀 넘기에 자신감을 기르기 위해 단계별 연습이 필요함' },
     scores: sc((i) => (i < 14 ? { level: ['잘함', '보통', '잘함', '노력 요함'][i % 4], note: i === 0 ? '착지 자세가 안정적임' : i === 3 ? '높이에 대한 두려움이 있으나 끝까지 도전함' : '' } : null)) }, { year: YEAR });
-  put('evalPlans', { subject: '국어', area: '4. 글의 짜임', code: '[6국03-02]', standard: '목적이나 주제에 따라 알맞은 내용과 매체를 선정하여 글을 쓴다.', element: '글의 짜임을 생각하며 내용 간추리기', method: '서술형', timing: '다음 주', scale: '4단계', scores: {}, rubric: {} }, { year: YEAR });
-  put('evalPlans', { subject: '수학', area: '3. 소수의 나눗셈', code: '[6수01-11]', standard: '(소수)÷(자연수)의 계산 원리를 이해하고 그 계산을 할 수 있다.', element: '소수의 나눗셈 계산', method: '서술형', timing: '10월', scale: '3단계', scores: sc((i) => (i < 8 ? { level: ['잘함', '보통'][i % 2] } : null)), rubric: {} }, { year: YEAR });
+  put('evalPlans', { subject: '국어', grade: '6학년', semester: '2학기', unit: '4. 글의 짜임', area: '쓰기', code: '[6국03-02]', standard: '목적이나 주제에 따라 알맞은 내용과 매체를 선정하여 글을 쓴다.', element: '글의 짜임을 생각하며 내용 간추리기', method: '서술형', timing: '11월 1주', scale: '4단계', scores: {}, rubric: {} }, { year: YEAR });
+  put('evalPlans', { subject: '수학', grade: '6학년', semester: '2학기', unit: '3. 소수의 나눗셈', area: '수와 연산', code: '[6수01-11]', standard: '(소수)÷(자연수)의 계산 원리를 이해하고 그 계산을 할 수 있다.', element: '소수의 나눗셈 계산', method: '서술형', timing: '10월 4주', scale: '3단계', scores: sc((i) => (i < 8 ? { level: ['잘함', '보통'][i % 2] } : null)), rubric: {} }, { year: YEAR });
   put('notes', { date: wd(0), student: '강다온', category: '칭찬', content: '모둠 토의에서 친구들의 의견을 정리해 발표함' });
   put('notes', { date: wd(-1), student: '노을빛', category: '관찰', content: '쉬는 시간에 혼자 책을 읽는 모습이 자주 보임' });
   put('notes', { date: wd(-2), student: '김가람', category: '학습', content: '소수의 나눗셈에서 자릿값을 헷갈려 함 → 개별 지도' });

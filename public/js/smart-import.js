@@ -232,50 +232,162 @@ export function normClass(s) {
 }
 
 // ---------- 평가 계획 인식 ----------
-//   표: 머리글(교과·영역·성취기준·평가 요소·방법·시기)로 칸 찾기 / 줄글: "과목 | 영역 | 성취기준 | 시기 | 방법"
+//   ① 학교 평가계획서 양식: 제목 줄("과학과 교수학습 및 평가 운영계획")·학년·학기 + 머리글
+//      (시기 | 단원명(교수학습 내용) | 평가 요소 | 평가 영역 | 평가 방법 | 성취기준 | 성취수준)
+//      한 계획 = 여러 줄(성취수준마다 한 줄: 수준명 + 수준별 기준)
+//   ② 간단한 표: 교과 | 영역 | 성취기준 | 평가 요소 | 방법 | 시기  ③ 줄글: "과목 | 영역 | 성취기준 | 시기 | 방법"
 const EV_COLS = {
   subject: /^(교\s*과|과\s*목|교과목)$/,
-  area: /^(영\s*역|단\s*원|영역\s*\(단원\)|단원명|영역·단원)$/,
+  unit: /^(단\s*원|영역\s*[(·]\s*단원)/,
+  area: /^(영\s*역|평가\s*영역|내용\s*영역)$/,
   standard: /(성취\s*기준)/,
   element: /(평가\s*요소|평가\s*내용)/,
   method: /^(평가\s*방법|방\s*법|평가\s*유형)$/,
   timing: /^(시\s*기|평가\s*시기|월|시행\s*시기)$/,
+  levels: /(성취\s*수준|평가\s*기준|채점\s*기준|수준별\s*기준)/,
 };
-const CODE_RE = /\[(\d{1,2}[가-힣]{1,3}\s?\d{2}-\d{2}(?:-\d{2})?)\]/;
+export const CODE_RE = /\[(\d{1,2}[가-힣]{1,3}\s?\d{2}-\d{2}(?:-\d{2})?)\]/;
+const CODE_G = new RegExp(CODE_RE.source, 'g');
+const KNOWN_SUBJECTS = ['국어', '수학', '사회', '과학', '영어', '도덕', '실과', '체육', '음악', '미술', '바른 생활', '슬기로운 생활', '즐거운 생활'];
+
+// "[6도03-01] 문장\n[6도03-02] 문장" → [{code, text}] (코드 없는 줄은 앞 문장에 이어 붙임)
+export function splitStandards(text, fallbackCode = '') {
+  const out = [];
+  for (const raw of String(text || '').split(/\n+/)) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+    const parts = line.split(CODE_G);
+    if (parts.length === 1) { if (out.length) out.at(-1).text = `${out.at(-1).text} ${line}`.trim(); else out.push({ code: fallbackCode, text: line }); continue; }
+    if (parts[0].trim() && out.length) out.at(-1).text = `${out.at(-1).text} ${parts[0].trim()}`;
+    for (let k = 1; k < parts.length; k += 2) out.push({ code: `[${parts[k].replace(/\s/g, '')}]`, text: (parts[k + 1] || '').trim() });
+  }
+  return out;
+}
+export const joinStandards = (list) => list.map((x) => [x.code, x.text].filter(Boolean).join(' ')).join('\n');
+
+// 제목 칸 → 과목: "과학과 교수학습 및 평가 운영계획" → 과학, "실과과 …" → 실과, "디지털온 교수학습 …" → 디지털온
+function subjectFromTitle(t) {
+  const m = String(t).replace(/\s+/g, ' ').trim().match(/^(?:\d{4}\s*학년도\s*)?(.+?)\s*(교수\s*·?\s*학습|평가\s*(?:운영\s*)?계획)/);
+  if (!m) return '';
+  let s = m[1].replace(/[\s·]+$/, '');
+  if (s.endsWith('과') && !KNOWN_SUBJECTS.includes(s)) s = s.slice(0, -1);
+  return s.trim();
+}
+// 단원명 칸: 첫 줄 = 단원명, 나머지(▪ …) = 교수학습 내용
+function splitUnit(text) {
+  const lines = String(text || '').split('\n').map((x) => x.trim()).filter(Boolean);
+  if (!lines.length) return { unit: '', content: '' };
+  const first = lines[0].startsWith('▪') ? '' : lines.shift();
+  return { unit: first, content: lines.map((x) => x.replace(/^[▪•·○◦\-]\s*/, '')).join('\n') };
+}
+const sameLevels = (a, b) => a.length === b.length && a.every((x, i) => x.replace(/\s/g, '') === b[i].replace(/\s/g, ''));
+export const matchScale = (levels, scales) => Object.keys(scales).find((k) => sameLevels(scales[k], levels)) || '';
 
 export function parseEvalPlans(src) {
   const out = [];
   const push = (o) => {
-    const std = String(o.standard || '').trim();
-    const m = std.match(CODE_RE);
-    const code = o.code || (m ? `[${m[1].replace(/\s/g, '')}]` : '');
-    const standard = m ? std.replace(m[0], '').trim() : std;
-    if (!o.subject || !(standard || o.element || o.area)) return;
-    out.push({ subject: o.subject.trim(), area: (o.area || '').trim(), code, standard, element: (o.element || '').trim(), method: (o.method || '').trim(), timing: (o.timing || '').trim() });
+    const list = splitStandards(o.standard, o.code);
+    const subject = String(o.subject || '').trim();
+    if (!subject || !(list.length || o.element || o.area || o.unit)) return;
+    const rec = { subject, area: (o.area || '').trim(), unit: (o.unit || '').trim(), code: list.map((x) => x.code).filter(Boolean).join(' '), standard: joinStandards(list),
+      element: (o.element || '').trim(), method: (o.method || '').trim(), timing: (o.timing || '').trim() };
+    for (const k of ['grade', 'semester', 'content']) if (o[k]) rec[k] = o[k];
+    if (o.levels?.length >= 2) { rec.levels = o.levels; rec.rubric = o.rubric || {}; }
+    out.push(rec);
   };
   for (const table of src.tables) {
     let map = null;
     let last = {};
+    const meta = {};
+    let block = null;
+    const flush = () => { if (block) push(block); block = null; };
     for (const row of table) {
-      const cells = row.map((c) => String(c || '').replace(/\s+/g, ' ').trim());
-      const cand = {};
-      cells.forEach((c, i) => { for (const [k, re] of Object.entries(EV_COLS)) if (cand[k] === undefined && re.test(c)) cand[k] = i; });
-      if (cand.standard !== undefined && Object.keys(cand).length >= 2) { map = cand; last = {}; continue; }
+      const raw = row.map((c) => String(c || '').trim());
+      const cells = raw.map((c) => c.replace(/\s+/g, ' '));
       if (!map) {
-        // 머리글이 없는 붙여넣기: 과목 | 영역 | 성취기준 | 시기 | 방법
-        if (cells.length >= 3 && CODE_RE.test(cells.join(' '))) push({ subject: cells[0], area: cells[1], standard: cells[2], timing: cells[3], method: cells[4] });
+        // 머리글 전: 제목·학년·학기
+        for (const c of new Set(cells)) {
+          if (!meta.subject && subjectFromTitle(c)) meta.subject = subjectFromTitle(c);
+          if (!meta.grade && /^[1-6]\s*학년$/.test(c)) meta.grade = c.replace(/\s/g, '');
+          const sm = c.match(/([12])\s*학기/);
+          if (!meta.semester && sm) meta.semester = `${sm[1]}학기`;
+        }
+      }
+      // 머리글 줄: 칸 범위(병합 포함)까지 기억
+      const cand = {};
+      cells.forEach((c, i) => { for (const [k, re] of Object.entries(EV_COLS)) if (re.test(c) && (cand[k] === undefined || cand[k][1] === i - 1)) cand[k] = cand[k] ? [cand[k][0], i] : [i, i]; });
+      if (cand.standard && Object.keys(cand).length >= 2) { flush(); map = cand; last = {}; continue; }
+      if (!map) {
+        if (cells.length >= 3 && CODE_RE.test(cells.join(' '))) push({ subject: cells[0], area: cells[1], standard: raw[2], timing: cells[3], method: cells[4] });
         continue;
       }
-      const get = (k) => (map[k] !== undefined ? cells[map[k]] || '' : '');
-      const o = { subject: get('subject') || last.subject, area: get('area') || last.area, standard: get('standard'), element: get('element'), method: get('method'), timing: get('timing') || last.timing };
+      const vals = (k) => (map[k] ? [...new Set(raw.slice(map[k][0], map[k][1] + 1).filter(Boolean))] : []);
+      const get = (k) => (k === 'standard' ? (vals(k).find((v) => CODE_RE.test(v)) ?? vals(k).at(-1) ?? '') : vals(k)[0] ?? '');
+      if (new Set(cells.filter(Boolean)).size <= 1 && !map.levels) continue;
+      if (/^▶|총\s*횟수|^※/.test(cells.find(Boolean) || '')) { flush(); continue; }
+      const { unit, content } = splitUnit(get('unit'));
+      const o = { subject: get('subject') || last.subject || meta.subject, grade: meta.grade, semester: meta.semester, area: get('area') || (map.levels ? '' : last.area),
+        unit, content, standard: get('standard'), element: get('element'), method: get('method'), timing: get('timing') || (map.levels ? '' : last.timing) };
+      if (map.levels) {
+        const lv = vals('levels');
+        const name = lv[0] && lv[0].length <= 10 ? lv[0].replace(/\s+/g, ' ') : '';
+        const desc = lv.length > 1 ? lv.at(-1) : '';
+        const key = [o.timing, unit, o.element, o.standard].join('|');
+        if (!key.replace(/\|/g, '')) continue;
+        if (!block || block._key !== key || (name && block.levels.includes(name))) { flush(); block = { ...o, _key: key, levels: [], rubric: {} }; }
+        if (name) { block.levels.push(name); if (desc && desc !== name) block.rubric[name] = desc.replace(/\s+/g, ' '); }
+        continue;
+      }
       if (!o.standard && !o.element) continue;
       last = o;
       push(o);
     }
+    flush();
   }
   for (const line of src.lines) {
     const p = line.split('|').map((x) => x.trim());
     if (p.length >= 3) push({ subject: p[0], area: p[1], standard: p[2], timing: p[3], method: p[4] });
   }
   return out;
+}
+
+// ---------- 성취기준 목록 인식 (교육과정 문서·평가계획 붙여넣기) ----------
+//   [코드] 문장 줄 → 성취기준, 코드 없는 짧은 줄 → 그 아래 성취기준의 영역 이름
+const CODE_SUBJECT = { 국: '국어', 수: '수학', 사: '사회', 과: '과학', 영: '영어', 도: '도덕', 실: '실과', 체: '체육', 음: '음악', 미: '미술', 바: '바른 생활', 슬: '슬기로운 생활', 즐: '즐거운 생활' };
+export const subjectOfCode = (code) => { const m = String(code).match(/\d{1,2}([가-힣]{1,3})\d/); return m ? CODE_SUBJECT[m[1]] || '' : ''; };
+export const bandOfCode = (code) => ({ 2: '1~2학년', 4: '3~4학년', 6: '5~6학년' }[String(code).match(/\[?(\d)/)?.[1]] || '');
+
+export function parseStandards(src, defaults = {}) {
+  const lines = [];
+  for (const table of src.tables) for (const row of table) {
+    let prev = null;
+    for (const c of row) { if (c && c !== prev) lines.push(...String(c).split('\n')); prev = c; }
+  }
+  lines.push(...src.lines);
+  const items = [];
+  let area = defaults.area || '';
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (!line) continue;
+    if (!CODE_RE.test(line)) {
+      // 영역 머리: "(1) 물질", "[물질]", "가. 듣기·말하기", "영역: 물질" 처럼 짧은 줄
+      const head = line.replace(/^(\(\d+\)|\d+[.)]|[가-하][.)]|[①-⑳]|영역\s*[:：])\s*/, '').replace(/^\[(.+)\]$/, '$1').trim();
+      if (head.length >= 2 && head.length <= 24 && !/[.。]$/.test(head) && !/(있다|한다|이다)$/.test(head)) area = head;
+      else if (items.length && !/^[▪•※]/.test(line) && line.length > 24) items.at(-1).text = `${items.at(-1).text} ${line}`;
+      continue;
+    }
+    for (const st of splitStandards(line)) if (st.code) items.push({ area, code: st.code, text: st.text });
+  }
+  const seen = new Set();
+  const groups = new Map();
+  for (const it of items) {
+    if (seen.has(it.code)) continue;
+    seen.add(it.code);
+    const subject = defaults.subject || subjectOfCode(it.code) || '';
+    const band = bandOfCode(it.code) || defaults.band || '';
+    const k = `${subject}|${band}`;
+    if (!groups.has(k)) groups.set(k, { subject, band, items: [] });
+    groups.get(k).items.push(it);
+  }
+  return [...groups.values()];
 }

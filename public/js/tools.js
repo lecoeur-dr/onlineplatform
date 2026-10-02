@@ -2,6 +2,7 @@
 //   각 도구 = { id, name, icon, desc, cat, color, roster(명단 사용 여부), run(el, ctx) }
 //   ctx = { students: [{ num, name, gender }], save(key, value), load(key) }
 import { h, clear, toast } from './ui.js';
+import { MORE_TOOLS } from './tools-more.js';
 
 const shuffle = (a) => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 const label = (s) => `${s.num ?? ''} ${s.name}`.trim();
@@ -398,6 +399,7 @@ export const TOOLS = [
       requestAnimationFrame(fit); window.addEventListener('resize', () => el.isConnected && fit());
     },
   },
+  ...MORE_TOOLS,
 ];
 
 export const toolById = (id) => TOOLS.find((t) => t.id === id);

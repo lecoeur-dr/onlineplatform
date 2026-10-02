@@ -29,15 +29,21 @@ export const DEFAULT_LISTS = {
   subjects: ['국어', '수학', '사회', '과학', '영어', '도덕', '실과', '체육', '음악', '미술', '바른 생활', '슬기로운 생활', '즐거운 생활', '창의적 체험활동'],
 };
 
-// 평가 단계 체계: 앞쪽일수록 높은 단계
+// 평가 수준(단계) 체계: 앞쪽일수록 높은 수준. 수준 수·이름은 계획마다 바꿀 수 있음(levels)
 export const EVAL_SCALES = {
   '3단계': ['잘함', '보통', '노력 요함'],
   '4단계': ['매우 잘함', '잘함', '보통', '노력 요함'],
   '상중하': ['상', '중', '하'],
+  '우수·보통·미흡': ['우수', '보통', '미흡'],
   'A~E': ['A', 'B', 'C', 'D', 'E'],
   '도달/미도달': ['도달', '미도달'],
 };
-export const scaleOf = (plan) => EVAL_SCALES[plan?.data?.scale] || EVAL_SCALES['3단계'];
+const asLevels = (v) => (Array.isArray(v) ? v : String(v || '').split(/[,/·]/)).map((x) => String(x).trim()).filter(Boolean);
+export const scaleOf = (plan) => { const own = asLevels(plan?.data?.levels); return own.length >= 2 ? own : EVAL_SCALES[plan?.data?.scale] || EVAL_SCALES['3단계']; };
+export const EVAL_METHODS = ['실험 보고서', '조사 보고서', '탐구 보고서', '보고서', '실기·실습 평가', '토의·토론 평가', '프로젝트 평가', '서술형', '논술형', '구술', '관찰', '포트폴리오', '자기평가', '동료평가'];
+export const GRADES = ['1학년', '2학년', '3학년', '4학년', '5학년', '6학년'];
+// 학년 → 성취기준 학년군 (코드 앞 숫자: 2=1~2학년, 4=3~4학년, 6=5~6학년)
+export const bandOf = (grade) => { const g = Number(String(grade || '').match(/\d/)?.[0]); return g ? `${Math.ceil(g / 2) * 2 - 1}~${Math.ceil(g / 2) * 2}학년` : ''; };
 
 // 학사일정 색 분류 (순서 = 범례 순서)
 export const CATEGORIES = [
@@ -453,16 +459,39 @@ export const MODULES = {
     ],
   },
   evalPlans: {
-    label: '평가', icon: '📝', scope: 'year', edit: 'staff', space: 'desk', extras: ['scores', 'rubric'],
+    label: '평가', icon: '📝', scope: 'year', edit: 'staff', space: 'desk', extras: ['scores', 'rubric', 'levels'],
     fields: [
       { key: 'subject', label: '과목', type: 'select', list: 'subjects', free: true, required: true },
-      { key: 'area', label: '영역·단원', type: 'text', hint: '예) 3. 글의 짜임' },
-      { key: 'code', label: '성취기준 코드', type: 'text', hint: '예) [6국03-02]' },
-      { key: 'standard', label: '성취기준', type: 'textarea' },
-      { key: 'element', label: '평가 요소', type: 'text', hint: '예) 글의 짜임을 생각하며 내용 간추리기' },
-      { key: 'method', label: '평가 방법', type: 'select', options: ['서술형', '논술형', '구술', '실기', '관찰', '포트폴리오', '프로젝트', '자기평가', '동료평가', '기타'], free: true },
-      { key: 'timing', label: '시기', type: 'text', hint: '예) 4월 2주' },
-      { key: 'scale', label: '평가 단계', type: 'select', options: ['3단계', '4단계', '상중하', 'A~E', '도달/미도달'] },
+      { key: 'semester', label: '학기', type: 'select', options: ['1학기', '2학기'] },
+      { key: 'grade', label: '학년', type: 'select', options: GRADES, free: true },
+      { key: 'timing', label: '시기', type: 'text', hint: '예) 9월 3주, 12~14차시' },
+      { key: 'unit', label: '단원명', type: 'text', hint: '예) 1. 혼합물의 분리' },
+      { key: 'content', label: '교수학습 내용', type: 'textarea' },
+      { key: 'element', label: '평가 요소', type: 'text', hint: '예) 알갱이의 크기가 다른 고체 혼합물 분리하기' },
+      { key: 'area', label: '평가 영역', type: 'text', hint: '예) 물질 (교육과정 영역)' },
+      { key: 'method', label: '평가 방법', type: 'select', options: EVAL_METHODS, free: true },
+      { key: 'standard', label: '성취기준', type: 'textarea', hint: '한 줄에 하나: [6과05-01] 성취기준 문장' },
+      { key: 'code', label: '성취기준 코드', type: 'text', hint: '비워 두면 성취기준 칸의 [코드]를 씀' },
+      { key: 'scale', label: '평가 수준', type: 'select', options: Object.keys(EVAL_SCALES) },
+    ],
+  },
+  // 성취기준 DB: 과목·학년군마다 한 묶음(items: [{area, code, text}]). 평가계획 가져오기·교육과정 문서 붙여넣기로 채움
+  standards: {
+    label: '성취기준', icon: '🎯', scope: 'global', edit: 'staff', space: 'desk', extras: ['items'],
+    fields: [
+      { key: 'subject', label: '과목', type: 'select', list: 'subjects', free: true, required: true },
+      { key: 'band', label: '학년군', type: 'select', options: ['1~2학년', '3~4학년', '5~6학년'], free: true },
+      { key: 'curriculum', label: '교육과정', type: 'select', options: ['2022 개정', '2015 개정'], free: true },
+      { key: 'source', label: '출처', type: 'text', hint: '예) 국가교육과정정보센터 교육과정 문서, 학교 평가계획' },
+    ],
+  },
+  // 우리 반 정보 (학년·반·학기): 평가계획서 머리글과 성취기준 학년군에 쓰임
+  myClass: {
+    label: '우리 반', icon: '🏫', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'grade', label: '학년', type: 'select', options: GRADES, required: true },
+      { key: 'room', label: '반', type: 'text', hint: '예) 2반' },
+      { key: 'semester', label: '현재 학기', type: 'select', options: ['1학기', '2학기'] },
     ],
   },
   notes: {
@@ -564,8 +593,10 @@ export const DESK_GROUPS = [
   ] },
   { id: 'eval', label: '평가', icon: '📝', tabs: [
     { id: 'overview', label: '평가 현황·기록', module: 'evalPlans' },
+    { id: 'plan', label: '평가계획서', module: 'evalPlans' },
+    { id: 'standards', label: '성취기준 DB', module: 'standards' },
     { id: 'students', label: '학생별 결과' },
-    { id: 'remarks', label: '특기사항', module: 'remarks' },
+    { id: 'remarks', label: '교과발달·특기사항', module: 'remarks' },
   ] },
   { id: 'record', label: '기록', icon: '🗒', tabs: [
     { id: 'overview', label: '누가기록', module: 'notes' },

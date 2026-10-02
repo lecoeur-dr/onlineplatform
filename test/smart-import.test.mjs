@@ -42,8 +42,47 @@ test('평가 계획: 머리글 표·코드 분리·교과 이어받기', async (
   assert.equal(r.length, 2);
   assert.equal(r[0].code, '[6국02-01]');
   assert.equal(r[1].subject, '국어');
-  assert.ok(!r[0].standard.includes('['));
+  assert.equal(r[0].standard, '[6국02-01] 읽기는 배경지식을 활용하여 의미를 구성하는 과정임을 이해하고 글을 읽는다.');
   const r2 = parseEvalPlans(readText('수학 | 분수의 나눗셈 | [6수01-01] 분수의 나눗셈을 할 수 있다. | 3월 | 서술형'));
   assert.equal(r2[0].subject, '수학');
   assert.equal(r2[0].method, '서술형');
+});
+
+test('평가계획서 양식: 제목·학년·학기, 4줄 성취수준 묶음, 여러 성취기준, 병합 칸', async () => {
+  const { parseEvalPlans, parseStandards } = await import('../public/js/smart-import.js');
+  // 학교 양식과 같은 구조의 가상 예시 (병합 칸은 readHwpx처럼 같은 값으로 채워짐)
+  const T = '가상과 교수학습 및 평가 운영계획';
+  const blk = (time, unit, el, area, how, std, lv) => lv.map(([n, d]) => [time, unit, el, area, how, std, std, n, d]);
+  const table = [
+    Array(9).fill(T),
+    [...Array(6).fill('2026학년도 2학기'), '5학년', '5학년', '5학년'],
+    ['시기', '단원명(교수학습 내용)', '평가 요소', '평가 영역', '평가 방법', '성취기준', '성취기준', '성취수준', '성취수준'],
+    ...blk('9월 3주', '1. 첫 단원\n\n▪ 활동을 하고 정리함.', '요소 하나', '영역가', '보고서', '[6가01-01] 첫째 기준이다.', [['매우 잘함', '가장 높은 기준'], ['잘함', '높은 기준'], ['보통', '중간 기준'], ['노력 요함', '낮은 기준']]),
+    ...blk('12~14차시', '2. 둘째 단원', '요소 둘', '영역나', '실기·실습 평가', '[6가02-01] 둘째 기준.\n[6가02-02] 셋째 기준.', [['상', 'A'], ['중', 'B'], ['하', 'C']]),
+    Array(9).fill('▶ 2학기 가상 총 횟수: 2회'),
+  ];
+  const r = parseEvalPlans({ tables: [table], lines: [] });
+  assert.equal(r.length, 2);
+  assert.equal(r[0].subject, '가상');
+  assert.equal(r[0].grade, '5학년');
+  assert.equal(r[0].semester, '2학기');
+  assert.equal(r[0].unit, '1. 첫 단원');
+  assert.equal(r[0].content, '활동을 하고 정리함.');
+  assert.deepEqual(r[0].levels, ['매우 잘함', '잘함', '보통', '노력 요함']);
+  assert.equal(r[0].rubric['보통'], '중간 기준');
+  assert.equal(r[1].code, '[6가02-01] [6가02-02]');
+  assert.deepEqual(r[1].levels, ['상', '중', '하']);
+  assert.equal(r[1].timing, '12~14차시');
+  const g = parseStandards({ tables: [], lines: ['(1) 물질', '[6과05-01] 가나다를 할 수 있다.', '(2) 지구와 우주', '[6과06-01] 라마바를 한다.', '[4국01-01] 사아자.'] });
+  assert.deepEqual(g.map((x) => [x.subject, x.band, x.items.length]), [['과학', '5~6학년', 2], ['국어', '3~4학년', 1]]);
+  assert.equal(g[0].items[1].area, '지구와 우주');
+});
+
+test('평가 문장: 평가 요소 명사형, 생활기록부 문체, 시기 정렬', async () => {
+  const { elementFrom, toRecordStyle, timingKey, autoRubric } = await import('../public/js/eval-text.js');
+  assert.equal(elementFrom('고체 혼합물을 분리할 수 있다.'), '고체 혼합물을 분리하기');
+  assert.equal(elementFrom('시민의식을 기른다.'), '시민의식을 기르기');
+  assert.equal(toRecordStyle('소감을 나눈다. 설명할 수 있다. 의미를 이해한다.'), '소감을 나눔. 설명할 수 있음. 의미를 이해함.');
+  assert.ok(timingKey('9월 3주') < timingKey('12월 1주') && timingKey('12월 1주') < timingKey('2월 1주'));
+  assert.equal(Object.keys(autoRubric('요소', ['상', '중', '하'])).length, 3);
 });
