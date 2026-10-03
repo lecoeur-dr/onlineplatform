@@ -148,3 +148,15 @@ test('예산: 학교본예산·공모사업 편성 대비 날짜별 집행, 비�
   const cats = m.catsOf([...m.programs.values()]);
   assert.equal(cats.find((c) => c.name === '일반수용비').used, 500);
 });
+
+test('계산식: 스프레드시트처럼 단위 글자 무시·곱셈 기호·괄호', async () => {
+  const { evalFormula, amountFrom } = await import('../public/js/calc.js');
+  assert.equal(evalFormula('5,000원 × 20명 × 3회'), 300000);
+  assert.equal(evalFormula('=12000*4+3000'), 51000);
+  assert.equal(evalFormula('(3000+500)x10'), 35000);
+  assert.equal(evalFormula('글자만'), null);
+  assert.equal(evalFormula('1/0'), null);
+  assert.equal(evalFormula('2+'), null);
+  assert.equal(amountFrom('', '1,500원'), 1500);
+  assert.equal(amountFrom('100×3', 9), 300);
+});

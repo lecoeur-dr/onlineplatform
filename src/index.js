@@ -3,6 +3,7 @@ import { MODULES, DEFAULT_LISTS, SELF_TOGGLE, yearRange, normalizeData, spaceOf 
 import { searchSchools, syncSchedule, getMeals, getTimetable, getDayTimetable } from './neis.js';
 import { mountAuth, loadUser, adminEmails } from './auth.js';
 import { randomToken, encryptText, decryptText } from './crypto.js';
+import { evalFormula } from '../public/js/calc.js';
 import { notify, pushReady, sendPush } from './push.js';
 
 const app = new Hono();
@@ -334,6 +335,31 @@ async function reservationClash(db, m, data, schoolId, id) {
   return `이미 예약되어 있습니다: ${data.place} ${data.period} (${d.user || ''}${d.className ? ` ${d.className}` : ''})`;
 }
 
+
+// 공모사업은 담당자(입력 담당자, 없으면 신청자)와 학교 관리자만 편성·집행·사업 정보를 입력
+async function contestGuard(c, t, m, data, prevData) {
+  if (!['budget', 'spending', 'contests'].includes(m) || !t.member || t.member.role === 'admin') return null;
+  const me = String(t.member.name || '').replace(/\s/g, '');
+  const allowed = (cd) => { const list = [...(cd.managers || []), ...((cd.managers || []).length ? [] : [cd.applicant])].map((x) => String(x || '').replace(/\s/g, '')).filter(Boolean); return !list.length || list.includes(me); };
+  const findContest = async (name) => {
+    if (!name) return null;
+    const row = await c.env.DB.prepare("SELECT data FROM records WHERE module = 'contests' AND school_id = ? AND json_extract(data, '$.name') = ? ORDER BY year DESC LIMIT 1").bind(t.member.schoolId, name).first();
+    return row ? JSON.parse(row.data) : null;
+  };
+  if (m === 'contests') {
+    if (prevData && !allowed(prevData)) return `「${prevData.name}」 공모사업은 입력 담당자(${(prevData.managers || []).join(', ') || prevData.applicant})와 관리자만 고칠 수 있습니다.`;
+    return null;
+  }
+  for (const d of [data, prevData].filter(Boolean)) {
+    const cd = await findContest(d.program);
+    const isContest = d.source === '공모사업' || !!cd;
+    if (!isContest) continue;
+    if (!cd) return `공모사업 「${d.program || ''}」을(를) 먼저 [공모사업] 탭에서 등록해 주세요.`;
+    if (!allowed(cd)) return `「${cd.name}」 공모사업은 입력 담당자(${(cd.managers || []).join(', ') || cd.applicant})와 관리자만 입력할 수 있습니다.`;
+  }
+  return null;
+}
+
 app.post('/api/records/:module', async (c) => {
   const m = requireModule(c);
   const user = c.get('user');
@@ -343,6 +369,10 @@ app.post('/api/records/:module', async (c) => {
   const clean = normalizeData(m, body.data);
   if (m === 'market') { clean.likes = []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); }
   if (m === 'activities') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
+  if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
+  if (m === 'contests' && !(clean.managers || []).length && t.member?.name) clean.managers = [t.member.name]; // 등록한 사람이 기본 담당자
+  const denied = await contestGuard(c, t, m, clean, null);
+  if (denied) return c.json({ error: denied }, 403);
   const year = body.year || (t.member ? (await getSettings(c.env.DB, t.member.schoolId)).currentYear : new Date().getFullYear());
   const p = placement(m, clean, year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
@@ -368,6 +398,9 @@ app.put('/api/records/:module/:id', async (c) => {
   const prevData = JSON.parse(prev.data);
   const clean = normalizeData(m, body.data);
   if (m === 'activities') clean.token = prevData.token || randomToken(16);
+  if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
+  const denied = await contestGuard(c, t, m, clean, prevData);
+  if (denied) return c.json({ error: denied }, 403);
   if (m === 'market') { clean.likes = prevData.likes || []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); } // 좋아요는 각자 버튼으로만
   const p = placement(m, clean, prev.year);
   if (MODULES[m].scope === 'date' && !p.date) return c.json({ error: '날짜를 입력해 주세요.' }, 400);
@@ -396,6 +429,8 @@ app.delete('/api/records/:module/:id', async (c) => {
   const prev = await findRecord(c, m, id, t);
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  const denied = await contestGuard(c, t, m, null, JSON.parse(prev.data));
+  if (denied) return c.json({ error: denied }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
   if (m === 'activities') await c.env.DB.prepare('DELETE FROM submissions WHERE activity_id = ?').bind(id).run();
   if (t.space === 'school') await audit(c, 'delete', m, id, m === 'secrets' ? null : prev.data);

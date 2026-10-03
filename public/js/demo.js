@@ -114,14 +114,14 @@ function seed() {
   // ----- 예산·물품 -----
   // 예산 (가상): 학교본예산 · 공모사업 편성 + 날짜별 집행
   [['기초학력 지원', '학습 자료', '일반수용비', 3000000], ['기초학력 지원', '협력강사', '강사수당', 4800000], ['학생 자치 활동', '운영비', '일반수용비', 1500000], ['학생 자치 활동', '리더십 캠프', '임차료', 900000], ['교원 연수', '전문적 학습공동체', '운영수당', 1200000], ['교원 연수', '연수 출장', '여비', 800000]]
-    .forEach(([program, item, category, amount]) => put('budget', { source: '학교본예산', program, item, category, amount }, { year: YEAR }));
-  put('contests', { applicant: '이서준', name: 'AI 디지털 선도학교', grades: '5~6학년', budget: 8000000, agency: '교육청(가상)', period: `${YEAR}.4.~${YEAR + 1}.2.` }, { year: YEAR });
-  put('contests', { applicant: '김민지', name: '생태전환 교육 공모', grades: '전학년', budget: 3000000, agency: '교육청(가상)', period: `${YEAR}.5.~${YEAR}.12.` }, { year: YEAR });
+    .forEach(([program, item, category, amount]) => put('budget', { source: '학교본예산', program, item, category, amount, ...(category === '강사수당' ? { detail: '협력강사 수당', formula: '40,000원 × 4시간 × 30회' } : category === '여비' ? { detail: '관외 출장', formula: '40,000원 × 20회' } : {}) }, { year: YEAR }));
+  put('contests', { applicant: '이서준', managers: ['이서준'], name: 'AI 디지털 선도학교', grades: '5~6학년', budget: 8000000, agency: '교육청(가상)', period: `${YEAR}.4.~${YEAR + 1}.2.` }, { year: YEAR });
+  put('contests', { applicant: '김민지', managers: [ME.name], name: '생태전환 교육 공모', grades: '전학년', budget: 3000000, agency: '교육청(가상)', period: `${YEAR}.5.~${YEAR}.12.` }, { year: YEAR });
   [['AI 디지털 선도학교', '일반수용비', 5000000], ['AI 디지털 선도학교', '강사수당', 2000000], ['AI 디지털 선도학교', '운영수당', 1000000], ['생태전환 교육 공모', '일반수용비', 2000000], ['생태전환 교육 공모', '강사수당', 1000000]]
     .forEach(([program, category, amount]) => put('budget', { source: '공모사업', program, category, amount }, { year: YEAR }));
   [[`${YEAR}-03-20`, '학교본예산', '기초학력 지원', '일반수용비', '학습 자료 구입', 820000], [`${YEAR}-04-15`, '학교본예산', '기초학력 지원', '강사수당', '협력강사 3·4월분', 1600000], [`${YEAR}-05-08`, '학교본예산', '학생 자치 활동', '일반수용비', '자치회 물품', 430000], [`${YEAR}-05-21`, '공모사업', 'AI 디지털 선도학교', '일반수용비', '코딩 교구 구입', 2100000], [`${YEAR}-06-12`, '공모사업', 'AI 디지털 선도학교', '강사수당', 'AI 캠프 강사', 600000], [`${YEAR}-06-25`, '학교본예산', '교원 연수', '운영수당', '전학공 운영 1학기', 600000], [`${YEAR}-07-10`, '공모사업', '생태전환 교육 공모', '일반수용비', '텃밭 상자·모종', 780000], [`${YEAR}-09-05`, '학교본예산', '기초학력 지원', '강사수당', '협력강사 9월분', 800000], [`${YEAR}-09-18`, '공모사업', 'AI 디지털 선도학교', '운영수당', '선도학교 협의회', 400000], [`${YEAR}-09-30`, '학교본예산', '교원 연수', '여비', '연수 출장', 230000]]
     .forEach(([date, source, program, category, content, amount]) => put('spending', { date, source, program, category, content, amount, person: ME.name }));
-  put('purchases', { budget: '기초학력 지원', requester: '박지우', item: '보드게임형 수학 교구', price: 32000, qty: 6, received: true }, { year: YEAR });
+  put('purchases', { date: `${YEAR}-09-14`, budget: '기초학력 지원', requester: '박지우', item: '보드게임형 수학 교구', spec: '4인용', price: 32000, qty: 6, received: true }, { year: YEAR });
   put('purchases', { budget: '생태전환 교육 공모', requester: '김민지', item: '모종삽 세트', price: 12000, qty: 15 }, { year: YEAR });
   put('purchases', { budget: 'AI 디지털 선도학교', requester: ME.name, item: '코딩 로봇 키트', price: 89000, qty: 10 }, { year: YEAR });
   put('purchases', { budget: '학생 자치 활동', requester: '윤지아', item: '선거 투표함', price: 45000, qty: 2 }, { year: YEAR });

@@ -1,11 +1,13 @@
 // 💰 예산·물품: 전체 대시보드 · 학교본예산 · 공모사업 · 집행 입력 · 물품 신청 · 공모 안내
 //   구조는 같고 재원만 다름: 재원(학교본예산 | 공모사업) → 사업(세부사업 | 공모사업명) → 비목 → 편성액
 //   날짜별 집행 내역(spending)을 입력하면 재원·사업·비목별 사용액·사용률에 바로 반영
-import { h, api, clear, won, toast, confirmBox, today } from '../ui.js';
-import { state, canEdit, remember } from '../state.js';
+import { h, api, clear, won, toast, confirmBox, today, modal } from '../ui.js';
+import { state, canEdit, remember, listOf } from '../state.js';
 import { yearMonths } from '../modules.js';
 import { tableView } from './table.js';
 import { openRecordForm } from '../form.js';
+import { evalFormula, amountFrom } from '../calc.js';
+
 
 export const KINDS = ['학교본예산', '공모사업'];
 const UNSET = '(비목 미지정)';
@@ -13,6 +15,16 @@ const norm = (s) => String(s || '').replace(/[\s()（）<>·,.\-_/]/g, '').toLow
 // a 의 글자가 b 안에 순서대로 모두 있으면 같은 사업으로 봄 (예: 'AI디지털선도학교' ⊂ 'AI 디지털 활용 선도학교 운영물품')
 const subseq = (a, b) => { let i = 0; for (const ch of b) if (ch === a[i]) i++; return a.length > 1 && i === a.length; };
 const amountOf = (p) => (Number(p.data.price) || 0) * (Number(p.data.qty) || 0);
+const myName = () => String(state.me?.name || '').replace(/\s/g, '');
+const contestManagers = (c) => (c?.data.managers?.length ? c.data.managers : [c?.data.applicant]).filter(Boolean);
+// 공모사업은 입력 담당자(없으면 신청자)와 관리자만 입력 (서버도 같은 규칙으로 막음). 학교본예산은 교직원 누구나
+export function canEditProgram(p) {
+  if (!p || p.kind !== '공모사업') return canEdit('budget');
+  if (state.me?.role === 'admin') return true;
+  if (!p.contest) return false;
+  const list = contestManagers(p.contest).map((x) => String(x).replace(/\s/g, ''));
+  return canEdit('budget') && (!list.length || list.includes(myName()));
+}
 const pctOf = (used, total) => (total > 0 ? Math.round((used / total) * 1000) / 10 : 0);
 
 // 예전 화면·홈 대시보드 호환: 재원 이름 목록
@@ -189,6 +201,86 @@ export async function moneyOverview(root) {
 
 // ---------- 재원별 화면 (학교본예산 · 공모사업 공통) ----------
 
+
+// ---------- 📒 편성표: 스프레드시트처럼 바로 입력 (산출식 → 금액 자동 계산) ----------
+
+function budgetGrid(box, rows, o) {
+  const showProg = !o.program;
+  const lines = rows.slice().sort((a, b) => String(a.data.program || '').localeCompare(String(b.data.program || ''), 'ko') || (a.sort || 0) - (b.sort || 0)).map((r) => ({ r, d: { ...r.data } }));
+  const tbody = h('tbody', {});
+  const foot = h('div', { class: 'grid-foot' });
+  const cats = listOf({ list: 'budgetCategories' });
+  const progs = state.budgetPrograms;
+  const canLine = (ln) => o.canEdit(ln.d.program || o.program);
+  const paintFoot = () => {
+    const by = new Map();
+    for (const ln of lines) { const k = ln.d.category || '(비목 없음)'; by.set(k, (by.get(k) || 0) + amountFrom(ln.d.formula, ln.d.amount)); }
+    const total = [...by.values()].reduce((a, b) => a + b, 0);
+    clear(foot, h('strong', {}, `합계 ${won(total)}`), [...by].map(([k, v]) => h('span', { class: 'tag' }, `${k} ${won(v)}`)));
+  };
+  const COLS = [...(showProg ? [['program', '사업', 'list-progs']] : []), ['item', '세부항목'], ['category', '비목', 'list-cats'], ['detail', '산출내역'], ['formula', '산출식 (예: 5,000×20×3)'], ['amount', '금액'], ['note', '비고']];
+  const save = (ln, st) => {
+    clearTimeout(ln.t);
+    st.textContent = '…';
+    ln.t = setTimeout(async () => {
+      const data = { ...ln.d, source: o.kind, program: ln.d.program || o.program, amount: amountFrom(ln.d.formula, ln.d.amount) };
+      if (!data.program && !data.item && !data.amount) { st.textContent = ''; return; }
+      try {
+        const saved = ln.r ? await api(`/api/records/budget/${ln.r.id}`, { method: 'PUT', body: { data, version: ln.r.version } }) : await api('/api/records/budget', { method: 'POST', body: { data, year: state.year } });
+        ln.r = saved; ln.d = { ...saved.data }; st.textContent = '✓'; st.title = '저장됨';
+      } catch (e) { st.textContent = '⚠'; st.title = e.message; toast(e.message, 'error'); }
+    }, 700);
+  };
+  const rowEl = (ln) => {
+    const editable = canLine(ln);
+    const st = h('td', { class: 'grid-st muted small' });
+    const amt = h('input', { class: 'num', inputmode: 'numeric' });
+    const paintAmt = () => {
+      const v = evalFormula(ln.d.formula);
+      amt.readOnly = v !== null || !editable; amt.classList.toggle('calc', v !== null);
+      amt.value = (v ?? (Number(ln.d.amount) || '')) ? Number(v ?? ln.d.amount).toLocaleString() : '';
+      amt.title = v !== null ? '산출식으로 계산된 금액' : '금액을 직접 입력하거나 산출식을 쓰세요';
+    };
+    const cell = ([k, , list]) => {
+      if (k === 'amount') {
+        amt.oninput = () => { ln.d.amount = amt.value.replace(/[^\d]/g, ''); paintFoot(); save(ln, st); };
+        paintAmt();
+        return h('td', {}, amt);
+      }
+      const inp = h('input', { value: ln.d[k] || '', readOnly: !editable, list: list || null, oninput: (e) => { ln.d[k] = e.target.value; if (k === 'formula') paintAmt(); paintFoot(); save(ln, st); } });
+      if (k === 'formula') inp.classList.add('formula');
+      return h('td', {}, inp);
+    };
+    const tr = h('tr', { class: editable ? '' : 'locked' }, COLS.map(cell), st,
+      h('td', {}, editable ? h('button', { class: 'icon-btn small', title: '줄 삭제', onclick: async () => {
+        if (ln.r && !(await confirmBox(`'${ln.d.item || ln.d.category || '이 줄'}' 편성을 삭제할까요?`))) return;
+        try { if (ln.r) await api(`/api/records/budget/${ln.r.id}`, { method: 'DELETE' }); lines.splice(lines.indexOf(ln), 1); tr.remove(); paintFoot(); } catch (e) { toast(e.message, 'error'); }
+      } }, '✕') : h('span', { title: '입력 권한 없음' }, '🔒')));
+    // Enter: 아래 줄 같은 칸으로 (마지막 줄이면 새 줄)
+    tr.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+      e.preventDefault();
+      const col = [...tr.querySelectorAll('input')].indexOf(e.target);
+      let next = tr.nextElementSibling;
+      if (!next && o.canEdit(o.program)) { addLine(); next = tbody.lastElementChild; }
+      next?.querySelectorAll('input')[col]?.focus();
+    });
+    return tr;
+  };
+  const addLine = () => { const ln = { r: null, d: { program: o.program || '', category: '' } }; lines.push(ln); tbody.append(rowEl(ln)); return ln; };
+  clear(tbody, lines.map(rowEl));
+  paintFoot();
+  clear(box,
+    h('datalist', { id: 'list-cats' }, cats.map((c) => h('option', { value: c }))),
+    h('datalist', { id: 'list-progs' }, progs.map((c) => h('option', { value: c }))),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'table grid-sheet' },
+      h('thead', {}, h('tr', {}, COLS.map(([, l]) => h('th', {}, l)), h('th', {}, ''), h('th', {}, ''))), tbody)),
+    h('div', { class: 'row-actions' }, foot, h('span', { class: 'grow' }),
+      o.canEdit(o.program) ? h('button', { class: 'btn', onclick: () => { addLine(); tbody.lastElementChild.querySelector('input')?.focus(); } }, '+ 줄 추가') : null,
+      h('button', { class: 'btn', onclick: o.reload }, '↻ 대시보드 새로 계산')),
+    h('p', { class: 'hint' }, '칸을 바로 고치면 자동 저장됩니다(✓). 산출식에 "5,000원 × 20명 × 3회", "=12000*4+3000"처럼 쓰면 금액이 계산됩니다. Enter 는 아래 줄로, 마지막 줄에서 Enter 는 새 줄.'));
+}
+
 async function kindView(root, kind) {
   const d = await loadMoney();
   const reload = () => kindView(root, kind);
@@ -199,6 +291,9 @@ async function kindView(root, kind) {
   const budgetRows = d.budget.filter((b) => (b.data.source || (d.contests.some((c) => c.data.name === b.data.program) ? '공모사업' : '학교본예산')) === kind && (!pick || (b.data.program || b.data.label || b.data.item) === pick));
   const spendRows = focus.flatMap((p) => p.spends);
   const choose = (name) => { remember('mn_prog', name); reload(); };
+  const progOf = (name) => list.find((p) => p.name === name) || (kind === '공모사업' ? { kind, name, contest: d.contests.find((c) => c.data.name === name) } : { kind, name });
+  const editHere = pick ? canEditProgram(progOf(pick)) : kind === '학교본예산' ? canEdit('budget') : list.some(canEditProgram);
+  const pc = pick && kind === '공모사업' ? progOf(pick).contest : null;
   const budgetBox = h('div', {});
   const spendBox = h('div', {});
   const contestBox = h('div', {});
@@ -207,17 +302,20 @@ async function kindView(root, kind) {
       h('div', { class: 'seg wrap' }, ['', ...list.map((p) => p.name)].map((n) => h('button', { class: pick === n ? 'on' : '', onclick: () => choose(n) }, n || `전체 ${kind}`))),
       h('span', { class: 'grow' }),
       kind === '공모사업' && canEdit('contests') ? h('button', { class: 'btn', onclick: () => openRecordForm('contests', null, { onSaved: reload }) }, '+ 공모사업 등록') : null,
-      canEdit('spending') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행 입력') : null),
-    pick && kind === '공모사업' && focus[0]?.contest ? h('p', { class: 'muted small' }, [focus[0].contest.data.agency, focus[0].contest.data.period, focus[0].contest.data.applicant && `담당 ${focus[0].contest.data.applicant}`, focus[0].contest.data.grades].filter(Boolean).join(' · ')) : null,
+      editHere && canEdit('spending') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행 입력') : null),
+    pc ? h('div', { class: `contest-info ${editHere ? '' : 'locked'}` }, h('span', {}, editHere ? '✏️ 입력 가능' : '🔒 열람만 가능'),
+      h('span', { class: 'muted small' }, [pc.data.agency, pc.data.period, pc.data.grades, `입력 담당: ${contestManagers(pc).join(', ') || '(미지정)'} · 관리자`].filter(Boolean).join(' · ')),
+      !editHere ? h('span', { class: 'muted small' }, '— 편성·집행은 입력 담당자에게 요청하세요.') : null) : null,
+    kind === '공모사업' && !pick ? h('p', { class: 'hint' }, '🔒 공모사업은 사업마다 정한 입력 담당자와 관리자만 편성·집행을 입력할 수 있습니다. 공모사업을 눌러 확인하세요.') : null,
     kpiRow(focus),
     h('div', { class: 'two-col' }, catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : '비목별 사용 현황'), monthChart(spendRows)),
     pick ? null : programTable(list, (p) => choose(p.name)),
-    h('section', { class: 'section' }, h('h3', {}, '📒 편성 내역 (사업 · 비목 · 금액)'), budgetBox),
+    h('section', { class: 'section' }, h('h3', {}, '📒 편성표 (항목 · 비목 · 산출식 · 금액)'), budgetBox),
     h('section', { class: 'section' }, h('h3', {}, '🧾 집행 내역'), spendBox),
     kind === '공모사업' ? h('section', { class: 'section' }, h('h3', {}, '🏆 공모사업 목록'), contestBox) : null);
-  await tableView(budgetBox, 'budget', { rows: budgetRows, groupBy: 'program', embed: true, hide: ['source', 'consult', 'label'], defaults: { source: kind, program: pick }, reload });
+  budgetGrid(budgetBox, budgetRows, { kind, program: pick, reload, canEdit: (name) => (name ? canEditProgram(progOf(name)) : kind === '학교본예산' && canEdit('budget')) });
   await tableView(spendBox, 'spending', { rows: spendRows.slice().sort((a, b) => String(b.data.date).localeCompare(String(a.data.date))), embed: true, hide: ['source'], defaults: { date: today(), source: kind, program: pick }, reload });
-  if (kind === '공모사업') await tableView(contestBox, 'contests', { rows: d.contests.filter((c) => !pick || c.data.name === pick), embed: true, reload });
+  if (kind === '공모사업') await tableView(contestBox, 'contests', { rows: d.contests.filter((c) => !pick || c.data.name === pick), embed: true, reload, rowClass: (c) => (canEditProgram({ kind: '공모사업', contest: c }) ? '' : 'locked') });
 }
 
 export const schoolBudgetView = (root) => kindView(root, '학교본예산');
@@ -234,7 +332,7 @@ export async function spendView(root) {
   const catSel = h('select', {});
   const fillProg = () => {
     const list = all.filter((p) => p.kind === f.source);
-    clear(progSel, h('option', { value: '' }, '사업 선택'), list.map((p) => h('option', { value: p.name, selected: p.name === f.program }, p.name)), h('option', { value: '__new' }, '✏️ 직접 입력…'));
+    clear(progSel, h('option', { value: '' }, '사업 선택'), list.map((p) => h('option', { value: p.name, selected: p.name === f.program, disabled: !canEditProgram(p) }, canEditProgram(p) ? p.name : `🔒 ${p.name} (담당자만)`)), f.source === '학교본예산' ? h('option', { value: '__new' }, '✏️ 직접 입력…') : null);
     fillCat();
   };
   const fillCat = () => {
@@ -249,9 +347,10 @@ export async function spendView(root) {
   catSel.onchange = () => { if (catSel.value === '__new') { const v = prompt('비목 이름'); f.category = v?.trim() || ''; if (f.category) state.budgetCategories.push(f.category); fillCat(); } else f.category = catSel.value; };
   fillProg();
   const inp = (k, attrs) => h('input', { value: f[k], oninput: (e) => { f[k] = e.target.value; }, ...attrs });
-  const amount = inp('amount', { inputmode: 'numeric', placeholder: '금액 (원)', oninput: (e) => { f.amount = e.target.value.replace(/[^\d]/g, ''); e.target.value = f.amount ? Number(f.amount).toLocaleString() : ''; } });
+  const calcOut = h('small', { class: 'muted' });
+  const amount = inp('amount', { placeholder: '금액 또는 계산식 (예: 32,000×6)', oninput: (e) => { f.amount = e.target.value; const v = evalFormula(f.amount); calcOut.textContent = v !== null && /[×xX*+\-/÷]/.test(f.amount) ? `= ${won(v)}` : ''; } });
   const add = async () => {
-    const data = { ...f, amount: Number(f.amount) || 0 };
+    const data = { ...f, amount: evalFormula(f.amount) || 0 };
     if (!data.date || !data.program || !data.category || !data.content.trim() || !data.amount) { toast('집행일·사업·비목·내용·금액을 모두 넣어 주세요.', 'error'); return; }
     try { await api('/api/records/spending', { method: 'POST', body: { data } }); remember('sp_src', f.source); toast(`${won(data.amount)} 집행을 반영했습니다.`); reload(); } catch (e) { toast(e.message, 'error'); }
   };
@@ -269,7 +368,7 @@ export async function spendView(root) {
         h('label', {}, '사업', progSel),
         h('label', {}, '비목', catSel),
         h('label', { class: 'wide' }, '내용', inp('content', { placeholder: '예) 수학 교구 구입, 강사 수당 3월분' })),
-        h('label', {}, '금액', amount),
+        h('label', {}, '금액', amount, calcOut),
         h('label', {}, '담당', inp('person', { list: 'staff-names' }))),
       h('datalist', { id: 'staff-names' }, state.staff.map((x) => h('option', { value: x.name }))),
       h('div', { class: 'row-actions' }, h('span', { class: 'grow' }), h('button', { class: 'btn primary', onclick: add }, '+ 집행 반영'))) : null,
@@ -291,13 +390,75 @@ export async function purchasesView(root) {
     openRecordForm('spending', null, { defaults: { date: today(), source: p?.kind || '학교본예산', program: p?.name || x.data.budget || '', category: '일반수용비', content: String(x.data.item || '').split('\n')[0], amount: amountOf(x), person: x.data.requester || '', purchaseId: x.id }, onSaved: reload });
   };
   const waiting = d.purchases.filter((x) => !d.m.spentPurchase.has(x.id));
+  const view = remember('pc_view') || 'item';
   const head = h('div', { class: 'kpis' },
     kpi('신청', `${d.purchases.length}건`, won(d.purchases.reduce((a, x) => a + amountOf(x), 0))),
     kpi('미수령', `${d.purchases.filter((x) => !x.data.received).length}건`),
     kpi('집행 등록 전', `${waiting.length}건`, won(waiting.reduce((a, x) => a + amountOf(x), 0))));
   const box = h('div', {});
-  clear(root, head, box, h('p', { class: 'hint' }, '물건을 받고 지출이 끝나면 [집행 등록]을 누르세요. 사업·비목·금액이 채워진 집행 입력 창이 열리고, 저장하면 대시보드에 반영됩니다.'));
-  await tableView(box, 'purchases', { rows: d.purchases, groupBy: 'budget', reload, rowAction: (x) => (d.m.spentPurchase.has(x.id) ? h('span', { class: 'tag ok' }, '집행 완료') : canEdit('spending') ? h('button', { class: 'btn small', onclick: () => toSpend(x) }, '집행 등록') : null) });
+  const rows = view === 'date' ? d.purchases.slice().sort((a, b) => String(b.data.date || '').localeCompare(String(a.data.date || ''))) : d.purchases;
+  clear(root, head,
+    h('div', { class: 'toolbar' },
+      h('div', { class: 'seg' }, [['item', '건별 보기'], ['date', '날짜별 보기']].map(([v, l]) => h('button', { class: view === v ? 'on' : '', onclick: () => { remember('pc_view', v); reload(); } }, l))),
+      h('span', { class: 'grow' }),
+      canEdit('purchases') ? h('button', { class: 'btn', onclick: () => openRecordForm('purchases', null, { defaults: { date: today(), requester: state.me?.name || '' }, onSaved: reload }) }, '+ 건별 신청') : null,
+      canEdit('purchases') ? h('button', { class: 'btn primary', onclick: () => batchPurchase(reload) }, '+ 날짜별 일괄 신청') : null),
+    box, h('p', { class: 'hint' }, '건별 신청은 한 품목씩, 날짜별 일괄 신청은 같은 날·같은 사업의 여러 품목을 표에 한 번에 넣습니다(엑셀 표 붙여넣기 가능). 물건을 받고 지출이 끝나면 [집행 등록]을 누르면 대시보드에 반영됩니다.'));
+  await tableView(box, 'purchases', { rows, groupBy: view === 'date' ? 'date' : 'budget', embed: true, defaults: { date: today(), requester: state.me?.name || '' }, reload,
+    rowAction: (x) => (d.m.spentPurchase.has(x.id) ? h('span', { class: 'tag ok' }, '집행 완료') : canEdit('spending') ? h('button', { class: 'btn small', onclick: () => toSpend(x) }, '집행 등록') : null) });
+}
+
+// 날짜별 일괄 신청: 신청일·사업·신청자 + 품목 표(단가 칸은 계산식 가능)
+function batchPurchase(reload) {
+  const headF = { date: today(), budget: '', requester: state.me?.name || '' };
+  const items = [];
+  const tbody = h('tbody', {});
+  const total = h('strong', {});
+  const paintTotal = () => { total.textContent = `합계 ${won(items.reduce((a, it) => a + (evalFormula(it.price) || 0) * (Number(it.qty) || 0), 0))} · ${items.filter((it) => it.item.trim()).length}건`; };
+  const KEYS = [['item', '품목', 'grow'], ['spec', '규격'], ['price', '단가'], ['qty', '수량'], ['link', '구매 링크'], ['note', '비고']];
+  const addRow = (v = {}) => {
+    const it = { item: '', spec: '', price: '', qty: '1', link: '', note: '', ...v };
+    items.push(it);
+    const amt = h('td', { class: 'num muted' });
+    const paint = () => { const a = (evalFormula(it.price) || 0) * (Number(it.qty) || 0); amt.textContent = a ? won(a) : ''; paintTotal(); };
+    const tr = h('tr', {}, KEYS.map(([k]) => h('td', {}, h('input', { value: it[k], inputmode: k === 'qty' ? 'numeric' : null, placeholder: k === 'price' ? '예) 12,000' : '', oninput: (e) => { it[k] = e.target.value; paint(); } }))), amt,
+      h('td', {}, h('button', { type: 'button', class: 'icon-btn small', onclick: () => { items.splice(items.indexOf(it), 1); tr.remove(); paintTotal(); } }, '✕')));
+    tr.addEventListener('keydown', (e) => { if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return; e.preventDefault(); const col = [...tr.querySelectorAll('input')].indexOf(e.target); if (!tr.nextElementSibling) addRow(); tr.nextElementSibling?.querySelectorAll('input')[col]?.focus(); });
+    tbody.append(tr); paint();
+  };
+  for (let i = 0; i < 4; i++) addRow();
+  const paste = h('textarea', { rows: 3, placeholder: '엑셀·스프레드시트에서 표를 복사해 붙여넣기 (품목 | 규격 | 단가 | 수량 | 링크 순서)' });
+  paste.addEventListener('paste', () => setTimeout(() => {
+    const rows = paste.value.split('\n').map((l) => l.split('\t')).filter((r) => r[0]?.trim());
+    if (!rows.length) return;
+    for (const it of items.filter((x) => !x.item.trim())) items.splice(items.indexOf(it), 1);
+    clear(tbody); const keep = items.splice(0);
+    for (const it of keep) addRow(it);
+    for (const r of rows) addRow({ item: r[0].trim(), spec: (r[1] || '').trim(), price: (r[2] || '').trim(), qty: (r[3] || '1').replace(/[^\d]/g, '') || '1', link: (r[4] || '').trim() });
+    paste.value = ''; toast(`${rows.length}줄을 넣었습니다.`);
+  }, 0));
+  const progs = state.budgetPrograms;
+  modal('🛒 날짜별 일괄 신청', h('div', { class: 'form' },
+    h('div', { class: 'sf-grid' },
+      h('label', {}, '신청일', h('input', { type: 'date', value: headF.date, oninput: (e) => { headF.date = e.target.value; } })),
+      h('label', {}, '사업(재원)', h('input', { list: 'batch-progs', value: headF.budget, placeholder: '사업 선택·입력', oninput: (e) => { headF.budget = e.target.value; } })),
+      h('label', {}, '신청자', h('input', { list: 'batch-staff', value: headF.requester, oninput: (e) => { headF.requester = e.target.value; } }))),
+    h('datalist', { id: 'batch-progs' }, progs.map((p) => h('option', { value: p }))),
+    h('datalist', { id: 'batch-staff' }, state.staff.map((x) => h('option', { value: x.name }))),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'table grid-sheet' }, h('thead', {}, h('tr', {}, KEYS.map(([, l]) => h('th', {}, l)), h('th', {}, '금액'), h('th', {}, ''))), tbody)),
+    h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn small', onclick: () => { addRow(); tbody.lastElementChild.querySelector('input').focus(); } }, '+ 줄 추가'), h('span', { class: 'grow' }), total),
+    paste), [
+    (close) => h('button', { class: 'btn', onclick: close }, '취소'),
+    (close) => h('button', { class: 'btn primary', onclick: async () => {
+      const list = items.filter((it) => it.item.trim());
+      if (!list.length) { toast('품목을 한 개 이상 넣어 주세요.', 'error'); return; }
+      if (!headF.requester.trim()) { toast('신청자를 넣어 주세요.', 'error'); return; }
+      try {
+        for (const it of list) await api('/api/records/purchases', { method: 'POST', body: { data: { date: headF.date, budget: headF.budget, requester: headF.requester, item: it.item.trim(), spec: it.spec, price: evalFormula(it.price) || 0, qty: Number(it.qty) || 1, link: it.link, note: it.note }, year: state.year } });
+        toast(`${list.length}건을 신청했습니다.`); close(); reload();
+      } catch (e) { toast(e.message, 'error'); }
+    } }, '일괄 신청'),
+  ], { wide: true });
 }
 
 // 예전 주소(#/money/budget) 호환

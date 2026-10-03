@@ -264,9 +264,11 @@ export const MODULES = {
   purchases: {
     label: '물품 신청', icon: '🛒', scope: 'year', edit: 'staff',
     fields: [
+      { key: 'date', label: '신청일', type: 'date' },
       { key: 'budget', label: '사업(재원)', type: 'select', list: 'budgetPrograms', free: true, hint: '학교본예산 세부사업 또는 공모사업명' },
-      { key: 'requester', label: '신청자', type: 'text', required: true },
+      { key: 'requester', label: '신청자', type: 'select', list: 'staff', free: true, required: true },
       { key: 'item', label: '품목', type: 'textarea', required: true },
+      { key: 'spec', label: '규격', type: 'text' },
       { key: 'price', label: '단가', type: 'money' },
       { key: 'qty', label: '수량', type: 'number' },
       { key: 'amount', label: '금액', type: 'money', computed: (d) => (Number(d.price) || 0) * (Number(d.qty) || 0), sum: true },
@@ -278,8 +280,9 @@ export const MODULES = {
   contests: {
     label: '공모사업', icon: '🏆', scope: 'year', edit: 'staff',
     fields: [
-      { key: 'applicant', label: '신청자', type: 'text' },
       { key: 'name', label: '공모사업명', type: 'text', required: true },
+      { key: 'applicant', label: '신청자', type: 'text' },
+      { key: 'managers', label: '입력 담당자', type: 'names', hint: '이름을 쉼표로 (관리자와 이 사람들만 이 공모사업의 편성·집행을 입력) · 비우면 신청자' },
       { key: 'grades', label: '운영 대상 학년', type: 'text' },
       { key: 'budget', label: '받은 예산', type: 'money', sum: true },
       { key: 'period', label: '운영 기간', type: 'text', hint: '예) 2026.4.~2027.2.' },
@@ -305,7 +308,7 @@ export const MODULES = {
       { key: 'item', label: '세부항목', type: 'text' },
       { key: 'category', label: '비목', type: 'select', list: 'budgetCategories', free: true, hint: '원가통계비목 (예: 일반수용비)' },
       { key: 'detail', label: '산출내역', type: 'text' },
-      { key: 'formula', label: '산출식', type: 'text' },
+      { key: 'formula', label: '산출식', type: 'text', hint: '예) 5,000원 × 20명 × 3회 → 금액 자동 계산' },
       { key: 'amount', label: '금액', type: 'money', sum: true },
       { key: 'consult', label: '협의', type: 'text' },
       { key: 'label', label: '항목', type: 'text' },
