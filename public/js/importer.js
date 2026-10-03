@@ -730,7 +730,7 @@ export function parseWorkbook(XLSX, wb, { lists }) {
     } else if (has(/교육활동\(행사\)|학교 행사/) && parseMonthly(s, items)) how = '학사일정 · 출장 · 월별 안내';
     else if (has(/회의\s*안건/) && parseMeetings(s, items)) how = '회의록';
     else if (has(/공모신청자|공모사업 목록/) && parseContests(s, items)) how = '공모사업 · 공모 안내';
-    else if (has(/^이름$/) && has(/^품목$/) && parsePurchases(s, items)) how = '물품 신청';
+    else if (has(/^이름$/) && has(/^품목$/) && parsePurchases(s, items)) how = '구매신청';
     else if (has(/^세부사업$/) && parseBudget(s, items)) how = '예산';
     else if (has(/^수업교사$/) && has(/수업나눔|참관/) && parseOpenClasses(s, items)) how = '동료장학 (참관 신청 포함)';
     else if (has(/^아이디$/) && has(/^사용자명$|^비밀번호$/) && parseSecretsAndContacts(s, items)) how = '계정·비밀번호 · 내선번호';

@@ -254,7 +254,7 @@ function quickAddButton() {
       ['memos', '✏️ 달력 메모', { date: today() }],
       ['notices', '📢 공지', { category: '일반' }],
       ['meetings', '📝 회의 안건', { date: today(), meeting: '전체회의', status: '완료' }],
-      ['purchases', '🛒 물품 신청', { requester: state.me.name || '' }],
+      ['purchases', '🛒 구매신청', { requester: state.me.name || '', date: today() }],
     ].filter(([m]) => canEdit(m)) : [];
     const desk = [
       ['todos', '✅ 할 일', { due: today(), repeat: '없음' }],

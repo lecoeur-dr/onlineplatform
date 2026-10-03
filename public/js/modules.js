@@ -262,7 +262,7 @@ export const MODULES = {
     ],
   },
   purchases: {
-    label: '물품 신청', icon: '🛒', scope: 'year', edit: 'staff',
+    label: '구매신청', icon: '🛒', scope: 'year', edit: 'staff',
     fields: [
       { key: 'date', label: '신청일', type: 'date' },
       { key: 'budget', label: '사업(재원)', type: 'select', list: 'budgetPrograms', free: true, hint: '학교본예산 세부사업 또는 공모사업명' },
@@ -278,11 +278,11 @@ export const MODULES = {
     ],
   },
   contests: {
-    label: '공모사업', icon: '🏆', scope: 'year', edit: 'staff',
+    label: '공모사업', icon: '🏆', scope: 'year', edit: 'admin',
     fields: [
       { key: 'name', label: '공모사업명', type: 'text', required: true },
       { key: 'applicant', label: '신청자', type: 'text' },
-      { key: 'managers', label: '입력 담당자', type: 'names', hint: '이름을 쉼표로 (관리자와 이 사람들만 이 공모사업의 편성·집행을 입력) · 비우면 신청자' },
+      { key: 'managers', label: '담당자 (관리자가 지정)', type: 'names', hint: '이름을 쉼표로 — 관리자와 이 선생님들만 이 공모사업을 보고 예산·집행을 입력' },
       { key: 'grades', label: '운영 대상 학년', type: 'text' },
       { key: 'budget', label: '받은 예산', type: 'money', sum: true },
       { key: 'period', label: '운영 기간', type: 'text', hint: '예) 2026.4.~2027.2.' },
@@ -301,7 +301,7 @@ export const MODULES = {
     ],
   },
   budget: {
-    label: '예산 편성', icon: '💰', scope: 'year', edit: 'staff',
+    label: '예산 입력', icon: '💰', scope: 'year', edit: 'staff',
     fields: [
       { key: 'source', label: '재원', type: 'select', options: ['학교본예산', '공모사업'], hint: '비우면 학교본예산' },
       { key: 'program', label: '세부사업·공모사업명', type: 'select', list: 'budgetPrograms', free: true },
@@ -317,7 +317,7 @@ export const MODULES = {
   },
   // 집행(사용) 내역: 날짜별로 입력하면 재원·사업·비목별 대시보드에 반영
   spending: {
-    label: '집행 내역', icon: '🧾', scope: 'date', edit: 'staff', extras: ['purchaseId'],
+    label: '집행내역', icon: '🧾', scope: 'date', edit: 'staff', extras: ['purchaseId'],
     fields: [
       { key: 'date', label: '집행일', type: 'date', required: true },
       { key: 'source', label: '재원', type: 'select', options: ['학교본예산', '공모사업'], required: true },
@@ -589,12 +589,12 @@ export const GROUPS = [
     { id: 'duties', label: '담당 배정', module: 'duties' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },
-  { id: 'money', label: '예산·물품', icon: '💰', tabs: [
+  { id: 'money', label: '예산·구매', icon: '💰', tabs: [
     { id: 'overview', label: '전체 대시보드' },
     { id: 'school', label: '학교본예산', module: 'budget' },
     { id: 'contests', label: '공모사업', module: 'contests' },
-    { id: 'spend', label: '집행 입력', module: 'spending' },
-    { id: 'purchases', label: '물품 신청', module: 'purchases' },
+    { id: 'spend', label: '집행내역', module: 'spending' },
+    { id: 'purchases', label: '구매신청', module: 'purchases' },
     { id: 'contestInfo', label: '공모 안내', module: 'contestInfo' },
   ] },
   { id: 'info', label: '학교 정보', icon: '🗂', tabs: [

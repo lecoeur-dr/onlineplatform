@@ -1,5 +1,6 @@
-// 💰 예산·물품: 전체 대시보드 · 학교본예산 · 공모사업 · 집행 입력 · 물품 신청 · 공모 안내
-//   구조는 같고 재원만 다름: 재원(학교본예산 | 공모사업) → 사업(세부사업 | 공모사업명) → 비목 → 편성액
+// 💰 예산·구매: 전체 대시보드 · 학교본예산 · 공모사업 · 집행내역 · 구매신청 · 공모 안내
+//   공모사업은 관리자와 관리자가 지정한 담당자만 볼 수 있음 (서버가 목록에서 걸러냄)
+//   구조는 같고 재원만 다름: 재원(학교본예산 | 공모사업) → 사업(세부사업 | 공모사업명) → 비목 → 예산액
 //   날짜별 집행 내역(spending)을 입력하면 재원·사업·비목별 사용액·사용률에 바로 반영
 import { h, api, clear, won, toast, confirmBox, today, modal } from '../ui.js';
 import { state, canEdit, remember, listOf } from '../state.js';
@@ -16,14 +17,14 @@ const norm = (s) => String(s || '').replace(/[\s()（）<>·,.\-_/]/g, '').toLow
 const subseq = (a, b) => { let i = 0; for (const ch of b) if (ch === a[i]) i++; return a.length > 1 && i === a.length; };
 const amountOf = (p) => (Number(p.data.price) || 0) * (Number(p.data.qty) || 0);
 const myName = () => String(state.me?.name || '').replace(/\s/g, '');
-const contestManagers = (c) => (c?.data.managers?.length ? c.data.managers : [c?.data.applicant]).filter(Boolean);
+const contestManagers = (c) => (c?.data.managers || []).filter(Boolean);
 // 공모사업은 입력 담당자(없으면 신청자)와 관리자만 입력 (서버도 같은 규칙으로 막음). 학교본예산은 교직원 누구나
 export function canEditProgram(p) {
   if (!p || p.kind !== '공모사업') return canEdit('budget');
   if (state.me?.role === 'admin') return true;
   if (!p.contest) return false;
   const list = contestManagers(p.contest).map((x) => String(x).replace(/\s/g, ''));
-  return canEdit('budget') && (!list.length || list.includes(myName()));
+  return canEdit('budget') && list.includes(myName());
 }
 const pctOf = (used, total) => (total > 0 ? Math.round((used / total) * 1000) / 10 : 0);
 
@@ -118,32 +119,31 @@ const sumOf = (list, k) => list.reduce((a, x) => a + (x[k] || 0), 0);
 function kpiRow(list, extra = []) {
   const assigned = sumOf(list, 'assigned');
   const used = sumOf(list, 'used');
-  const pending = sumOf(list, 'pending');
   return h('div', { class: 'kpis' },
-    kpi('편성액', won(assigned), `${list.length}개 사업`),
+    kpi('예산액', won(assigned), `${list.length}개 사업`),
     kpi('집행액', won(used), `사용률 ${pctOf(used, assigned)}%`),
-    kpi('잔액', won(assigned - used), used > assigned ? '편성액 초과' : '편성 − 집행', used > assigned ? 'warn' : ''),
-    kpi('물품 신청 대기', won(pending), '집행 전 신청액'), ...extra);
+    kpi('잔액', won(assigned - used), used > assigned ? '예산액 초과' : '예산 − 집행', used > assigned ? 'warn' : ''),
+    ...extra);
 }
 
 function catTable(cats, title = '비목별 사용 현황') {
   return h('section', { class: 'section' }, h('h3', {}, title),
     cats.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, ['비목', '편성액', '집행액', '잔액', '사용률'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['비목', '예산액', '집행액', '잔액', '사용률'].map((t) => h('th', {}, t)))),
       h('tbody', {}, cats.map((c) => h('tr', { class: c.used || c.assigned ? '' : 'dim' },
         h('td', {}, c.name), h('td', { class: 'num' }, won(c.assigned)), h('td', { class: 'num' }, c.used ? won(c.used) : '-'),
         h('td', { class: `num ${c.assigned - c.used < 0 ? 'neg' : ''}` }, won(c.assigned - c.used)), h('td', { style: { minWidth: '140px' } }, bar(c.used, c.assigned))))),
       h('tfoot', {}, h('tr', {}, h('td', { class: 'strong' }, '합계'), h('td', { class: 'num strong' }, won(sumOf(cats, 'assigned'))), h('td', { class: 'num strong' }, won(sumOf(cats, 'used'))),
-        h('td', { class: 'num strong' }, won(sumOf(cats, 'assigned') - sumOf(cats, 'used'))), h('td', {}, bar(sumOf(cats, 'used'), sumOf(cats, 'assigned'))))))) : h('p', { class: 'muted' }, '편성·집행 내역이 없습니다.'));
+        h('td', { class: 'num strong' }, won(sumOf(cats, 'assigned') - sumOf(cats, 'used'))), h('td', {}, bar(sumOf(cats, 'used'), sumOf(cats, 'assigned'))))))) : h('p', { class: 'muted' }, '예산·집행 내역이 없습니다.'));
 }
 
 function programTable(list, onPick, title = '사업별 사용 현황') {
   return h('section', { class: 'section' }, h('h3', {}, title),
     list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, ['사업', '재원', '편성액', '집행액', '신청 대기', '잔액', '사용률'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['사업', '재원', '예산액', '집행액', '잔액', '사용률'].map((t) => h('th', {}, t)))),
       h('tbody', {}, list.slice().sort((a, b) => b.assigned - a.assigned).map((p) => h('tr', { class: onPick ? 'click' : '', onclick: onPick ? () => onPick(p) : null },
         h('td', {}, h('strong', {}, p.name)), h('td', {}, h('span', { class: `tag ${p.kind === '공모사업' ? 'violet' : 'blue'}` }, p.kind)),
-        h('td', { class: 'num' }, won(p.assigned)), h('td', { class: 'num' }, p.used ? won(p.used) : '-'), h('td', { class: 'num muted' }, p.pending ? won(p.pending) : '-'),
+        h('td', { class: 'num' }, won(p.assigned)), h('td', { class: 'num' }, p.used ? won(p.used) : '-'),
         h('td', { class: `num ${p.assigned - p.used < 0 ? 'neg' : ''}` }, won(p.assigned - p.used)), h('td', { style: { minWidth: '140px' } }, bar(p.used, p.assigned))))))) : h('p', { class: 'muted' }, '사업이 없습니다.'));
 }
 
@@ -160,9 +160,57 @@ function monthChart(spends) {
 
 function recentSpends(spends, reload) {
   const list = spends.slice().sort((a, b) => String(b.data.date).localeCompare(String(a.data.date))).slice(0, 8);
-  return h('section', { class: 'section' }, h('h3', {}, '최근 집행', h('a', { class: 'more-link', href: '#/money/spend' }, ' 집행 입력 →')),
+  return h('section', { class: 'section' }, h('h3', {}, '최근 집행', h('a', { class: 'more-link', href: '#/money/spend' }, ' 집행내역 →')),
     list.length ? h('ul', { class: 'list' }, list.map((s) => h('li', { class: 'click spend-li', onclick: () => openRecordForm('spending', s, { onSaved: reload }) },
       h('span', { class: 'muted' }, String(s.data.date).slice(5).replace('-', '.')), ' ', h('strong', {}, s.data.content), h('span', { class: 'muted' }, ` · ${s.data.program} · ${s.data.category}`), h('span', { class: 'grow' }), h('span', { class: 'num' }, won(s.data.amount))))) : h('p', { class: 'muted' }, '집행 내역이 없습니다.'));
+}
+
+
+// ---------- 🍩 원그래프 (SVG 도넛): 구성비 · 사용률 링 ----------
+//   색: 고정 순서 범주 팔레트(--series-1..7), 8번째부터는 '기타'(회색)로 묶음. 조각 사이 2px 표면 간격, 범례에 금액·비율(색만으로 구분하지 않음)
+const NS = 'http://www.w3.org/2000/svg';
+const svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+const man = (v) => (Math.abs(v) >= 10000 ? `${(Math.round(v / 1000) / 10).toLocaleString()}만` : `${v.toLocaleString()}원`);
+function donut(title, items, { center, sub, empty = '자료가 없습니다.' } = {}) {
+  const list = items.filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
+  const top = list.slice(0, 7);
+  const rest = list.slice(7).reduce((a, x) => a + x.value, 0);
+  if (rest > 0) top.push({ name: '기타', value: rest, other: true });
+  const total = top.reduce((a, x) => a + x.value, 0);
+  const box = h('section', { class: 'section donut-card' }, h('h3', {}, title));
+  if (!total) return clear(box, h('h3', {}, title), h('p', { class: 'muted' }, empty)) || box;
+  const R = 70; const C = 2 * Math.PI * R; const GAP = top.length > 1 ? 2 : 0;
+  const svg = svgEl('svg', { viewBox: '0 0 200 200', class: 'donut', role: 'img', 'aria-label': `${title}: ${top.map((x) => `${x.name} ${Math.round((x.value / total) * 100)}%`).join(', ')}` });
+  svg.append(svgEl('circle', { cx: 100, cy: 100, r: R, class: 'donut-track' }));
+  let off = 0;
+  const arcs = top.map((x, i) => {
+    const len = (x.value / total) * C;
+    const a = svgEl('circle', { cx: 100, cy: 100, r: R, class: 'donut-arc', stroke: x.other ? 'var(--series-other)' : `var(--series-${i + 1})`, 'stroke-dasharray': `${Math.max(0, len - GAP)} ${C}`, 'stroke-dashoffset': -off, transform: 'rotate(-90 100 100)' });
+    const t = svgEl('title', {}); t.textContent = `${x.name} ${won(x.value)} (${((x.value / total) * 100).toFixed(1)}%)`; a.append(t);
+    off += len; svg.append(a); return a;
+  });
+  const c1 = svgEl('text', { x: 100, y: sub ? 98 : 106, class: 'donut-center', 'text-anchor': 'middle' }); c1.textContent = center ?? man(total);
+  svg.append(c1);
+  if (sub) { const c2 = svgEl('text', { x: 100, y: 120, class: 'donut-sub', 'text-anchor': 'middle' }); c2.textContent = sub; svg.append(c2); }
+  const legend = h('ul', { class: 'donut-legend' }, top.map((x, i) => h('li', { onmouseenter: () => arcs.forEach((a, k) => a.classList.toggle('dim', k !== i)), onmouseleave: () => arcs.forEach((a) => a.classList.remove('dim')) },
+    h('i', { style: { background: x.other ? 'var(--series-other)' : `var(--series-${i + 1})` } }), h('span', { class: 'dl-name', title: x.name }, x.name), h('span', { class: 'num', title: won(x.value) }, man(x.value)), h('span', { class: 'dl-pct' }, `${((x.value / total) * 100).toFixed(1)}%`))));
+  clear(box, h('h3', {}, title), h('div', { class: 'donut-wrap' }, svg, legend));
+  return box;
+}
+// 사용률 링: 한 가지 비율(집행 ÷ 예산) — 같은 색 계열의 트랙 위에 진행
+function ring(pct, color) {
+  const R = 42; const C = 2 * Math.PI * R; const v = Math.max(0, Math.min(100, pct));
+  const svg = svgEl('svg', { viewBox: '0 0 100 100', class: 'ring', role: 'img', 'aria-label': `사용률 ${pct}%` });
+  svg.append(svgEl('circle', { cx: 50, cy: 50, r: R, class: 'ring-track', stroke: color }));
+  svg.append(svgEl('circle', { cx: 50, cy: 50, r: R, class: 'ring-val', stroke: color, 'stroke-dasharray': `${(v / 100) * C} ${C}`, transform: 'rotate(-90 50 50)' }));
+  const t = svgEl('text', { x: 50, y: 56, 'text-anchor': 'middle', class: 'ring-text' }); t.textContent = `${pct}%`; svg.append(t);
+  return svg;
+}
+function donutRow(cats, progs) {
+  return h('div', { class: 'donut-grid' },
+    donut('비목별 예산 구성', cats.map((c) => ({ name: c.name, value: c.assigned }))),
+    donut('비목별 집행 구성', cats.map((c) => ({ name: c.name, value: c.used })), { empty: '집행내역이 없습니다.' }),
+    progs ? donut('사업별 집행 구성', progs.map((p) => ({ name: p.name, value: p.used })), { empty: '집행내역이 없습니다.' }) : null);
 }
 
 // ---------- 전체 대시보드 ----------
@@ -176,33 +224,23 @@ export async function moneyOverview(root) {
     const a = sumOf(list, 'assigned'); const u = sumOf(list, 'used');
     return h('a', { class: `card kind-card ${kind === '공모사업' ? 'violet' : 'blue'}`, href: kind === '공모사업' ? '#/money/contests' : '#/money/school' },
       h('div', { class: 'kc-head' }, h('strong', {}, kind === '공모사업' ? '🏆 공모사업' : '🏫 학교본예산'), h('span', { class: 'muted small' }, `${list.length}개 사업 →`)),
-      h('div', { class: 'kc-pct' }, `${pctOf(u, a)}%`),
-      bar(u, a),
-      h('div', { class: 'kc-nums' }, h('span', {}, '편성 ', h('strong', {}, won(a))), h('span', {}, '집행 ', h('strong', {}, won(u))), h('span', {}, '잔액 ', h('strong', { class: a - u < 0 ? 'neg' : '' }, won(a - u)))));
-  };
-  const link = async (x, target) => {
-    if (!target) return toast('연결할 사업을 고르세요.', 'error');
-    try { await api(`/api/records/purchases/${x.id}`, { method: 'PUT', body: { data: { ...x.data, budget: target }, version: x.version } }); toast('연결했습니다.'); reload(); } catch (e) { toast(e.message, 'error'); }
+      h('div', { class: 'kc-body' }, ring(pctOf(u, a), kind === '공모사업' ? 'var(--series-7)' : 'var(--series-1)'), h('div', { class: 'kc-side' }, h('div', { class: 'muted small' }, '사용률'), h('div', { class: 'kc-pct' }, `${pctOf(u, a)}%`))),
+      h('div', { class: 'kc-nums' }, h('span', {}, '예산 ', h('strong', {}, won(a))), h('span', {}, '집행 ', h('strong', {}, won(u))), h('span', {}, '잔액 ', h('strong', { class: a - u < 0 ? 'neg' : '' }, won(a - u)))));
   };
   clear(root,
     kpiRow(all),
     h('div', { class: 'kind-grid' }, KINDS.map(kindCard)),
+    donutRow(d.m.catsOf(all), all),
     h('div', { class: 'two-col' }, catTable(d.m.catsOf(all), '비목별 사용 현황 (전체)'), monthChart(d.spending)),
     programTable(all, (p) => { remember('mn_prog', p.name); location.hash = p.kind === '공모사업' ? '#/money/contests' : '#/money/school'; }),
     recentSpends(d.spending, reload),
-    d.m.unlinked.length && canEdit('purchases') ? h('section', { class: 'section' }, h('h3', {}, '사업에 연결되지 않은 물품 신청'),
-      h('p', { class: 'hint' }, '사업(재원) 이름이 편성된 사업과 맞지 않는 신청입니다. 사업을 골라 연결하면 "신청 대기"에 반영됩니다.'),
-      h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('tbody', {}, d.m.unlinked.map((x) => {
-        const sel = h('select', {}, h('option', { value: '' }, '사업 선택'), all.map((p) => h('option', { value: p.name }, `${p.name} (${p.kind})`)));
-        return h('tr', {}, h('td', {}, x.data.item), h('td', { class: 'muted' }, x.data.budget || '(없음)'), h('td', { class: 'num' }, won(amountOf(x))), h('td', {}, h('div', { class: 'inline-form' }, sel, h('button', { class: 'btn small', onclick: () => link(x, sel.value) }, '연결'))));
-      }))))) : null,
-    h('p', { class: 'hint' }, '사용률 = 집행액 ÷ 편성액. 집행액은 [집행 입력]에 날짜별로 넣은 금액만 셉니다(물품 신청은 [집행 등록]을 눌러야 반영). 비목 목록은 학교 관리 → 설정의 "예산 비목"에서 바꿀 수 있습니다.'));
+    h('p', { class: 'hint' }, '사용률 = 집행액 ÷ 예산액. 집행액은 [집행내역]에 날짜별로 넣은 금액만 셉니다(구매신청은 [집행 등록]을 눌러야 반영). 비목 목록은 학교 관리 → 설정의 "예산 비목"에서 바꿀 수 있습니다.'));
 }
 
 // ---------- 재원별 화면 (학교본예산 · 공모사업 공통) ----------
 
 
-// ---------- 📒 편성표: 스프레드시트처럼 바로 입력 (산출식 → 금액 자동 계산) ----------
+// ---------- 📒 예산 입력: 스프레드시트처럼 바로 입력 (산출식 → 금액 자동 계산) ----------
 
 function budgetGrid(box, rows, o) {
   const showProg = !o.program;
@@ -253,7 +291,7 @@ function budgetGrid(box, rows, o) {
     };
     const tr = h('tr', { class: editable ? '' : 'locked' }, COLS.map(cell), st,
       h('td', {}, editable ? h('button', { class: 'icon-btn small', title: '줄 삭제', onclick: async () => {
-        if (ln.r && !(await confirmBox(`'${ln.d.item || ln.d.category || '이 줄'}' 편성을 삭제할까요?`))) return;
+        if (ln.r && !(await confirmBox(`'${ln.d.item || ln.d.category || '이 줄'}' 예산 줄을 삭제할까요?`))) return;
         try { if (ln.r) await api(`/api/records/budget/${ln.r.id}`, { method: 'DELETE' }); lines.splice(lines.indexOf(ln), 1); tr.remove(); paintFoot(); } catch (e) { toast(e.message, 'error'); }
       } }, '✕') : h('span', { title: '입력 권한 없음' }, '🔒')));
     // Enter: 아래 줄 같은 칸으로 (마지막 줄이면 새 줄)
@@ -302,16 +340,17 @@ async function kindView(root, kind) {
       h('div', { class: 'seg wrap' }, ['', ...list.map((p) => p.name)].map((n) => h('button', { class: pick === n ? 'on' : '', onclick: () => choose(n) }, n || `전체 ${kind}`))),
       h('span', { class: 'grow' }),
       kind === '공모사업' && canEdit('contests') ? h('button', { class: 'btn', onclick: () => openRecordForm('contests', null, { onSaved: reload }) }, '+ 공모사업 등록') : null,
-      editHere && canEdit('spending') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행 입력') : null),
-    pc ? h('div', { class: `contest-info ${editHere ? '' : 'locked'}` }, h('span', {}, editHere ? '✏️ 입력 가능' : '🔒 열람만 가능'),
-      h('span', { class: 'muted small' }, [pc.data.agency, pc.data.period, pc.data.grades, `입력 담당: ${contestManagers(pc).join(', ') || '(미지정)'} · 관리자`].filter(Boolean).join(' · ')),
-      !editHere ? h('span', { class: 'muted small' }, '— 편성·집행은 입력 담당자에게 요청하세요.') : null) : null,
-    kind === '공모사업' && !pick ? h('p', { class: 'hint' }, '🔒 공모사업은 사업마다 정한 입력 담당자와 관리자만 편성·집행을 입력할 수 있습니다. 공모사업을 눌러 확인하세요.') : null,
+      editHere && canEdit('spending') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행내역') : null),
+    pc ? h('div', { class: 'contest-info' }, h('span', {}, '🏆 담당 공모사업'),
+      h('span', { class: 'muted small' }, [pc.data.agency, pc.data.period, pc.data.grades, `담당자: ${contestManagers(pc).join(', ') || '(미지정 — 관리자만)'}`].filter(Boolean).join(' · '))) : null,
+    kind === '공모사업' && !list.length ? h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🔒'), h('p', {}, state.me?.role === 'admin' ? '등록된 공모사업이 없습니다. [+ 공모사업 등록]에서 사업과 담당자를 정하세요.' : '담당으로 지정된 공모사업이 없습니다. 공모사업은 학교 관리자가 담당자로 지정한 선생님만 볼 수 있습니다.')) : null,
+    kind === '공모사업' && state.me?.role === 'admin' ? h('p', { class: 'hint' }, '🔒 공모사업은 관리자와, 관리자가 [공모사업 목록]에서 담당자로 지정한 선생님에게만 보입니다(다른 교직원 화면·대시보드에서는 숨김).') : null,
     kpiRow(focus),
+    focus.length ? donutRow(d.m.catsOf(focus), pick ? null : focus) : null,
     h('div', { class: 'two-col' }, catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : '비목별 사용 현황'), monthChart(spendRows)),
     pick ? null : programTable(list, (p) => choose(p.name)),
-    h('section', { class: 'section' }, h('h3', {}, '📒 편성표 (항목 · 비목 · 산출식 · 금액)'), budgetBox),
-    h('section', { class: 'section' }, h('h3', {}, '🧾 집행 내역'), spendBox),
+    h('section', { class: 'section' }, h('h3', {}, '📒 예산 입력 (항목 · 비목 · 산출식 · 금액)'), budgetBox),
+    h('section', { class: 'section' }, h('h3', {}, '🧾 집행내역'), spendBox),
     kind === '공모사업' ? h('section', { class: 'section' }, h('h3', {}, '🏆 공모사업 목록'), contestBox) : null);
   budgetGrid(budgetBox, budgetRows, { kind, program: pick, reload, canEdit: (name) => (name ? canEditProgram(progOf(name)) : kind === '학교본예산' && canEdit('budget')) });
   await tableView(spendBox, 'spending', { rows: spendRows.slice().sort((a, b) => String(b.data.date).localeCompare(String(a.data.date))), embed: true, hide: ['source'], defaults: { date: today(), source: kind, program: pick }, reload });
@@ -361,7 +400,7 @@ export async function spendView(root) {
   const box = h('div', {});
   clear(root,
     canEdit('spending') ? h('div', { class: 'card spend-form' },
-      h('h3', {}, '🧾 집행 입력', h('span', { class: 'muted small' }, ' · 입력하면 대시보드의 사용액·사용률에 바로 반영')),
+      h('h3', {}, '🧾 집행내역 입력', h('span', { class: 'muted small' }, ' · 입력하면 대시보드의 사용액·사용률에 바로 반영')),
       h('div', { class: 'sf-grid' },
         h('label', {}, '집행일', inp('date', { type: 'date' })),
         h('label', {}, '재원', h('div', { class: 'seg' }, KINDS.map((k) => h('button', { type: 'button', class: f.source === k ? 'on' : '', onclick: (e) => { f.source = k; f.program = ''; f.category = ''; e.currentTarget.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.currentTarget)); fillProg(); } }, k)))),
@@ -380,7 +419,7 @@ export async function spendView(root) {
   await tableView(box, 'spending', { rows, groupBy: 'source', embed: true, defaults: { date: today() }, reload });
 }
 
-// ---------- 물품 신청 ----------
+// ---------- 구매신청 ----------
 
 export async function purchasesView(root) {
   const d = await loadMoney();
@@ -438,7 +477,7 @@ function batchPurchase(reload) {
     paste.value = ''; toast(`${rows.length}줄을 넣었습니다.`);
   }, 0));
   const progs = state.budgetPrograms;
-  modal('🛒 날짜별 일괄 신청', h('div', { class: 'form' },
+  modal('🛒 구매신청 · 날짜별 일괄', h('div', { class: 'form' },
     h('div', { class: 'sf-grid' },
       h('label', {}, '신청일', h('input', { type: 'date', value: headF.date, oninput: (e) => { headF.date = e.target.value; } })),
       h('label', {}, '사업(재원)', h('input', { list: 'batch-progs', value: headF.budget, placeholder: '사업 선택·입력', oninput: (e) => { headF.budget = e.target.value; } })),

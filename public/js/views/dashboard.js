@@ -108,10 +108,10 @@ export async function dashboardView(root) {
           myLeaves.map((x) => item(tripItem(x)))) : h('p', { class: 'muted' }, '오늘 이후 내 보결·담당·제출할 수합이 없습니다.'),
         !state.me.name ? h('p', { class: 'muted small' }, '학교 관리 → 사용자에서 내 이름(실명)이 등록되어야 내 할 일이 보입니다.') : null),
       mealBox,
-      h('div', { class: 'card' }, h('h3', {}, '💰 예산·물품'),
-        h('div', { class: 'mini-kpi' }, h('span', {}, '편성'), h('strong', {}, won(assign))),
+      h('div', { class: 'card' }, h('h3', {}, '💰 예산'),
+        h('div', { class: 'mini-kpi' }, h('span', {}, '예산'), h('strong', {}, won(assign))),
         h('div', { class: 'mini-kpi' }, h('span', {}, '집행'), h('strong', {}, `${won(used)} (${assign ? Math.round((used / assign) * 1000) / 10 : 0}%)`)),
-        h('div', { class: 'mini-kpi' }, h('span', {}, '미수령'), h('strong', {}, `${waiting}건`)),
+
         h('a', { href: '#/money/overview', class: 'more-link' }, '예산 대시보드 →')),
       h('div', { class: 'card' }, h('h3', {}, '📝 재논의 안건'),
         redo.length ? h('ul', { class: 'list' }, redo.map((m) => h('li', { class: 'click', onclick: () => openRecordForm('meetings', m, { onSaved: reload }) }, m.data.agenda.split('\n')[0], h('span', { class: 'muted' }, ` ${fmtDate(m.data.date)}`)))) : h('p', { class: 'muted' }, '재논의 안건이 없습니다.'),

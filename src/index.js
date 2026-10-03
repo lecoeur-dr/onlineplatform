@@ -108,6 +108,23 @@ function scopeWhere(m, year, t) {
   return { sql: parts.join(' AND '), args };
 }
 
+
+// 공모사업은 관리자와 관리자가 지정한 담당자만 볼 수 있음: 목록에서 공모사업·그 편성·집행·구매신청을 걸러냄
+const CONTEST_SCOPED = ['contests', 'budget', 'spending', 'purchases'];
+async function contestFilter(c, schoolId, role, myName) {
+  if (role === 'admin') return null;
+  const rows = (await c.env.DB.prepare("SELECT data FROM records WHERE module = 'contests' AND school_id = ?").bind(schoolId).all()).results.map((r) => JSON.parse(r.data));
+  const me = String(myName || '').replace(/\s/g, '');
+  const all = new Set(rows.map((d) => d.name).filter(Boolean));
+  const mine = new Set(rows.filter((d) => (d.managers || []).map((x) => String(x).replace(/\s/g, '')).includes(me)).map((d) => d.name));
+  return (m, d) => {
+    if (m === 'contests') return mine.has(d.name);
+    if (m === 'purchases') return !all.has(d.budget) || mine.has(d.budget);
+    const isContest = d.source === '공모사업' || all.has(d.program);
+    return !isContest || mine.has(d.program);
+  };
+}
+
 async function listRecords(c, m, year) {
   const t = await tenant(c, m);
   const w = scopeWhere(m, year, t);
@@ -116,7 +133,12 @@ async function listRecords(c, m, year) {
     ? `SELECT r.*, COALESCE(NULLIF(u.name, ''), '선생님') AS author_name FROM records r LEFT JOIN users u ON u.email = r.owner WHERE ${w.sql.replace(/\bmodule\b/, 'r.module')} ORDER BY r.${order.replace(/, /g, ', r.')} LIMIT 500`
     : `SELECT * FROM records WHERE ${w.sql} ORDER BY ${order}`;
   const rows = await c.env.DB.prepare(sql).bind(...w.args).all();
-  return Promise.all(rows.results.map((r) => toClient(c.env, r)));
+  let list = rows.results;
+  if (CONTEST_SCOPED.includes(m) && t.member) {
+    const ok = await contestFilter(c, t.member.schoolId, t.member.role, t.member.name);
+    if (ok) list = list.filter((r) => ok(m, JSON.parse(r.data)));
+  }
+  return Promise.all(list.map((r) => toClient(c.env, r)));
 }
 
 // 기록 하나 (권한 범위 안에서만)
@@ -340,22 +362,21 @@ async function reservationClash(db, m, data, schoolId, id) {
 async function contestGuard(c, t, m, data, prevData) {
   if (!['budget', 'spending', 'contests'].includes(m) || !t.member || t.member.role === 'admin') return null;
   const me = String(t.member.name || '').replace(/\s/g, '');
-  const allowed = (cd) => { const list = [...(cd.managers || []), ...((cd.managers || []).length ? [] : [cd.applicant])].map((x) => String(x || '').replace(/\s/g, '')).filter(Boolean); return !list.length || list.includes(me); };
+  const allowed = (cd) => (cd.managers || []).map((x) => String(x || '').replace(/\s/g, '')).includes(me);
   const findContest = async (name) => {
     if (!name) return null;
     const row = await c.env.DB.prepare("SELECT data FROM records WHERE module = 'contests' AND school_id = ? AND json_extract(data, '$.name') = ? ORDER BY year DESC LIMIT 1").bind(t.member.schoolId, name).first();
     return row ? JSON.parse(row.data) : null;
   };
   if (m === 'contests') {
-    if (prevData && !allowed(prevData)) return `「${prevData.name}」 공모사업은 입력 담당자(${(prevData.managers || []).join(', ') || prevData.applicant})와 관리자만 고칠 수 있습니다.`;
-    return null;
+    return '공모사업 등록·담당자 지정은 학교 관리자만 할 수 있습니다.';
   }
   for (const d of [data, prevData].filter(Boolean)) {
     const cd = await findContest(d.program);
     const isContest = d.source === '공모사업' || !!cd;
     if (!isContest) continue;
     if (!cd) return `공모사업 「${d.program || ''}」을(를) 먼저 [공모사업] 탭에서 등록해 주세요.`;
-    if (!allowed(cd)) return `「${cd.name}」 공모사업은 입력 담당자(${(cd.managers || []).join(', ') || cd.applicant})와 관리자만 입력할 수 있습니다.`;
+    if (!allowed(cd)) return `「${cd.name}」 공모사업은 관리자가 지정한 담당자만 입력할 수 있습니다.`;
   }
   return null;
 }
@@ -370,7 +391,6 @@ app.post('/api/records/:module', async (c) => {
   if (m === 'market') { clean.likes = []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); }
   if (m === 'activities') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
-  if (m === 'contests' && !(clean.managers || []).length && t.member?.name) clean.managers = [t.member.name]; // 등록한 사람이 기본 담당자
   const denied = await contestGuard(c, t, m, clean, null);
   if (denied) return c.json({ error: denied }, 403);
   const year = body.year || (t.member ? (await getSettings(c.env.DB, t.member.schoolId)).currentYear : new Date().getFullYear());
@@ -490,7 +510,8 @@ app.get('/api/changes', async (c) => {
   if (!mem || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(since)) return c.json({ now, items: [] });
   const rows = await c.env.DB.prepare(`SELECT r.id, r.module, r.date, r.data, r.updated_at, r.created_at, m.name FROM records r LEFT JOIN members m ON m.email = r.updated_by AND m.school_id = r.school_id
     WHERE r.school_id = ? AND r.updated_at > ? AND r.updated_by != ? AND r.updated_by != 'neis-auto' ORDER BY r.updated_at DESC LIMIT 300`).bind(mem.schoolId, since, c.get('user').email).all();
-  const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"'))).map((r) => {
+  const ok = await contestFilter(c, mem.schoolId, mem.role, mem.name);
+  const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"')) && (!ok || !CONTEST_SCOPED.includes(r.module) || ok(r.module, JSON.parse(r.data)))).map((r) => {
     const d = r.module === 'secrets' ? {} : JSON.parse(r.data);
     const key = LABEL_KEYS.find((k) => d[k]);
     return { id: r.id, module: r.module, date: r.date, at: r.updated_at, isNew: r.created_at === r.updated_at, by: r.name || '', label: key ? String(d[key]).split('\n')[0].slice(0, 60) : MODULES[r.module].label };
