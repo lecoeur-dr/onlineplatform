@@ -36,7 +36,7 @@ const STAFF = [
 const STUDENTS = ['강다온', '김가람', '김나래', '노을빛', '류하늘', '문별님', '박새롬', '배단비', '서누리', '송한결', '신바름', '안솔빛', '양초롱', '엄다솜', '오가온', '유보람', '이슬기', '전아라', '정해솔', '최미르'];
 
 function seed() {
-  const db = { seq: 1, records: [], members: [], inbox: [], audit: [], subs: {}, settings: { currentYear: YEAR, schoolName: SCHOOL, lists: { ...DEFAULT_LISTS, classes: ['1-1', '2-1', '3-1', '4-1', '5-1', '6-1'] } }, name: ME.name };
+  const db = { seq: 1, records: [], members: [], inbox: [], audit: [], subs: {}, settings: { currentYear: YEAR, schoolName: SCHOOL, lists: { ...DEFAULT_LISTS, classes: ['1-1', '2-1', '3-1', '4-1', '5-1', '6-1'], specialists: ['과학 전담'] } }, name: ME.name };
   const put = (module, data, extra = {}) => {
     const scope = MODULES[module].scope;
     const clean = normalizeData(module, data);
@@ -106,9 +106,9 @@ function seed() {
   put('reservations', { date: wd(1), place: 'AI교실', period: '5교시', user: ME.name, className: '6-1', purpose: '코딩 수업' });
   for (let i = -5; i <= 10; i += 3) put('programs', { program: ['SW·AI', '국악', '연극'][Math.abs(i) % 3], date: wd(i), content: `(${['4-1', '5-1', '6-1'][Math.abs(i) % 3]}) 1~2교시`, place: 'AI교실', status: '예정' });
   const grid = (cells) => ({ days: ['월', '화', '수', '목', '금'], periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시'], cells });
-  put('timetables', { title: '6-1', kind: '학급', semester: '연간', grid: grid([['국어', '수학', '국어', '사회', '과학'], ['수학', '국어', '영어', '수학', '국어'], ['사회', '과학', '체육', '국어', '음악'], ['체육', '미술', '수학', '과학', '수학'], ['음악', '미술', '창체', '체육', '사회'], ['', '실과', '', '영어', '']]) }, { year: YEAR });
-  put('timetables', { title: '5-1', kind: '학급', semester: '연간', grid: grid([['수학', '국어', '사회', '국어', '수학'], ['국어', '과학', '수학', '영어', '국어'], ['과학', '체육', '국어', '수학', '미술'], ['영어', '음악', '체육', '사회', '미술'], ['사회', '수학', '창체', '과학', '체육'], ['실과', '', '', '음악', '']]) }, { year: YEAR });
-  put('timetables', { title: '과학 전담', kind: '전담', semester: '연간', grid: grid([['5-1', '', '6-1', '', '5-1'], ['', '6-1', '', '5-1', ''], ['3-1', '', '4-1', '', '6-1'], ['4-1', '3-1', '', '6-1', ''], ['', '', '', '', ''], ['', '', '', '', '']]) }, { year: YEAR });
+  put('timetables', { title: '6-1', kind: '학급', semester: '1년', grid: grid([['국어', '수학', '국어', '사회', '과학'], ['수학', '국어', '영어', '수학', '국어'], ['사회', '과학', '체육', '국어', '음악'], ['체육', '미술', '수학', '과학', '수학'], ['음악', '미술', '창체', '체육', '사회'], ['', '실과', '', '영어', '']]) }, { year: YEAR });
+  put('timetables', { title: '5-1', kind: '학급', semester: '1년', grid: grid([['수학', '국어', '사회', '국어', '수학'], ['국어', '과학', '수학', '영어', '국어'], ['과학', '체육', '국어', '수학', '미술'], ['영어', '음악', '체육', '사회', '미술'], ['사회', '수학', '창체', '과학', '체육'], ['실과', '', '', '음악', '']]) }, { year: YEAR });
+  put('timetables', { title: '과학 전담', kind: '전담', semester: '1년', grid: grid([['5-1', '', '6-1', '', '5-1'], ['', '6-1', '', '5-1', ''], ['3-1', '', '4-1', '', '6-1'], ['4-1', '3-1', '', '6-1', ''], ['', '', '', '', ''], ['', '', '', '', '']]) }, { year: YEAR });
   put('openClasses', { group: '1그룹', date: wd(3), period: '3교시', className: '3-1', teacher: '정도윤', subject: '수학', room: '3-1 교실', observers: ['김민지', '박지우'] }, { year: YEAR });
   put('openClasses', { group: '1그룹', date: wd(8), period: '2교시', className: '5-1', teacher: '조하준', subject: '국어', room: '5-1 교실' }, { year: YEAR });
   // ----- 예산·물품 -----

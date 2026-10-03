@@ -90,6 +90,7 @@ async function toClient(env, row) {
   for (const k of encKeys(row.module)) if (data[k]) { try { data[k] = await decryptText(env, data[k]); } catch { data[k] = '(복호화 실패)'; } }
   const out = { id: row.id, year: row.year, date: row.date, sort: row.sort, version: row.version, data, updatedBy: row.updated_by, updatedAt: row.updated_at };
   if (row.author_name !== undefined) { out.author = row.author_name || ''; out.owner = row.owner; }
+  if (row.module === 'boards') out.createdBy = row.created_by;
   return out;
 }
 
@@ -111,6 +112,8 @@ function scopeWhere(m, year, t) {
 
 // 공모사업은 관리자와 관리자가 지정한 담당자만 볼 수 있음: 목록에서 공모사업·그 편성·집행·구매신청을 걸러냄
 const CONTEST_SCOPED = ['contests', 'budget', 'spending', 'purchases'];
+// 자유 표 '나만 보기': 만든 사람만 보고 고침
+const isPrivateOther = (row, email) => row.module === 'boards' && JSON.parse(row.data).visibility === '나만 보기' && row.created_by !== email;
 async function contestFilter(c, schoolId, role, myName) {
   if (role === 'admin') return null;
   const rows = (await c.env.DB.prepare("SELECT data FROM records WHERE module = 'contests' AND school_id = ?").bind(schoolId).all()).results.map((r) => JSON.parse(r.data));
@@ -134,6 +137,7 @@ async function listRecords(c, m, year) {
     : `SELECT * FROM records WHERE ${w.sql} ORDER BY ${order}`;
   const rows = await c.env.DB.prepare(sql).bind(...w.args).all();
   let list = rows.results;
+  if (m === 'boards') list = list.filter((r) => !isPrivateOther(r, c.get('user').email));
   if (CONTEST_SCOPED.includes(m) && t.member) {
     const ok = await contestFilter(c, t.member.schoolId, t.member.role, t.member.name);
     if (ok) list = list.filter((r) => ok(m, JSON.parse(r.data)));
@@ -414,6 +418,7 @@ app.put('/api/records/:module/:id', async (c) => {
   const prev = await findRecord(c, m, id, t);
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  if (isPrivateOther(prev, user.email)) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   const body = await c.req.json();
   const prevData = JSON.parse(prev.data);
   const clean = normalizeData(m, body.data);
@@ -449,6 +454,7 @@ app.delete('/api/records/:module/:id', async (c) => {
   const prev = await findRecord(c, m, id, t);
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  if (isPrivateOther(prev, c.get('user').email)) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   const denied = await contestGuard(c, t, m, null, JSON.parse(prev.data));
   if (denied) return c.json({ error: denied }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
@@ -511,7 +517,7 @@ app.get('/api/changes', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT r.id, r.module, r.date, r.data, r.updated_at, r.created_at, m.name FROM records r LEFT JOIN members m ON m.email = r.updated_by AND m.school_id = r.school_id
     WHERE r.school_id = ? AND r.updated_at > ? AND r.updated_by != ? AND r.updated_by != 'neis-auto' ORDER BY r.updated_at DESC LIMIT 300`).bind(mem.schoolId, since, c.get('user').email).all();
   const ok = await contestFilter(c, mem.schoolId, mem.role, mem.name);
-  const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"')) && (!ok || !CONTEST_SCOPED.includes(r.module) || ok(r.module, JSON.parse(r.data)))).map((r) => {
+  const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"')) && !(r.module === 'boards' && JSON.parse(r.data).visibility === '나만 보기') && (!ok || !CONTEST_SCOPED.includes(r.module) || ok(r.module, JSON.parse(r.data)))).map((r) => {
     const d = r.module === 'secrets' ? {} : JSON.parse(r.data);
     const key = LABEL_KEYS.find((k) => d[k]);
     return { id: r.id, module: r.module, date: r.date, at: r.updated_at, isNew: r.created_at === r.updated_at, by: r.name || '', label: key ? String(d[key]).split('\n')[0].slice(0, 60) : MODULES[r.module].label };

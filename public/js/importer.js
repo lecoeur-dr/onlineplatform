@@ -316,7 +316,7 @@ function parseTimetables(s, out, sheetName) {
         cells.push(days.map((_, k) => s.text(rr, c + 1 + k)));
       }
       const kind = timetableKind(title);
-      out.push({ module: 'timetables', data: { title, kind, semester: '연간', grid: { days, periods, cells } } });
+      out.push({ module: 'timetables', data: { title, kind, semester: '1년', grid: { days, periods, cells } } });
       n++;
     }
   }

@@ -5,7 +5,7 @@ import { state, remember, canEdit, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { renderCalendar, eventItem, programItem, openClassItem, substituteItem } from './calendar.js';
 import { tableView } from './table.js';
-import { sortTimetables, glanceTable, editTimetable, conflicts } from './timetable.js';
+import { sortTimetables, glanceTable, editTimetable, conflicts, activeOn } from './timetable.js';
 import { openClassesView } from './openclasses.js';
 import { seg } from './schedule.js';
 
@@ -14,7 +14,7 @@ const CLASS_CATS = ['학급수업', '특별수업', '동료장학'];
 // 수업 전체: 오늘 시간표(한눈에) + 수업 달력(특별수업·동료장학·학급수업)
 export async function classOverview(root) {
   const d = await api(`/api/bundle?year=${state.year}&modules=timetables,programs,openClasses,events,substitutes`);
-  const tts = sortTimetables(d.timetables);
+  const allTts = sortTimetables(d.timetables);
   // 오늘이 주말·휴일이면 다음 수업일 시간표를 보여 줌
   const t = today();
   const offOf = (day) => {
@@ -28,6 +28,7 @@ export async function classOverview(root) {
   let reason = offOf(t);
   for (let i = 0; i < 30 && offOf(day); i++) day = addDays(day, 1);
   const weekday = DOW[new Date(...day.split('-').map((x, i) => (i === 1 ? Number(x) - 1 : Number(x)))).getDay()];
+  const tts = allTts.filter((r) => activeOn(r, day)); // 적용 기간·빠지는 날 반영
   const subs = d.substitutes.filter((s) => s.data.date === day);
   // 나이스 학급 시간표(그 날 전체 학급)를 시트 시간표의 빈칸에 채움
   let neis = { rows: [], note: '' };

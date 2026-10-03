@@ -4,6 +4,7 @@ import { state, canEdit, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { seg } from './schedule.js';
 import { isNew } from '../news.js';
+import { eventItem, programItem, tripItem, openClassItem, substituteItem, memoItem, dutyItems } from './calendar.js';
 
 const monthLabel = (ym) => (ym ? `${Number(ym.slice(0, 4))}년 ${Number(ym.slice(5, 7))}월` : '');
 
@@ -21,19 +22,50 @@ export function noticeCard(n, reload, { compact = false } = {}) {
     d.link && /^https?:/.test(d.link) ? h('a', { href: d.link, target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, '링크 열기') : null);
 }
 
-// 한눈에: 전체 공지 + 이번 달 + 마감 임박 + 최근 회의
-export async function noticeOverview(root) {
-  const d = await api(`/api/bundle?year=${state.year}&modules=notices,meetings`);
+// 그날의 행사·일정 모두 (학사일정·특별수업·동료장학·복무·보결·담당·예약·회의·마감·메모 — 기본 시간표 제외)
+const DOW_KO = ['일', '월', '화', '수', '목', '금', '토'];
+function dayBoard(d, date, setDate, reload) {
+  const items = [
+    ...d.events.map(eventItem), ...d.programs.map((r) => programItem(r)), ...d.trips.map(tripItem), ...d.openClasses.map(openClassItem),
+    ...d.substitutes.map(substituteItem), ...d.memos.map(memoItem), ...dutyItems(d.duties),
+    ...d.reservations.map((r) => ({ mod: 'reservations', r, date: r.data.date, cat: '특별실 예약', color: '#0369a1', label: `🏫 ${r.data.period || ''} ${r.data.place || ''}`.trim(), sub: [r.data.user, r.data.className].filter(Boolean).join(' ') })),
+    ...groupMeetings(d.meetings).map((g) => ({ mod: 'meetings', r: g.rows[0], date: g.date, cat: '회의', color: '#0f8f86', label: `📝 ${g.meeting} (안건 ${g.rows.length})`, go: '#/notice/meetings' })),
+    ...d.collections.filter((c) => c.data.due).map((c) => ({ mod: 'collections', r: c, date: c.data.due, cat: '수합 마감', color: '#0e7490', label: `📥 마감: ${c.data.title}`, go: '#/notice/collections' })),
+    ...d.notices.filter((n) => n.data.due).map((n) => ({ mod: 'notices', r: n, date: n.data.due, cat: '공지 마감', color: '#b7791f', label: `📢 마감: ${n.data.title || String(n.data.content || '').split('\n')[0]}` })),
+  ].filter((it) => it && it.date && it.date <= date && (it.endDate || it.date) >= date);
+  const [y, m, dd] = date.split('-').map(Number);
+  const cats = [...new Set(items.map((it) => it.cat))];
+  return h('section', { class: 'card day-board' },
+    h('div', { class: 'card-head' }, h('h3', {}, `📅 ${m}월 ${dd}일(${DOW_KO[new Date(y, m - 1, dd).getDay()]}) 행사·일정`), h('span', { class: 'tag' }, `${items.length}건`), h('span', { class: 'grow' }),
+      h('button', { class: 'btn small', onclick: () => setDate(addDays(date, -1)) }, '◀'),
+      h('button', { class: `btn small ${date === today() ? 'primary' : ''}`, onclick: () => setDate(today()) }, '오늘'),
+      h('button', { class: 'btn small', onclick: () => setDate(addDays(date, 1)) }, '▶'),
+      h('input', { type: 'date', value: date, onchange: (e) => e.target.value && setDate(e.target.value) })),
+    items.length ? h('div', { class: 'day-groups' }, cats.map((c) => {
+      const list = items.filter((it) => it.cat === c);
+      return h('div', { class: 'day-group' }, h('div', { class: 'day-cat' }, h('i', { style: { background: list[0].color } }), c, h('span', { class: 'muted small' }, ` ${list.length}`)),
+        h('ul', { class: 'list' }, list.map((it) => h('li', { class: `click ${it.cancel ? 'cancel' : ''}`, onclick: () => (it.go ? (location.hash = it.go) : openRecordForm(it.mod, it.r, { onSaved: reload })) }, it.label, it.sub ? h('span', { class: 'muted' }, ` · ${it.sub}`) : null))));
+    })) : h('p', { class: 'muted' }, '이 날은 등록된 행사·일정이 없습니다.'),
+    h('p', { class: 'hint' }, '학사일정·특별수업·동료장학·복무·보결·담당 배정·특별실 예약·회의·마감·메모를 모두 모아 보여 줍니다(기본 시간표 제외).'));
+}
+
+// 한눈에: 그날의 행사 + 전체 공지 + 이번 달 + 마감 임박 + 최근 회의
+export async function noticeOverview(root, date = today()) {
+  const d = await api(`/api/bundle?year=${state.year}&modules=notices,meetings,events,programs,trips,openClasses,substitutes,memos,duties,reservations,collections`);
   const reload = () => noticeOverview(root);
   const ym = today().slice(0, 7);
   const pinned = d.notices.filter((n) => n.data.pinned && (!n.data.month || n.data.month === ym));
   const month = d.notices.filter((n) => n.data.month === ym && !n.data.pinned);
   const due = d.notices.filter((n) => n.data.due && n.data.due >= today() && n.data.due <= addDays(today(), 14));
   const recent = groupMeetings(d.meetings).slice(0, 3);
+  const board = h('div', {});
+  const setDate = (x) => clear(board, dayBoard(d, x, setDate, reload));
+  setDate(date);
   clear(root,
     h('div', { class: 'toolbar' }, h('span', { class: 'grow' }),
       canEdit('notices') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('notices', null, { defaults: { category: '일반' }, onSaved: reload }) }, '+ 공지') : null,
       canEdit('meetings') ? h('button', { class: 'btn', onclick: () => openRecordForm('meetings', null, { defaults: { date: today(), meeting: '전체회의' }, onSaved: reload }) }, '+ 회의 안건') : null),
+    board,
     h('div', { class: 'two-col' },
       h('div', {},
         h('h3', {}, '📌 전체 공지'), pinned.length ? pinned.map((n) => noticeCard(n, reload)) : h('p', { class: 'muted' }, '고정된 공지가 없습니다.'),

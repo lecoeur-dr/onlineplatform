@@ -46,9 +46,19 @@ export function dutyItems(rows) {
     label: `🧑‍🏫 ${list[0].data.title || ''}`, sub: [...new Set(list.map((r) => r.data.person).filter(Boolean))].join(','), go: '#/notice/duties',
   }));
 }
+// 예전 가져오기 자료는 공개일이 '9.22(화) 2교시' 글자(openDate)로만 있을 수 있음 → 날짜로 읽음
+export function openClassDate(r) {
+  if (r.data.date) return r.data.date;
+  const m = String(r.data.openDate || '').match(/(\d{1,2})\s*\.\s*(\d{1,2})/);
+  if (!m) return '';
+  const y = Number(r.year || state.year) + (Number(m[1]) <= 2 ? 1 : 0);
+  return `${y}-${pad(Number(m[1]))}-${pad(Number(m[2]))}`;
+}
 export function openClassItem(r) {
-  if (!r.data.date) return null;
-  return { mod: 'openClasses', r, date: r.data.date, cat: '동료장학', color: categoryColor('동료장학'), label: `👀 ${r.data.className || ''} ${r.data.teacher || ''} ${r.data.period || ''}`.trim(), sub: r.data.subject };
+  const date = openClassDate(r);
+  if (!date) return null;
+  r = date === r.data.date ? r : { ...r, data: { ...r.data, date, period: r.data.period || String(r.data.openDate || '').match(/\d\s*교시/)?.[0] || '' } };
+  return { mod: 'openClasses', r, date, cat: '동료장학', color: categoryColor('동료장학'), label: `👀 ${r.data.className || ''} ${r.data.teacher || ''} ${r.data.period || ''}`.trim(), sub: r.data.subject };
 }
 
 // ---------- 달력 ----------

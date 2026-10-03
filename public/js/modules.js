@@ -26,6 +26,7 @@ export const DEFAULT_LISTS = {
   leaveKinds: ['출장', '조퇴', '외출', '지참', '연가', '병가', '공가', '특별휴가', '기타'],
   periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '방과후'],
   resourceCategories: ['공문 서식', '업무 양식', '매뉴얼·지침', '수업 자료', '기타'],
+  specialists: [],
   budgetCategories: ['일반수용비', '운영수당', '강사수당', '여비', '업무추진비', '임차료', '일반용역비', '자산취득비', '도서구입비', '기타'],
   subjects: ['국어', '수학', '사회', '과학', '영어', '도덕', '실과', '체육', '음악', '미술', '바른 생활', '슬기로운 생활', '즐거운 생활', '창의적 체험활동'],
 };
@@ -238,11 +239,11 @@ export const MODULES = {
     ],
   },
   timetables: {
-    label: '시간표', icon: '🕘', scope: 'year', edit: 'staff', extras: ['grid'],
+    label: '시간표', icon: '🕘', scope: 'year', edit: 'staff', extras: ['grid', 'start', 'end', 'excludes'],
     fields: [
       { key: 'title', label: '제목', type: 'text', required: true, hint: '예) 3-1, 과학 전담, AI교실, 국악 강사' },
       { key: 'kind', label: '종류', type: 'select', options: TIMETABLE_KINDS },
-      { key: 'semester', label: '학기', type: 'select', options: ['1학기', '2학기', '연간'] },
+      { key: 'semester', label: '적용 기간', type: 'select', options: ['1년', '1학기', '2학기', '직접 지정'], hint: '아래에서 시작·끝 날짜와 빠지는 날을 정합니다' },
       { key: 'note', label: '메모', type: 'text' },
     ],
   },
@@ -362,6 +363,7 @@ export const MODULES = {
     label: '자유 표', icon: '🧮', scope: 'year', edit: 'staff', extras: ['rows', 'merges'],
     fields: [
       { key: 'title', label: '제목', type: 'text', required: true },
+      { key: 'visibility', label: '공개 범위', type: 'select', options: ['전체 공개', '나만 보기'] },
       { key: 'note', label: '설명', type: 'text' },
     ],
   },
