@@ -127,6 +127,7 @@ export const MODULES = {
       { key: 'target', label: '대상', type: 'text', hint: '비워 두면 전체. 예) 5~6학년 담임' },
       { key: 'content', label: '전달 내용', type: 'textarea', required: true, hint: '학생에게 전달할 내용 (담임이 그대로 읽어 줄 수 있게)' },
       { key: 'dept', label: '부서', type: 'select', list: 'depts', free: true },
+      { key: 'onCalendar', label: '학사일정 주요 안내에 표시', type: 'bool', hint: '그 달 학사일정 달력 위 "주요 안내"와 날짜 칸에 나옵니다' },
     ],
   },
   reservations: {
@@ -220,7 +221,8 @@ export const MODULES = {
     fields: [
       { key: 'title', label: '제목', type: 'text' },
       { key: 'category', label: '분류', type: 'select', options: ['월별 안내', '부서 안내', '일반'] },
-      { key: 'pinned', label: '전체 공지', type: 'bool', hint: '체크하면 홈과 학사일정 달력(해당 월 머리)에 고정' },
+      { key: 'pinned', label: '전체 공지', type: 'bool', hint: '체크하면 홈에 고정' },
+      { key: 'onCalendar', label: '학사일정 주요 안내에 표시', type: 'bool', hint: '해당 월(또는 마감일의 달) 학사일정 달력 위 "주요 안내"에 나옵니다' },
       { key: 'month', label: '해당 월', type: 'month', hint: '월별 안내일 때 해당 월' },
       { key: 'dept', label: '부서', type: 'select', list: 'depts', free: true },
       { key: 'content', label: '내용', type: 'textarea', required: true },
@@ -262,8 +264,20 @@ export const MODULES = {
       { key: 'observers', label: '참관 신청', type: 'names', hint: '참관 버튼으로 신청' },
     ],
   },
+  // 구매신청 건: 한 번의 신청(예: ○○ 운영물품 구입 신청)에 여러 선생님이 품목을 담음
+  purchaseRequests: {
+    label: '구매신청 건', icon: '🗂', scope: 'year', edit: 'staff',
+    fields: [
+      { key: 'title', label: '신청 건명', type: 'text', required: true, hint: '예) AI 디지털 활용 선도학교 운영물품 구입 신청' },
+      { key: 'program', label: '사업(재원)', type: 'select', list: 'budgetPrograms', free: true },
+      { key: 'due', label: '신청 마감일', type: 'date' },
+      { key: 'manager', label: '담당자', type: 'select', list: 'staff', free: true },
+      { key: 'open', label: '신청 받는 중', type: 'bool' },
+      { key: 'note', label: '안내', type: 'textarea', hint: '예) 1인 10만 원 이내, 쇼핑몰 링크 필수' },
+    ],
+  },
   purchases: {
-    label: '구매신청', icon: '🛒', scope: 'year', edit: 'staff',
+    label: '구매신청', icon: '🛒', scope: 'year', edit: 'staff', extras: ['requestId'],
     fields: [
       { key: 'date', label: '신청일', type: 'date' },
       { key: 'budget', label: '사업(재원)', type: 'select', list: 'budgetPrograms', free: true, hint: '학교본예산 세부사업 또는 공모사업명' },
@@ -289,6 +303,20 @@ export const MODULES = {
       { key: 'period', label: '운영 기간', type: 'text', hint: '예) 2026.4.~2027.2.' },
       { key: 'agency', label: '주관 기관', type: 'text' },
       { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  // 기한 안내: 공모 신청·정산·보고·공문 제출 등 마감 기한 (달력·한눈에에도 표시)
+  deadlines: {
+    label: '기한 안내', icon: '⏰', scope: 'date', edit: 'staff',
+    fields: [
+      { key: 'date', label: '기한', type: 'date', required: true },
+      { key: 'title', label: '내용', type: 'text', required: true, hint: '예) ○○ 공모사업 결과보고서 제출' },
+      { key: 'category', label: '구분', type: 'select', options: ['공모 신청', '정산·결과 보고', '예산 집행', '공문 제출', '기타'], free: true },
+      { key: 'dept', label: '부서', type: 'select', list: 'depts', free: true },
+      { key: 'person', label: '담당', type: 'select', list: 'staff', free: true },
+      { key: 'link', label: '링크', type: 'url' },
+      { key: 'note', label: '비고', type: 'text' },
+      { key: 'done', label: '완료', type: 'bool' },
     ],
   },
   contestInfo: {
@@ -598,6 +626,7 @@ export const GROUPS = [
     { id: 'spend', label: '집행내역', module: 'spending' },
     { id: 'purchases', label: '구매신청', module: 'purchases' },
     { id: 'contestInfo', label: '공모 안내', module: 'contestInfo' },
+    { id: 'deadlines', label: '기한 안내', module: 'deadlines' },
   ] },
   { id: 'info', label: '학교 정보', icon: '🗂', tabs: [
     { id: 'overview', label: '계정·바로가기' },

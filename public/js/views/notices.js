@@ -4,7 +4,7 @@ import { state, canEdit, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { seg } from './schedule.js';
 import { isNew } from '../news.js';
-import { eventItem, programItem, tripItem, openClassItem, substituteItem, memoItem, dutyItems } from './calendar.js';
+import { eventItem, programItem, tripItem, openClassItem, substituteItem, memoItem, dutyItems, deadlineItem } from './calendar.js';
 
 const monthLabel = (ym) => (ym ? `${Number(ym.slice(0, 4))}년 ${Number(ym.slice(5, 7))}월` : '');
 
@@ -31,6 +31,7 @@ function dayBoard(d, date, setDate, reload) {
     ...d.reservations.map((r) => ({ mod: 'reservations', r, date: r.data.date, cat: '특별실 예약', color: '#0369a1', label: `🏫 ${r.data.period || ''} ${r.data.place || ''}`.trim(), sub: [r.data.user, r.data.className].filter(Boolean).join(' ') })),
     ...groupMeetings(d.meetings).map((g) => ({ mod: 'meetings', r: g.rows[0], date: g.date, cat: '회의', color: '#0f8f86', label: `📝 ${g.meeting} (안건 ${g.rows.length})`, go: '#/notice/meetings' })),
     ...d.collections.filter((c) => c.data.due).map((c) => ({ mod: 'collections', r: c, date: c.data.due, cat: '수합 마감', color: '#0e7490', label: `📥 마감: ${c.data.title}`, go: '#/notice/collections' })),
+    ...d.deadlines.map(deadlineItem),
     ...d.notices.filter((n) => n.data.due).map((n) => ({ mod: 'notices', r: n, date: n.data.due, cat: '공지 마감', color: '#b7791f', label: `📢 마감: ${n.data.title || String(n.data.content || '').split('\n')[0]}` })),
   ].filter((it) => it && it.date && it.date <= date && (it.endDate || it.date) >= date);
   const [y, m, dd] = date.split('-').map(Number);
@@ -46,12 +47,12 @@ function dayBoard(d, date, setDate, reload) {
       return h('div', { class: 'day-group' }, h('div', { class: 'day-cat' }, h('i', { style: { background: list[0].color } }), c, h('span', { class: 'muted small' }, ` ${list.length}`)),
         h('ul', { class: 'list' }, list.map((it) => h('li', { class: `click ${it.cancel ? 'cancel' : ''}`, onclick: () => (it.go ? (location.hash = it.go) : openRecordForm(it.mod, it.r, { onSaved: reload })) }, it.label, it.sub ? h('span', { class: 'muted' }, ` · ${it.sub}`) : null))));
     })) : h('p', { class: 'muted' }, '이 날은 등록된 행사·일정이 없습니다.'),
-    h('p', { class: 'hint' }, '학사일정·특별수업·동료장학·복무·보결·담당 배정·특별실 예약·회의·마감·메모를 모두 모아 보여 줍니다(기본 시간표 제외).'));
+    h('p', { class: 'hint' }, '학사일정·특별수업·동료장학·복무·보결·담당 배정·특별실 예약·회의·기한·마감·메모를 모두 모아 보여 줍니다(기본 시간표 제외).'));
 }
 
 // 한눈에: 그날의 행사 + 전체 공지 + 이번 달 + 마감 임박 + 최근 회의
 export async function noticeOverview(root, date = today()) {
-  const d = await api(`/api/bundle?year=${state.year}&modules=notices,meetings,events,programs,trips,openClasses,substitutes,memos,duties,reservations,collections`);
+  const d = await api(`/api/bundle?year=${state.year}&modules=notices,meetings,events,programs,trips,openClasses,substitutes,memos,duties,reservations,collections,deadlines`);
   const reload = () => noticeOverview(root);
   const ym = today().slice(0, 7);
   const pinned = d.notices.filter((n) => n.data.pinned && (!n.data.month || n.data.month === ym));

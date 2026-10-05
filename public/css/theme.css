@@ -764,3 +764,19 @@ tr.locked td { color: var(--muted); }
 .grade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
 .grade-in { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; }
 .grade-in input { width: 56px; }
+
+/* ===== 기한 안내 · 주요 안내 전달사항 ===== */
+.dl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dl-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.dl-item .dl-d { min-width: 58px; text-align: center; font-weight: 900; font-size: 13px; padding: 3px 8px; border-radius: 999px; background: var(--bg-2); }
+.dl-item.soon .dl-d { background: #fff1e6; color: #c2410c; }
+.dl-item.over .dl-d { background: #fde8e8; color: var(--danger); }
+.dl-item.done { opacity: .6; }
+.dl-item.done .dl-title { text-decoration: line-through; }
+.dl-date { font-size: 13px; color: var(--muted); min-width: 64px; }
+.dl-title { flex: 1; font-weight: 700; }
+html[data-theme="dark"] .dl-item.soon .dl-d { background: #3a2412; }
+html[data-theme="dark"] .dl-item.over .dl-d { background: #3a1616; }
+.np-briefs { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.np-briefs li { padding: 4px 6px; border-radius: 8px; }
+.np-briefs li:hover { background: var(--bg-2); }

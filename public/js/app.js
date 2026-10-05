@@ -11,6 +11,7 @@ import { classOverview, programsView, openClassesTab, substitutesView } from './
 import { reservationsView } from './views/reservations.js';
 import { dutiesView } from './views/duties.js';
 import { noticeOverview, noticesView, meetingsView, collectionsView, briefingsView } from './views/notices.js';
+import { deadlinesView } from './views/deadlines.js';
 import { moneyOverview, purchasesView, budgetView, schoolBudgetView, contestBudgetView, spendView } from './views/money.js';
 import { infoOverview, contactsView, rulesView, resourcesView, assignmentsView } from './views/info.js';
 import { DESK_VIEWS } from './views/desk.js';
@@ -45,6 +46,7 @@ const VIEWS = {
   'money/school': schoolBudgetView,
   'money/contests': contestBudgetView,
   'money/spend': spendView,
+  'money/deadlines': deadlinesView,
   'money/contestInfo': (el) => tableView(el, 'contestInfo', { groupBy: 'topic' }),
   'info/overview': infoOverview,
   'info/assignments': assignmentsView,

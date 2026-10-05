@@ -54,6 +54,15 @@ export function openClassDate(r) {
   const y = Number(r.year || state.year) + (Number(m[1]) <= 2 ? 1 : 0);
   return `${y}-${pad(Number(m[1]))}-${pad(Number(m[2]))}`;
 }
+// 전달사항(학사일정 표시 체크) · 기한 안내
+export function briefingItem(r) {
+  if (!r.data.onCalendar || !r.data.date) return null;
+  return { mod: 'briefings', r, date: r.data.date, cat: '전달사항', color: '#b45309', label: `📣 ${String(r.data.content || '').split('\n')[0].slice(0, 40)}`, sub: r.data.kind || '' };
+}
+export function deadlineItem(r) {
+  if (!r.data.date) return null;
+  return { mod: 'deadlines', r, date: r.data.date, cat: '기한', color: '#be123c', label: `⏰ ${r.data.done ? '✔ ' : ''}${r.data.title || ''}`, sub: [r.data.category, r.data.person].filter(Boolean).join(' · '), cancel: !!r.data.done };
+}
 export function openClassItem(r) {
   const date = openClassDate(r);
   if (!date) return null;
@@ -287,7 +296,9 @@ const order = (it) => { const i = ORDER.indexOf(it.cat); return i < 0 ? 50 : i; 
 // 배너의 월별 주요 안내: 전체 공지(해당 월) + 수업일수 + 작성/수정
 function noticePanel(o, { y, m }, allByDate) {
   const ym = `${y}-${pad(m)}`;
-  const pins = (o.notices || []).filter((n) => n.data.pinned && n.data.month === ym);
+  // 주요 안내: 전체 공지(해당 월) + '학사일정 주요 안내에 표시'한 공지(해당 월·마감 월) + 같은 표시를 한 그 달 전달사항
+  const pins = (o.notices || []).filter((n) => (n.data.pinned || n.data.onCalendar) && (n.data.month || String(n.data.due || '').slice(0, 7)) === ym);
+  const briefs = (o.briefings || []).filter((b) => b.data.onCalendar && String(b.data.date || '').startsWith(ym)).sort((a, b) => a.data.date.localeCompare(b.data.date));
   const days = pins.map((n) => n.data.schoolDays).find(Boolean);
   const auto = schoolDays(y, m, allByDate);
   const write = () => openRecordForm('notices', null, { defaults: { category: '월별 안내', pinned: true, month: ym, title: `${m}월 교육과정 주요 안내` }, onSaved: o.reload });
@@ -302,7 +313,9 @@ function noticePanel(o, { y, m }, allByDate) {
       ? pins.map((n) => h('div', { class: 'np-body pre clamp-3', title: '눌러서 펼치기', onclick: (e) => e.currentTarget.classList.toggle('clamp-3') },
         n.data.title && pins.length > 1 ? h('strong', {}, `${n.data.title}\n`) : null,
         n.data.content && n.data.content !== '-' ? n.data.content : h('span', { class: 'muted' }, '(내용 없음)')))
-      : h('div', { class: 'np-body muted' }, '등록된 주요 안내가 없습니다.'));
+      : briefs.length ? null : h('div', { class: 'np-body muted' }, '등록된 주요 안내가 없습니다. 공지·전달사항에서 "학사일정 주요 안내에 표시"를 체크하면 여기에 나옵니다.'),
+    briefs.length ? h('ul', { class: 'np-briefs' }, briefs.map((b) => h('li', { class: 'click', onclick: () => openRecordForm('briefings', b, { onSaved: o.reload }) },
+      h('span', { class: 'muted' }, `${Number(b.data.date.slice(5, 7))}/${Number(b.data.date.slice(8))} `), b.data.kind ? h('span', { class: 'tag ghost' }, b.data.kind) : null, ' ', String(b.data.content || '').split('\n')[0]))) : null);
 }
 
 function schoolDays(y, m, allByDate) {

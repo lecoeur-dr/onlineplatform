@@ -84,7 +84,7 @@ function seed() {
   put('substitutes', { date: wd(0), period: '6교시', className: '5-1', subject: '사회', absent: '조하준', substitute: '장시우', reason: '출장' });
   put('substitutes', { date: wd(1), period: '2교시', className: '3-1', subject: '수학', absent: '정도윤', substitute: '임예린', reason: '연가' });
   // ----- 전달사항 -----
-  put('briefings', { date: wd(0), kind: '조례', content: '오늘 3교시에 소방 대피 훈련이 있습니다.\n실내화를 신고 선생님 안내에 따라 이동합니다.', dept: '안전' });
+  put('briefings', { date: wd(0), kind: '조례', content: '오늘 3교시에 소방 대피 훈련이 있습니다.\n실내화를 신고 선생님 안내에 따라 이동합니다.', dept: '안전', onCalendar: true });
   put('briefings', { date: wd(0), kind: '종례', content: '내일까지 현장체험학습 동의서를 제출해 주세요.', dept: '교무' });
   put('briefings', { date: wd(1), kind: '조례', content: '도서관 신간 도서 대출이 시작되었습니다.', dept: '독서' });
   // ----- 공지 · 회의 · 수합 · 담당 -----
@@ -123,7 +123,11 @@ function seed() {
     .forEach(([date, source, program, category, content, amount]) => put('spending', { date, source, program, category, content, amount, person: ME.name }));
   put('purchases', { date: `${YEAR}-09-14`, budget: '기초학력 지원', requester: '박지우', item: '보드게임형 수학 교구', spec: '4인용', price: 32000, qty: 6, received: true }, { year: YEAR });
   put('purchases', { budget: '생태전환 교육 공모', requester: '김민지', item: '모종삽 세트', price: 12000, qty: 15 }, { year: YEAR });
-  put('purchases', { budget: 'AI 디지털 선도학교', requester: ME.name, item: '코딩 로봇 키트', price: 89000, qty: 10 }, { year: YEAR });
+  const pr = put('purchaseRequests', { title: 'AI 디지털 선도학교 2학기 운영물품 구입 신청', program: 'AI 디지털 선도학교', due: wd(5), manager: '이서준', open: true, note: '1인 15만 원 이내, 구매 링크를 꼭 넣어 주세요.' }, { year: YEAR });
+  [[ME.name, '코딩 로봇 키트', 89000, 1, wd(-3)], [ME.name, '센서 확장 보드', 15000, 2, wd(-3)], ['박지우', '태블릿 거치대', 12000, 5, wd(-2)], ['정도윤', '블록 코딩 카드', 9000, 6, wd(-1)], ['정도윤', 'USB 허브', 18000, 2, wd(-1)]]
+    .forEach(([requester, item, price, qty, date]) => put('purchases', { requestId: pr.id, budget: 'AI 디지털 선도학교', requester, item, price, qty, date }, { year: YEAR }));
+  [[wd(-2), '생태전환 교육 공모 중간 정산', '정산·결과 보고', '김민지'], [wd(2), '2027 AI 선도학교 공모 신청서 제출', '공모 신청', '이서준'], [wd(9), '학교본예산 2차 추경 요구서', '예산 집행', '박지우'], [wd(20), '방과후 운영 결과 보고 공문', '공문 제출', '최하은']]
+    .forEach(([date, title, category, person]) => put('deadlines', { date, title, category, person }));
   put('purchases', { budget: '학생 자치 활동', requester: '윤지아', item: '선거 투표함', price: 45000, qty: 2 }, { year: YEAR });
   put('contestInfo', { topic: '디지털', content: '에듀테크 수업 나눔 공모', period: '다음 달 말까지', amount: '300만 원' }, { year: YEAR });
   // ----- 학교 정보 -----

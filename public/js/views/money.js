@@ -421,35 +421,121 @@ export async function spendView(root) {
 
 // ---------- 구매신청 ----------
 
+// 신청 건 묶기: requestId 가 있으면 그 건, 없으면(예전 자료) '사업(재원)' 글자가 같은 것끼리 한 건
+const reqKey = (x) => (x.data.requestId ? `r:${x.data.requestId}` : `b:${x.data.budget || '(건 이름 없음)'}`);
+function buildRequests(reqs, items) {
+  const map = new Map();
+  for (const r of reqs) map.set(`r:${r.id}`, { key: `r:${r.id}`, rec: r, title: r.data.title, program: r.data.program || '', items: [] });
+  for (const x of items) {
+    const k = reqKey(x);
+    if (!map.has(k)) map.set(k, { key: k, rec: null, title: x.data.budget || '(건 이름 없음)', program: x.data.budget || '', items: [], legacy: true });
+    map.get(k).items.push(x);
+  }
+  for (const g of map.values()) {
+    const dates = g.items.map((x) => x.data.date).filter(Boolean).sort();
+    g.first = dates[0] || ''; g.last = dates.at(-1) || '';
+    g.total = g.items.reduce((a, x) => a + amountOf(x), 0);
+    g.people = new Set(g.items.map((x) => x.data.requester).filter(Boolean));
+  }
+  return [...map.values()].sort((a, b) => String(b.rec?.data.due || b.last || '').localeCompare(String(a.rec?.data.due || a.last || '')));
+}
+const md2 = (x) => { const [, m, d] = String(x).split('-').map(Number); return `${m}/${d}`; };
+
 export async function purchasesView(root) {
-  const d = await loadMoney();
+  const [d, reqs] = await Promise.all([loadMoney(), api(`/api/records/purchaseRequests?year=${state.year}`)]);
   const reload = () => purchasesView(root);
+  const groups = buildRequests(reqs, d.purchases);
   const toSpend = (x) => {
     const p = d.m.purchaseProgram.get(x.id);
     openRecordForm('spending', null, { defaults: { date: today(), source: p?.kind || '학교본예산', program: p?.name || x.data.budget || '', category: '일반수용비', content: String(x.data.item || '').split('\n')[0], amount: amountOf(x), person: x.data.requester || '', purchaseId: x.id }, onSaved: reload });
   };
-  const waiting = d.purchases.filter((x) => !d.m.spentPurchase.has(x.id));
-  const view = remember('pc_view') || 'item';
-  const head = h('div', { class: 'kpis' },
-    kpi('신청', `${d.purchases.length}건`, won(d.purchases.reduce((a, x) => a + amountOf(x), 0))),
-    kpi('미수령', `${d.purchases.filter((x) => !x.data.received).length}건`),
-    kpi('집행 등록 전', `${waiting.length}건`, won(waiting.reduce((a, x) => a + amountOf(x), 0))));
+  const spentTag = (x) => (d.m.spentPurchase.has(x.id) ? h('span', { class: 'tag ok' }, '집행 완료') : canEdit('spending') ? h('button', { class: 'btn small', onclick: (e) => { e.stopPropagation(); toSpend(x); } }, '집행 등록') : null);
+  const view = remember('pc_view') || 'req';
+  const openKey = remember('pc_open') || '';
+  const g = groups.find((x) => x.key === openKey);
+  const setView = (v) => { remember('pc_view', v); remember('pc_open', ''); reload(); };
   const box = h('div', {});
-  const rows = view === 'date' ? d.purchases.slice().sort((a, b) => String(b.data.date || '').localeCompare(String(a.data.date || ''))) : d.purchases;
-  clear(root, head,
+  clear(root,
     h('div', { class: 'toolbar' },
-      h('div', { class: 'seg' }, [['item', '건별 보기'], ['date', '날짜별 보기']].map(([v, l]) => h('button', { class: view === v ? 'on' : '', onclick: () => { remember('pc_view', v); reload(); } }, l))),
+      h('div', { class: 'seg' }, [['req', '🗂 건별'], ['date', '📅 날짜별']].map(([v, l]) => h('button', { class: view === v && !g ? 'on' : '', onclick: () => setView(v) }, l))),
       h('span', { class: 'grow' }),
-      canEdit('purchases') ? h('button', { class: 'btn', onclick: () => openRecordForm('purchases', null, { defaults: { date: today(), requester: state.me?.name || '' }, onSaved: reload }) }, '+ 건별 신청') : null,
-      canEdit('purchases') ? h('button', { class: 'btn primary', onclick: () => batchPurchase(reload) }, '+ 날짜별 일괄 신청') : null),
-    box, h('p', { class: 'hint' }, '건별 신청은 한 품목씩, 날짜별 일괄 신청은 같은 날·같은 사업의 여러 품목을 표에 한 번에 넣습니다(엑셀 표 붙여넣기 가능). 물건을 받고 지출이 끝나면 [집행 등록]을 누르면 대시보드에 반영됩니다.'));
-  await tableView(box, 'purchases', { rows, groupBy: view === 'date' ? 'date' : 'budget', embed: true, defaults: { date: today(), requester: state.me?.name || '' }, reload,
-    rowAction: (x) => (d.m.spentPurchase.has(x.id) ? h('span', { class: 'tag ok' }, '집행 완료') : canEdit('spending') ? h('button', { class: 'btn small', onclick: () => toSpend(x) }, '집행 등록') : null) });
+      canEdit('purchaseRequests') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('purchaseRequests', null, { defaults: { open: true, manager: state.me?.name || '' }, onSaved: (r) => { if (r) remember('pc_open', `r:${r.id}`); reload(); } }) }, '+ 구매신청 건 만들기') : null),
+    box);
+  if (g) return requestDetail(box, g, { d, reload, spentTag });
+  if (view === 'date') return dateView(box, groups, { reload, spentTag });
+  // 건별 목록
+  clear(box,
+    groups.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {}, ['신청 건', '사업(재원)', '신청 기간', '마감', '신청자', '품목', '합계', '상태'].map((x) => h('th', {}, x)))),
+      h('tbody', {}, groups.map((x) => {
+        const spent = x.items.filter((i) => d.m.spentPurchase.has(i.id)).length;
+        return h('tr', { class: 'click', onclick: () => { remember('pc_open', x.key); reload(); } },
+          h('td', {}, h('strong', {}, x.title), x.legacy ? h('span', { class: 'tag ghost', title: '예전 자료: 사업 이름이 같은 품목을 한 건으로 묶음' }, ' 예전 자료') : null),
+          h('td', { class: 'small' }, x.program && x.program !== x.title ? x.program : h('span', { class: 'muted' }, '-')),
+          h('td', { class: 'small nowrap' }, x.first ? (x.first === x.last ? md2(x.first) : `${md2(x.first)}~${md2(x.last)}`) : h('span', { class: 'muted' }, '-')),
+          h('td', { class: 'small nowrap' }, x.rec?.data.due ? md2(x.rec.data.due) : '-'),
+          h('td', { class: 'num' }, `${x.people.size}명`), h('td', { class: 'num' }, `${x.items.length}개`), h('td', { class: 'num' }, won(x.total)),
+          h('td', {}, x.rec ? h('span', { class: `tag ${x.rec.data.open ? 'ok' : 'ghost'}` }, x.rec.data.open ? '접수 중' : '마감') : null, spent ? h('span', { class: 'tag ghost' }, ` 집행 ${spent}/${x.items.length}`) : null));
+      })))) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🛒'), h('p', {}, '[+ 구매신청 건 만들기]로 신청을 열면, 선생님들이 그 건에 품목을 담습니다.')),
+    h('p', { class: 'hint' }, '한 번의 신청(건)에 여러 선생님이 품목을 담습니다. 건을 누르면 신청자별 품목이 열립니다. 신청일이 달라도 같은 건으로 묶입니다.'));
 }
 
+function requestDetail(box, g, { d, reload, spentTag }) {
+  const back = () => { remember('pc_open', ''); reload(); };
+  const r = g.rec;
+  const mine = g.items.filter((x) => x.data.requester === state.me?.name);
+  const preset = { requestId: r?.id, budget: r ? (r.data.program || r.data.title) : g.title, title: g.title };
+  const promote = async () => {
+    try {
+      const rec = await api('/api/records/purchaseRequests', { method: 'POST', body: { data: { title: g.title, program: g.program, open: false }, year: state.year } });
+      for (const x of g.items) await api(`/api/records/purchases/${x.id}`, { method: 'PUT', body: { data: { ...x.data, requestId: rec.id }, version: x.version } });
+      remember('pc_open', `r:${rec.id}`); toast('구매신청 건으로 등록했습니다.'); reload();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  const csv = () => {
+    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [['신청자', '신청일', '품목', '규격', '단가', '수량', '금액', '링크', '수령', '비고'].map(q).join(',')];
+    for (const x of g.items) lines.push([x.data.requester, x.data.date, x.data.item, x.data.spec, x.data.price, x.data.qty, amountOf(x), x.data.link, x.data.received ? 'O' : '', x.data.note].map(q).join(','));
+    const a = h('a', { href: URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' })), download: `${g.title}.csv` }); document.body.append(a); a.click(); a.remove();
+  };
+  const tbl = h('div', {});
+  clear(box,
+    h('div', { class: 'toolbar' }, h('button', { class: 'btn', onclick: back }, '← 건 목록'), h('strong', {}, g.title),
+      r ? h('span', { class: `tag ${r.data.open ? 'ok' : 'ghost'}` }, r.data.open ? '접수 중' : '마감') : h('span', { class: 'tag ghost' }, '예전 자료'), h('span', { class: 'grow' }),
+      r && canEdit('purchaseRequests') ? h('button', { class: 'btn', onclick: () => openRecordForm('purchaseRequests', r, { onSaved: (x) => { if (!x) remember('pc_open', ''); reload(); } }) }, '건 설정') : null,
+      !r && canEdit('purchaseRequests') ? h('button', { class: 'btn', onclick: promote }, '구매신청 건으로 등록') : null,
+      h('button', { class: 'btn', onclick: csv }, 'CSV'),
+      canEdit('purchases') && (!r || r.data.open) ? h('button', { class: 'btn primary', onclick: () => batchPurchase(reload, preset) }, '+ 내 품목 담기') : null),
+    r ? h('p', { class: 'muted small' }, [r.data.program && `사업: ${r.data.program}`, r.data.due && `마감 ${md2(r.data.due)}`, r.data.manager && `담당 ${r.data.manager}`].filter(Boolean).join(' · ')) : null,
+    r?.data.note ? h('p', { class: 'alert info pre' }, r.data.note) : null,
+    h('div', { class: 'kpis' }, kpi('신청자', `${g.people.size}명`), kpi('품목', `${g.items.length}개`, won(g.total)), kpi('내 신청', `${mine.length}개`, won(mine.reduce((a, x) => a + amountOf(x), 0))),
+      kpi('미수령', `${g.items.filter((x) => !x.data.received).length}개`)),
+    tbl);
+  return tableView(tbl, 'purchases', { rows: g.items, groupBy: 'requester', embed: true, hide: ['budget'], defaults: { ...preset, date: today(), requester: state.me?.name || '' }, reload, rowAction: spentTag });
+}
+
+function dateView(box, groups, { reload, spentTag }) {
+  const titleOf = new Map();
+  for (const g of groups) for (const x of g.items) titleOf.set(x.id, g.title);
+  const all = groups.flatMap((g) => g.items);
+  const byDate = new Map();
+  for (const x of all.slice().sort((a, b) => String(b.data.date || '').localeCompare(String(a.data.date || '')))) { const k = x.data.date || ''; if (!byDate.has(k)) byDate.set(k, []); byDate.get(k).push(x); }
+  clear(box,
+    all.length ? [...byDate].map(([date, list]) => h('section', { class: 'section' },
+      h('h3', {}, date ? `📅 ${fmtDay(date)}` : '📅 신청일 없음 (예전 자료)', h('span', { class: 'muted small' }, ` · ${list.length}개 · ${won(list.reduce((a, x) => a + amountOf(x), 0))}`)),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+        h('thead', {}, h('tr', {}, ['신청 건', '신청자', '품목', '규격', '단가', '수량', '금액', '수령', ''].map((t) => h('th', {}, t)))),
+        h('tbody', {}, list.map((x) => h('tr', { class: 'click', onclick: () => openRecordForm('purchases', x, { onSaved: reload }) },
+          h('td', { class: 'small' }, titleOf.get(x.id)), h('td', {}, x.data.requester || ''), h('td', {}, String(x.data.item || '').split('\n')[0]), h('td', { class: 'small' }, x.data.spec || ''),
+          h('td', { class: 'num' }, won(x.data.price || 0)), h('td', { class: 'num' }, x.data.qty || ''), h('td', { class: 'num' }, won(amountOf(x))), h('td', {}, x.data.received ? '✔' : ''), h('td', { onclick: (e) => e.stopPropagation() }, spentTag(x))))))))) : h('p', { class: 'muted' }, '구매신청이 없습니다.'),
+    h('p', { class: 'hint' }, '신청한 날짜별로 모아 봅니다. 예전 시트에서 가져온 품목은 신청일이 없어 맨 아래에 모입니다.'));
+}
+const DOWK = ['일', '월', '화', '수', '목', '금', '토'];
+const fmtDay = (x) => { const [y, m, dd] = x.split('-').map(Number); return `${m}월 ${dd}일(${DOWK[new Date(y, m - 1, dd).getDay()]})`; };
+
 // 날짜별 일괄 신청: 신청일·사업·신청자 + 품목 표(단가 칸은 계산식 가능)
-function batchPurchase(reload) {
-  const headF = { date: today(), budget: '', requester: state.me?.name || '' };
+function batchPurchase(reload, preset = {}) {
+  const headF = { date: today(), budget: preset.budget || '', requester: state.me?.name || '' };
   const items = [];
   const tbody = h('tbody', {});
   const total = h('strong', {});
@@ -477,7 +563,7 @@ function batchPurchase(reload) {
     paste.value = ''; toast(`${rows.length}줄을 넣었습니다.`);
   }, 0));
   const progs = state.budgetPrograms;
-  modal('🛒 구매신청 · 날짜별 일괄', h('div', { class: 'form' },
+  modal(preset.title ? `🛒 ${preset.title} · 품목 담기` : '🛒 구매신청 · 품목 담기', h('div', { class: 'form' },
     h('div', { class: 'sf-grid' },
       h('label', {}, '신청일', h('input', { type: 'date', value: headF.date, oninput: (e) => { headF.date = e.target.value; } })),
       h('label', {}, '사업(재원)', h('input', { list: 'batch-progs', value: headF.budget, placeholder: '사업 선택·입력', oninput: (e) => { headF.budget = e.target.value; } })),
@@ -493,7 +579,7 @@ function batchPurchase(reload) {
       if (!list.length) { toast('품목을 한 개 이상 넣어 주세요.', 'error'); return; }
       if (!headF.requester.trim()) { toast('신청자를 넣어 주세요.', 'error'); return; }
       try {
-        for (const it of list) await api('/api/records/purchases', { method: 'POST', body: { data: { date: headF.date, budget: headF.budget, requester: headF.requester, item: it.item.trim(), spec: it.spec, price: evalFormula(it.price) || 0, qty: Number(it.qty) || 1, link: it.link, note: it.note }, year: state.year } });
+        for (const it of list) await api('/api/records/purchases', { method: 'POST', body: { data: { date: headF.date, budget: headF.budget, requestId: preset.requestId || undefined, requester: headF.requester, item: it.item.trim(), spec: it.spec, price: evalFormula(it.price) || 0, qty: Number(it.qty) || 1, link: it.link, note: it.note }, year: state.year } });
         toast(`${list.length}건을 신청했습니다.`); close(); reload();
       } catch (e) { toast(e.message, 'error'); }
     } }, '일괄 신청'),
