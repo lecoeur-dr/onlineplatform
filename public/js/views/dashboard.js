@@ -3,7 +3,7 @@ import { h, api, clear, fmtDate, addDays, today, won, modal, DOW } from '../ui.j
 import { state, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { eventItem, programItem, tripItem, openClassItem, substituteItem } from './calendar.js';
-import { noticeCard, isMyTask, dday } from './notices.js';
+import { noticeCard, isMyTask, dday, isExpired } from './notices.js';
 import { seg } from './schedule.js';
 import { unseen, tabOf } from '../news.js';
 import { MODULES } from '../modules.js';
@@ -25,7 +25,7 @@ export async function dashboardView(root) {
   for (const c of d.collections) if (c.data.due) all.push({ mod: 'collections', r: c, date: c.data.due, cat: '수합', color: '#0e7490', label: `📥 마감: ${c.data.title}`, sub: '' });
   for (const n of d.notices) if (n.data.due) all.push({ mod: 'notices', r: n, date: n.data.due, cat: '공지', color: '#b7791f', label: `📢 마감: ${n.data.title || n.data.content.split('\n')[0]}`, sub: n.data.dept || '' });
 
-  const pinned = d.notices.filter((n) => n.data.pinned && (!n.data.month || n.data.month === ym));
+  const pinned = d.notices.filter((n) => !isExpired(n) && n.data.pinned && (!n.data.month || n.data.month === ym));
   const redo = d.meetings.filter((m) => m.data.status === '재논의').slice(-5);
 
   // 내 할 일: 내 보결(7일 안) · 내가 낼 수합 · 내 복무

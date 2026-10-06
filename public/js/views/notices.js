@@ -6,6 +6,8 @@ import { seg } from './schedule.js';
 import { isNew } from '../news.js';
 import { eventItem, programItem, tripItem, openClassItem, substituteItem, memoItem, dutyItems, deadlineItem } from './calendar.js';
 
+// 마감일이 지난 공지는 자동으로 내림 (지우지 않고 '지난 공지'에 보관)
+export const isExpired = (n) => !!n.data.due && n.data.due < today();
 const monthLabel = (ym) => (ym ? `${Number(ym.slice(0, 4))}년 ${Number(ym.slice(5, 7))}월` : '');
 
 export function noticeCard(n, reload, { compact = false } = {}) {
@@ -55,8 +57,8 @@ export async function noticeOverview(root, date = today()) {
   const d = await api(`/api/bundle?year=${state.year}&modules=notices,meetings,events,programs,trips,openClasses,substitutes,memos,duties,reservations,collections,deadlines`);
   const reload = () => noticeOverview(root);
   const ym = today().slice(0, 7);
-  const pinned = d.notices.filter((n) => n.data.pinned && (!n.data.month || n.data.month === ym));
-  const month = d.notices.filter((n) => n.data.month === ym && !n.data.pinned);
+  const pinned = d.notices.filter((n) => !isExpired(n) && n.data.pinned && (!n.data.month || n.data.month === ym));
+  const month = d.notices.filter((n) => !isExpired(n) && n.data.month === ym && !n.data.pinned);
   const due = d.notices.filter((n) => n.data.due && n.data.due >= today() && n.data.due <= addDays(today(), 14));
   const recent = groupMeetings(d.meetings).slice(0, 3);
   const board = h('div', {});
@@ -82,7 +84,9 @@ export async function noticesView(root) {
   const reload = () => noticesView(root);
   const cat = remember('notice_cat') || '';
   const dept = remember('notice_dept') || '';
-  const shown = rows.filter((n) => (!cat || n.data.category === cat) && (!dept || n.data.dept === dept));
+  const matched = rows.filter((n) => (!cat || n.data.category === cat) && (!dept || n.data.dept === dept));
+  const shown = matched.filter((n) => !isExpired(n));
+  const expired = matched.filter(isExpired).sort((a, b) => b.data.due.localeCompare(a.data.due));
   const depts = [...new Set(rows.map((n) => n.data.dept).filter(Boolean))];
   const pinned = shown.filter((n) => n.data.pinned).sort((a, b) => String(a.data.month || '').localeCompare(String(b.data.month || '')));
   const rest = shown.filter((n) => !n.data.pinned);
@@ -96,11 +100,13 @@ export async function noticesView(root) {
       h('select', { onchange: (e) => { remember('notice_dept', e.target.value); noticesView(root); } }, h('option', { value: '' }, '모든 부서'), depts.map((x) => h('option', { value: x, selected: x === dept }, x))),
       h('span', { class: 'grow' }),
       canEdit('notices') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('notices', null, { defaults: { category: cat || '일반', dept }, onSaved: reload }) }, '+ 공지') : null),
-    h('p', { class: 'hint' }, '"전체 공지"를 체크하면 홈과 학사일정 달력(해당 월 머리)에 고정됩니다. 월별 안내는 해당 월을 지정하세요.'),
+    h('p', { class: 'hint' }, '"전체 공지"를 체크하면 홈과 학사일정 달력(해당 월 머리)에 고정됩니다. 월별 안내는 해당 월을 지정하세요. 마감일이 있는 공지는 마감일이 지나면 자동으로 내려가 맨 아래 "지난 공지"에 보관됩니다.'),
     pinned.length ? h('section', { class: 'section' }, h('h3', {}, '📌 전체 공지'), h('div', { class: 'cards' }, pinned.map((n) => noticeCard(n, reload)))) : null,
     byMonth.length ? h('section', { class: 'section' }, h('h3', {}, '월별'), h('div', { class: 'cards' }, byMonth.map((n) => noticeCard(n, reload)))) : null,
     [...deptGroups].map(([k, list]) => h('section', { class: 'section' }, h('h3', {}, k), h('div', { class: 'cards' }, list.map((n) => noticeCard(n, reload, { compact: true }))))),
-    shown.length ? null : h('p', { class: 'muted' }, '공지가 없습니다.'));
+    shown.length ? null : h('p', { class: 'muted' }, '게시 중인 공지가 없습니다.'),
+    expired.length ? h('details', { class: 'section expired-notices' }, h('summary', {}, `🗄 지난 공지 ${expired.length}건 (마감일 지남)`),
+      h('div', { class: 'cards' }, expired.map((n) => noticeCard(n, reload, { compact: true })))) : null);
 }
 
 // ---------- 회의록 ----------

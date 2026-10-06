@@ -446,13 +446,13 @@ async function syncEventNotice(c, schoolId, eventId, d) {
   const content = [`📅 ${when}  ${String(d.title || '').replace(/\n/g, ' ')}`, [d.target && `대상: ${d.target}`, d.place && `장소: ${d.place}`, d.dept && `담당: ${d.dept}`].filter(Boolean).join(' · '), d.note || ''].filter(Boolean).join('\n');
   const old = d.noticeId ? await db.prepare("SELECT id, data FROM records WHERE id = ? AND module = 'notices' AND school_id = ?").bind(d.noticeId, schoolId).first() : null;
   if (old) {
-    const nd = { ...JSON.parse(old.data), title, content, dept: d.dept || JSON.parse(old.data).dept || '' };
+    const nd = { ...JSON.parse(old.data), title, content, dept: d.dept || JSON.parse(old.data).dept || '', due: d.endDate || d.date };
     await db.prepare("UPDATE records SET data = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?").bind(JSON.stringify(nd), email, old.id).run();
     return;
   }
   const [y, mo] = d.date.split('-').map(Number);
   const year = mo <= 2 ? y - 1 : y; // 1·2월 일정은 앞 학년도
-  const nd = normalizeData('notices', { title, category: '일반', content, dept: d.dept || '', month: d.date.slice(0, 7) });
+  const nd = normalizeData('notices', { title, category: '일반', content, dept: d.dept || '', month: d.date.slice(0, 7), due: d.endDate || d.date }); // 일정이 끝나면 공지도 자동으로 내림
   const id = randomToken(8);
   await db.batch([
     db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by, school_id, owner) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, NULL)').bind(id, 'notices', year, Date.now() % 1e9, JSON.stringify(nd), email, email, schoolId),
