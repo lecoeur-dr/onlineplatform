@@ -1,6 +1,6 @@
 // 🏠 홈: 전체 공지 · 날짜별 게시판[오늘·이번 주·이번 달] · 내 할 일 · 급식 · 예산 · 재논의 · 확인필요
 import { h, api, clear, fmtDate, addDays, today, won, modal, DOW } from '../ui.js';
-import { state, remember, myName } from '../state.js';
+import { state, remember, myName, canSeeTab } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { eventItem, programItem, tripItem, openClassItem, substituteItem } from './calendar.js';
 import { noticeCard, isMyTask, dday } from './notices.js';
@@ -108,11 +108,11 @@ export async function dashboardView(root) {
           myLeaves.map((x) => item(tripItem(x)))) : h('p', { class: 'muted' }, '오늘 이후 내 보결·담당·제출할 수합이 없습니다.'),
         !state.me.name ? h('p', { class: 'muted small' }, '학교 관리 → 사용자에서 내 이름(실명)이 등록되어야 내 할 일이 보입니다.') : null),
       mealBox,
-      h('div', { class: 'card' }, h('h3', {}, '💰 예산'),
+      canSeeTab({ access: 'overview' }) ? h('div', { class: 'card' }, h('h3', {}, '💰 예산'),
         h('div', { class: 'mini-kpi' }, h('span', {}, '예산'), h('strong', {}, won(assign))),
         h('div', { class: 'mini-kpi' }, h('span', {}, '집행'), h('strong', {}, `${won(used)} (${assign ? Math.round((used / assign) * 1000) / 10 : 0}%)`)),
 
-        h('a', { href: '#/money/overview', class: 'more-link' }, '예산 대시보드 →')),
+        h('a', { href: '#/money/overview', class: 'more-link' }, '예산 대시보드 →')) : null,
       h('div', { class: 'card' }, h('h3', {}, '📝 재논의 안건'),
         redo.length ? h('ul', { class: 'list' }, redo.map((m) => h('li', { class: 'click', onclick: () => openRecordForm('meetings', m, { onSaved: reload }) }, m.data.agenda.split('\n')[0], h('span', { class: 'muted' }, ` ${fmtDate(m.data.date)}`)))) : h('p', { class: 'muted' }, '재논의 안건이 없습니다.'),
         h('a', { href: '#/notice/meetings', class: 'more-link' }, '회의록 →')),

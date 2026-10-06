@@ -1,5 +1,5 @@
 // 관리자: 사용자 승인 · 설정 · 엑셀 가져오기 · 연도 복사 · 변경 기록 · 백업
-import { MODULES, ROLES, DEFAULT_LISTS } from '../modules.js';
+import { MODULES, ROLES, DEFAULT_LISTS, MONEY_ACCESS } from '../modules.js';
 import { h, api, clear, toast, confirmBox, loadScript, download, modal } from '../ui.js';
 import { state } from '../state.js';
 import { parseWorkbook, guessYear } from '../importer.js';
@@ -7,7 +7,7 @@ import { swatches, applyTheme } from '../theme.js';
 import { smartTab } from './smart-tab.js';
 
 let tab = 'users';
-const TABS = { users: '사용자·초대', smart: '🪄 새 학기 가져오기', settings: '설정', import: '기존 시트 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
+const TABS = { users: '사용자·초대', access: '🔐 행정·예산 권한', smart: '🪄 새 학기 가져오기', settings: '설정', import: '기존 시트 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
 
 export async function adminView(root, refreshApp) {
   const want = location.hash.match(/[?&]tab=(\w+)/)?.[1];
@@ -16,7 +16,39 @@ export async function adminView(root, refreshApp) {
   clear(root,
     h('div', { class: 'seg tabs' }, Object.entries(TABS).map(([k, v]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; adminView(root, refreshApp); } }, v))),
     body);
-  await ({ users, smart: smartTab, settings, import: importTab, copy, audit, backup })[tab](body, refreshApp);
+  await ({ users, access: accessTab, smart: smartTab, settings, import: importTab, copy, audit, backup })[tab](body, refreshApp);
+}
+
+// 🔐 행정·예산 권한: 공모 안내·기한 안내는 모두에게 보임. 나머지 탭은 관리자 + 여기서 체크한 사람만 보고 입력
+async function accessTab(root, refreshApp) {
+  const list = (await api('/api/admin/users')).filter((u) => ['staff', 'viewer'].includes(u.role)).map((u) => ({ ...u, email: String(u.email).toLowerCase() }));
+  const grants = {};
+  for (const a of MONEY_ACCESS) grants[a.id] = new Set(state.settings.access?.[a.id] || []);
+  let q = '';
+  const tbody = h('tbody', {});
+  const draw = () => clear(tbody, list.filter((u) => !q || `${u.name} ${u.email} ${u.dept}`.includes(q)).map((u) => h('tr', {},
+    h('td', {}, h('strong', {}, u.name || '(이름 없음)'), h('div', { class: 'muted small' }, u.email)),
+    h('td', { class: 'small' }, u.dept || ''),
+    MONEY_ACCESS.map((a) => h('td', { class: 'center' }, h('input', { type: 'checkbox', checked: grants[a.id].has(u.email), title: `${u.name || u.email} · ${a.label}`,
+      onchange: (e) => { if (e.target.checked) grants[a.id].add(u.email); else grants[a.id].delete(u.email); dirty(); } }))),
+    h('td', {}, h('button', { class: 'link-btn small', onclick: () => { const all = MONEY_ACCESS.every((a) => grants[a.id].has(u.email)); for (const a of MONEY_ACCESS) { if (all) grants[a.id].delete(u.email); else grants[a.id].add(u.email); } dirty(); draw(); } }, '전체')))));
+  const save = h('button', { class: 'btn primary', disabled: true, onclick: async () => {
+    try {
+      const access = Object.fromEntries(MONEY_ACCESS.map((a) => [a.id, [...grants[a.id]]]));
+      state.settings = await api('/api/admin/settings', { method: 'PUT', body: { access } });
+      save.disabled = true; toast('권한을 저장했습니다. 해당 선생님은 새로고침하면 메뉴가 바뀝니다.');
+    } catch (e) { toast(e.message, 'error'); }
+  } }, '저장');
+  const dirty = () => { save.disabled = false; };
+  draw();
+  clear(root,
+    h('p', { class: 'hint' }, '행정·예산 메뉴는 기본으로 관리자만 봅니다. 「공모 안내」·「기한 안내」는 모든 교직원에게 보이고, 나머지 탭은 여기서 체크한 사람에게만 열립니다. 공모사업은 [공모사업] 탭에서 담당자로 지정된 사람도 자기 사업만 볼 수 있습니다.'),
+    h('div', { class: 'toolbar' }, h('input', { type: 'search', placeholder: '이름·부서 찾기', oninput: (e) => { q = e.target.value.trim(); draw(); } }), h('span', { class: 'grow' }),
+      h('span', { class: 'muted small' }, MONEY_ACCESS.map((a) => `${a.label} ${grants[a.id].size}명`).join(' · ')), save),
+    list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {}, h('th', {}, '교직원'), h('th', {}, '부서'), MONEY_ACCESS.map((a) => h('th', { class: 'center', title: a.hint }, a.label)), h('th', {}, ''))),
+      tbody)) : h('p', { class: 'muted' }, '승인된 교직원이 없습니다.'),
+    h('ul', { class: 'muted small' }, MONEY_ACCESS.map((a) => h('li', {}, h('strong', {}, a.label), ` — ${a.hint}`))));
 }
 
 async function users(root) {

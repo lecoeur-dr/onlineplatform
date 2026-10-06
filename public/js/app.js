@@ -1,6 +1,6 @@
 import { MODULES, GROUPS, DESK_GROUPS, ROLES, APP_NAME, DESK_NAME } from './modules.js';
 import { h, api, clear, toast, modal, today, apiCtx } from './ui.js';
-import { state, setYear, isAdmin, canEdit, remember, defaultSettings } from './state.js';
+import { state, setYear, isAdmin, canEdit, remember, defaultSettings, canSeeTab } from './state.js';
 import { dashboardView } from './views/dashboard.js';
 import { tableView } from './views/table.js';
 import { timetableView } from './views/timetable.js';
@@ -186,7 +186,7 @@ function drawGroupBar(space, activeGroup) {
   const prefix = space === 'desk' ? '#/desk/' : '#/';
   if (space === 'school' && !state.member) return clear(groupBar);
   clear(groupBar, h('div', { class: 'gb-inner' },
-    groups.map((g) => h('a', { href: `${prefix}${g.id}/${g.tabs.length ? g.tabs[0].id : ''}`, class: `gb-item ${g.id === activeGroup ? 'on' : ''}` }, h('span', { class: 'gb-ico' }, g.icon), h('span', {}, g.label))),
+    groups.map((g) => ({ ...g, tabs: g.tabs.filter(canSeeTab) })).map((g) => h('a', { href: `${prefix}${g.id}/${g.tabs.length ? g.tabs[0].id : ''}`, class: `gb-item ${g.id === activeGroup ? 'on' : ''}` }, h('span', { class: 'gb-ico' }, g.icon), h('span', {}, g.label))),
     space === 'school' && isAdmin() ? h('a', { href: '#/admin', class: `gb-item subtle ${activeGroup === 'admin' ? 'on' : ''}` }, h('span', { class: 'gb-ico' }, '⚙️'), h('span', {}, '관리')) : null));
   groupBar.querySelector('.gb-item.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
@@ -209,7 +209,7 @@ function drawNav(space, activeKey, activeGroup) {
       h('span', { class: 'nav-brand' }, h('span', { class: 'ico' }, space === 'desk' ? '🪴' : '🏫'), h('span', { class: 'nt' }, space === 'desk' ? DESK_NAME : state.member ? state.settings.schoolName : APP_NAME)),
       h('button', { class: 'pin-btn close-x', 'aria-label': '닫기', onclick: closeNav }, '✕')),
     schoolLocked ? item('#/join', 'join', '🙋', '학교 가입·개설') : null,
-    schoolLocked ? null : groups.map((g) => {
+    schoolLocked ? null : groups.map((g) => ({ ...g, tabs: g.tabs.filter(canSeeTab) })).map((g) => {
       const subs = g.tabs.filter((t) => t.id !== 'overview' || g.tabs.length === 1);
       const head = `${prefix}${g.id}/${g.tabs.length ? (g.tabs[0].id) : ''}`;
       const grp = h('div', { class: `nav-group ${folded.has(g.id) ? 'folded' : ''} ${g.id === activeGroup ? 'open' : ''}`, 'data-group': g.id },
@@ -328,7 +328,13 @@ async function route() {
   const groups = space === 'desk' ? DESK_GROUPS : GROUPS;
   const rel = space === 'desk' ? path.slice(5) : path;
   const [gid, tidRaw] = rel.split('/');
-  const group = groups.find((g) => g.id === gid);
+  const rawGroup = groups.find((g) => g.id === gid);
+  const group = rawGroup ? { ...rawGroup, tabs: rawGroup.tabs.filter(canSeeTab) } : null;
+  // 권한 없는 탭(행정·예산)으로 들어오면 볼 수 있는 첫 탭으로
+  if (rawGroup && tidRaw && !group.tabs.some((t) => t.id === tidRaw) && rawGroup.tabs.some((t) => t.id === tidRaw)) {
+    location.replace(`${space === 'desk' ? '#/desk/' : '#/'}${gid}/${group.tabs[0]?.id || ''}`);
+    return;
+  }
   const tid = tidRaw || (group?.tabs.length ? group.tabs[0].id : '');
   const key = `${gid}/${tid}`;
   drawNav(space, `${space === 'desk' ? 'desk/' : ''}${key}`, gid);

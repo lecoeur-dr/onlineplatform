@@ -338,6 +338,11 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
       const r = { id: `d${d.seq++}`, module: mod, data, version: 1, sort: d.seq, year: MODULES[mod].scope === 'year' ? Number(body.year || year) : null, date: MODULES[mod].scope === 'date' ? data.date : null, owner: spaceOf(mod) === 'school' ? null : ME.email, author: d.name, updatedBy: ME.email, updatedAt: nowStamp() };
       if (mod === 'market') r.data.likes = [];
       d.records.push(r);
+      if (mod === 'events' && data.toNotice) { // 서버의 '공지사항에도 올리기'와 같은 동작
+        const nid = `d${d.seq++}`;
+        d.records.push({ id: nid, module: 'notices', data: normalizeData('notices', { title: String(data.title).split('\n')[0], category: '일반', content: `📅 ${data.date}${data.endDate ? ` ~ ${data.endDate}` : ''}  ${data.title}`, dept: data.dept || '', month: data.date.slice(0, 7) }), version: 1, sort: d.seq, year: Number(year), date: null, owner: null, updatedBy: ME.email, updatedAt: nowStamp() });
+        r.data.noticeId = nid;
+      }
       d.audit.unshift({ id: d.audit.length + 1, at: nowStamp(), email: ME.email, name: d.name, action: 'create', module: mod, record_id: r.id });
       return toClient(r);
     });
@@ -382,7 +387,7 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
     });
   }
   if (p === '/api/admin/invite') return { code: 'demo2026' };
-  if (p === '/api/admin/settings') return write(() => { if (body.currentYear) d.settings.currentYear = body.currentYear; if (body.lists) d.settings.lists = body.lists; if (body.schoolName) d.settings.schoolName = body.schoolName; if (body.theme) d.settings.theme = body.theme; return d.settings; });
+  if (p === '/api/admin/settings') return write(() => { if (body.currentYear) d.settings.currentYear = body.currentYear; if (body.lists) d.settings.lists = body.lists; if (body.schoolName) d.settings.schoolName = body.schoolName; if (body.theme) d.settings.theme = body.theme; if (body.access) d.settings.access = body.access; return d.settings; });
   if (p === '/api/admin/audit') {
     const all = d.audit;
     const users = [...new Set(all.map((a) => a.email))].map((email) => ({ email, name: all.find((a) => a.email === email)?.name, role: 'admin', n: all.filter((a) => a.email === email).length, last: all.find((a) => a.email === email)?.at }));

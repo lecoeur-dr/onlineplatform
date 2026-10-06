@@ -299,6 +299,8 @@ function noticePanel(o, { y, m }, allByDate) {
   // 주요 안내: 전체 공지(해당 월) + '학사일정 주요 안내에 표시'한 공지(해당 월·마감 월) + 같은 표시를 한 그 달 전달사항
   const pins = (o.notices || []).filter((n) => (n.data.pinned || n.data.onCalendar) && (n.data.month || String(n.data.due || '').slice(0, 7)) === ym);
   const briefs = (o.briefings || []).filter((b) => b.data.onCalendar && String(b.data.date || '').startsWith(ym)).sort((a, b) => a.data.date.localeCompare(b.data.date));
+  // 학사일정 등록 때 '주요 안내에 표시'한 일정 (그 달에 걸친 것)
+  const evs = [...new Map((o.items || []).filter((it) => it.mod === 'events' && it.r.data.onCalendar && it.r.data.date.slice(0, 7) <= ym && String(it.r.data.endDate || it.r.data.date).slice(0, 7) >= ym).map((it) => [it.r.id, it.r])).values()].sort((a, b) => a.data.date.localeCompare(b.data.date));
   const days = pins.map((n) => n.data.schoolDays).find(Boolean);
   const auto = schoolDays(y, m, allByDate);
   const write = () => openRecordForm('notices', null, { defaults: { category: '월별 안내', pinned: true, month: ym, title: `${m}월 교육과정 주요 안내` }, onSaved: o.reload });
@@ -313,7 +315,10 @@ function noticePanel(o, { y, m }, allByDate) {
       ? pins.map((n) => h('div', { class: 'np-body pre clamp-3', title: '눌러서 펼치기', onclick: (e) => e.currentTarget.classList.toggle('clamp-3') },
         n.data.title && pins.length > 1 ? h('strong', {}, `${n.data.title}\n`) : null,
         n.data.content && n.data.content !== '-' ? n.data.content : h('span', { class: 'muted' }, '(내용 없음)')))
-      : briefs.length ? null : h('div', { class: 'np-body muted' }, '등록된 주요 안내가 없습니다. 공지·전달사항에서 "학사일정 주요 안내에 표시"를 체크하면 여기에 나옵니다.'),
+      : briefs.length || evs.length ? null : h('div', { class: 'np-body muted' }, '등록된 주요 안내가 없습니다. 일정·공지·전달사항에서 "학사일정 주요 안내에 표시"를 체크하면 여기에 나옵니다.'),
+    evs.length ? h('ul', { class: 'np-briefs' }, evs.map((e) => h('li', { class: 'click', onclick: () => openRecordForm('events', e, { onSaved: o.reload }) },
+      h('span', { class: 'muted' }, `${Number(e.data.date.slice(5, 7))}/${Number(e.data.date.slice(8))}${e.data.endDate && e.data.endDate !== e.data.date ? `~${Number(e.data.endDate.slice(5, 7))}/${Number(e.data.endDate.slice(8))}` : ''} `),
+      h('span', { class: 'tag ghost' }, '📅 일정'), ' ', String(e.data.title || '').split('\n')[0], e.data.target ? h('span', { class: 'muted small' }, ` · ${e.data.target}`) : null))) : null,
     briefs.length ? h('ul', { class: 'np-briefs' }, briefs.map((b) => h('li', { class: 'click', onclick: () => openRecordForm('briefings', b, { onSaved: o.reload }) },
       h('span', { class: 'muted' }, `${Number(b.data.date.slice(5, 7))}/${Number(b.data.date.slice(8))} `), b.data.kind ? h('span', { class: 'tag ghost' }, b.data.kind) : null, ' ', String(b.data.content || '').split('\n')[0]))) : null);
 }

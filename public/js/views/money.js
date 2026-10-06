@@ -1,9 +1,9 @@
-// 💰 예산·구매: 전체 대시보드 · 학교본예산 · 공모사업 · 집행내역 · 구매신청 · 공모 안내
+// 💰 행정·예산: 전체 대시보드 · 학교본예산 · 공모사업 · 집행내역 · 구매신청 · 공모 안내
 //   공모사업은 관리자와 관리자가 지정한 담당자만 볼 수 있음 (서버가 목록에서 걸러냄)
 //   구조는 같고 재원만 다름: 재원(학교본예산 | 공모사업) → 사업(세부사업 | 공모사업명) → 비목 → 예산액
 //   날짜별 집행 내역(spending)을 입력하면 재원·사업·비목별 사용액·사용률에 바로 반영
 import { h, api, clear, won, toast, confirmBox, today, modal } from '../ui.js';
-import { state, canEdit, remember, listOf } from '../state.js';
+import { state, canEdit, remember, listOf, hasGrant } from '../state.js';
 import { yearMonths } from '../modules.js';
 import { tableView } from './table.js';
 import { openRecordForm } from '../form.js';
@@ -21,11 +21,11 @@ const myName = () => String(state.me?.name || '').replace(/\s/g, '');
 const contestManagers = (c) => (c?.data.managers || []).filter(Boolean);
 // 공모사업은 입력 담당자(없으면 신청자)와 관리자만 입력 (서버도 같은 규칙으로 막음). 학교본예산은 교직원 누구나
 export function canEditProgram(p) {
-  if (!p || p.kind !== '공모사업') return canEdit('budget');
+  if (!p || p.kind !== '공모사업') return canEdit('budget') && hasGrant('school');
   if (state.me?.role === 'admin') return true;
   if (!p.contest) return false;
   const list = contestManagers(p.contest).map((x) => String(x).replace(/\s/g, ''));
-  return canEdit('budget') && list.includes(myName());
+  return canEdit('budget') && (hasGrant('contests') || list.includes(myName()));
 }
 const pctOf = (used, total) => (total > 0 ? Math.round((used / total) * 1000) / 10 : 0);
 
@@ -331,7 +331,7 @@ async function kindView(root, kind) {
   const spendRows = focus.flatMap((p) => p.spends);
   const choose = (name) => { remember('mn_prog', name); reload(); };
   const progOf = (name) => list.find((p) => p.name === name) || (kind === '공모사업' ? { kind, name, contest: d.contests.find((c) => c.data.name === name) } : { kind, name });
-  const editHere = pick ? canEditProgram(progOf(pick)) : kind === '학교본예산' ? canEdit('budget') : list.some(canEditProgram);
+  const editHere = pick ? canEditProgram(progOf(pick)) : kind === '학교본예산' ? canEditProgram(null) : list.some(canEditProgram);
   const pc = pick && kind === '공모사업' ? progOf(pick).contest : null;
   const budgetBox = h('div', {});
   const spendBox = h('div', {});
@@ -341,8 +341,8 @@ async function kindView(root, kind) {
       h('div', { class: 'seg wrap' }, ['', ...list.map((p) => p.name)].map((n) => h('button', { class: pick === n ? 'on' : '', onclick: () => choose(n) }, n || `전체 ${kind}`))),
       h('span', { class: 'grow' }),
       kind === '공모사업' && canEdit('contests') ? h('button', { class: 'btn', onclick: () => openRecordForm('contests', null, { onSaved: reload }) }, '+ 공모사업 등록') : null,
-      (kind === '학교본예산' ? canEdit('budget') : list.some(canEditProgram)) ? h('button', { class: 'btn', onclick: () => budgetUpload({ kind, d, list, pick, reload }) }, '📥 엑셀 올리기') : null,
-      editHere && canEdit('spending') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행내역') : null),
+      (kind === '학교본예산' ? canEditProgram(null) : list.some(canEditProgram)) ? h('button', { class: 'btn', onclick: () => budgetUpload({ kind, d, list, pick, reload }) }, '📥 엑셀 올리기') : null,
+      editHere ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행내역') : null),
     pc ? h('div', { class: 'contest-info' }, h('span', {}, '🏆 담당 공모사업'),
       h('span', { class: 'muted small' }, [pc.data.agency, pc.data.period, pc.data.grades, `담당자: ${contestManagers(pc).join(', ') || '(미지정 — 관리자만)'}`].filter(Boolean).join(' · '))) : null,
     kind === '공모사업' && !list.length ? h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🔒'), h('p', {}, state.me?.role === 'admin' ? '등록된 공모사업이 없습니다. [+ 공모사업 등록]에서 사업과 담당자를 정하세요.' : '담당으로 지정된 공모사업이 없습니다. 공모사업은 학교 관리자가 담당자로 지정한 선생님만 볼 수 있습니다.')) : null,

@@ -79,7 +79,7 @@ export const TIMETABLE_KINDS = ['학급', '전담', '특별실', '외부강의',
 
 export const MODULES = {
   events: {
-    label: '학사일정', icon: '📅', scope: 'date', edit: 'staff',
+    label: '학사일정', icon: '📅', scope: 'date', edit: 'staff', extras: ['noticeId'],
     fields: [
       { key: 'date', label: '날짜', type: 'date', required: true },
       { key: 'endDate', label: '종료일', type: 'date', hint: '여러 날 행사일 때만' },
@@ -89,6 +89,8 @@ export const MODULES = {
       { key: 'dept', label: '담당부서', type: 'select', list: 'depts', free: true },
       { key: 'place', label: '장소', type: 'select', list: 'places', free: true },
       { key: 'note', label: '비고', type: 'text' },
+      { key: 'onCalendar', label: '학사일정 주요 안내에 표시', type: 'bool', hint: '그 달 학사일정 달력 위 "주요 안내"에 이 일정이 나옵니다' },
+      { key: 'toNotice', label: '공지사항에도 올리기', type: 'bool', hint: '저장하면 [공지·업무 → 공지]에 같은 내용이 올라가고, 일정을 고치면 공지도 함께 고쳐집니다' },
       { key: 'dday', label: 'D-Day 표시', type: 'bool', hint: '체크하면 홈에 "D-12"처럼 남은 날을 표시' },
       { key: 'review', label: '확인필요', type: 'bool', hint: '가져오기 때 담당·장소 줄이 맞지 않은 항목' },
       { key: 'source', label: '출처', type: 'text', hint: '"나이스"는 나이스에서 자동으로 가져온 일정 (다시 동기화하면 갱신됨)' },
@@ -661,14 +663,15 @@ export const GROUPS = [
     { id: 'duties', label: '담당 배정', module: 'duties' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },
-  { id: 'money', label: '예산·구매', icon: '💰', tabs: [
-    { id: 'overview', label: '전체 대시보드' },
-    { id: 'school', label: '학교본예산', module: 'budget' },
-    { id: 'contests', label: '공모사업', module: 'contests' },
-    { id: 'spend', label: '집행내역', module: 'spending' },
-    { id: 'purchases', label: '구매신청', module: 'purchases' },
+  // 행정·예산: 공모 안내·기한 안내는 모두에게, 나머지는 관리자 + 학교 관리 → 권한에서 탭별로 연 사람만 (access 키)
+  { id: 'money', label: '행정·예산', icon: '💰', tabs: [
     { id: 'contestInfo', label: '공모 안내', module: 'contestInfo' },
     { id: 'deadlines', label: '기한 안내', module: 'deadlines' },
+    { id: 'overview', label: '예산 대시보드', access: 'overview' },
+    { id: 'school', label: '학교본예산', module: 'budget', access: 'school' },
+    { id: 'contests', label: '공모사업', module: 'contests', access: 'contests' },
+    { id: 'spend', label: '집행내역', module: 'spending', access: 'spend' },
+    { id: 'purchases', label: '구매신청', module: 'purchases', access: 'purchases' },
   ] },
   { id: 'info', label: '학교 정보', icon: '🗂', tabs: [
     { id: 'overview', label: '계정·바로가기' },
@@ -728,6 +731,15 @@ export const DESK_GROUPS = [
 export const spaceOf = (moduleId) => MODULES[moduleId]?.space || 'school';
 
 // 이름 목록을 각자 켜고 끌 수 있는 칸 (참관 신청, 수합 제출, 마켓 좋아요)
+// 행정·예산 권한 칸 (학교 관리 → 권한)
+export const MONEY_ACCESS = [
+  { id: 'overview', label: '예산 대시보드', hint: '학교본예산 합계·집행률 보기(읽기 전용)' },
+  { id: 'school', label: '학교본예산', hint: '학교본예산 예산 입력·집행내역 입력' },
+  { id: 'contests', label: '공모사업', hint: '모든 공모사업 편성·집행 입력 (사업 담당자는 권한 없이도 자기 사업만 봄)' },
+  { id: 'spend', label: '집행내역', hint: '학교본예산 집행내역 입력' },
+  { id: 'purchases', label: '구매신청', hint: '구매신청 건·품목 입력·처리' },
+];
+
 export const SELF_TOGGLE = { openClasses: 'observers', collections: 'done', market: 'likes' };
 
 // 학년도 Y의 범위: Y-01-01 ~ (Y+1)-02-말일
