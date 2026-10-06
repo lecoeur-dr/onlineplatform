@@ -80,7 +80,13 @@ export async function joinView(root, refresh) {
   h('div', { class: 'row' }, h('label', {}, '내 부서'), h('input', { name: 'dept', placeholder: '예: 교무' })),
   h('button', { class: 'btn primary' }, '학교 개설 신청'));
 
+  // 지금 로그인한 계정 + 다른 계정으로 바꾸기 (관리자가 내보낸 계정으로 들어오면 이 화면이 나옴)
+  const switchAccount = async () => { await api('/auth/logout', { method: 'POST' }).catch(() => {}); location.href = '/auth/login'; };
   clear(root,
+    h('div', { class: 'alert warn account-box' },
+      h('div', {}, h('strong', {}, `👤 지금 로그인한 계정: ${state.me.email || ''}`),
+        h('div', { class: 'small' }, (state.schools || []).length ? '이 계정은 아직 승인된 학교가 없습니다. 아래 가입 요청 상태를 확인하세요.' : '이 계정은 어느 학교에도 소속되어 있지 않습니다. (아직 가입하지 않았거나, 학교 관리자가 사용자 목록에서 내보낸 계정입니다)')),
+      h('button', { class: 'btn primary', onclick: switchAccount }, '🔄 다른 Google 계정으로 로그인')),
     h('p', { class: 'alert' }, `🪴 ${DESK_NAME}(내 학급·수업·기록)는 학교 가입 없이 바로 쓸 수 있습니다. `, h('a', { href: '#/desk/home' }, `${DESK_NAME} 열기 →`)),
     mySchools(refresh),
     h('div', { class: 'two-col' },
