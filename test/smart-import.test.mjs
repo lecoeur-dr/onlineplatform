@@ -160,3 +160,26 @@ test('계산식: 스프레드시트처럼 단위 글자 무시·곱셈 기호·�
   assert.equal(amountFrom('', '1,500원'), 1500);
   assert.equal(amountFrom('100×3', 9), 300);
 });
+
+test('예산 엑셀: 머리글 찾기·사업명 이어쓰기·소계 건너뛰기·산출식 인식', async () => {
+  const { parseBudgetSheet } = await import('../public/js/smart-import.js');
+  const { evalFormula } = await import('../public/js/calc.js');
+  const src = { lines: [], tables: [[
+    ['2026 학교회계 세부산출내역', '', '', '', ''],
+    ['세부사업', '세부항목', '원가통계비목', '산출내역', '예산액', '비고'],
+    ['독서교육', '도서 구입', '일반수용비', '15,000원 × 40권', '600,000', ''],
+    ['', '독서 행사', '행사운영비', '간식', '200,000', '협의'],
+    ['소계', '', '', '', '800,000', ''],
+    ['과학교육', '실험 재료', '일반수용비', '(3000+500)x10', '35,000', ''],
+    ['합계', '', '', '', '835,000', ''],
+  ]] };
+  const rows = parseBudgetSheet(src, evalFormula);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[0], { program: '독서교육', item: '도서 구입', category: '일반수용비', detail: '', formula: '15,000원 × 40권', amount: 600000, note: '' });
+  assert.equal(rows[1].program, '독서교육');
+  assert.equal(rows[1].detail, '간식');
+  assert.equal(rows[2].formula, '(3000+500)x10');
+  const k = parseBudgetSheet({ lines: [], tables: [[['(단위: 천원)'], ['사업명', '비목', '금액'], ['체험학습', '운영비', '1,200']]] });
+  assert.equal(k[0].amount, 1200000);
+  assert.equal(k[0].program, '체험학습');
+});

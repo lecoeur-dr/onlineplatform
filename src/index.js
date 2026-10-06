@@ -791,11 +791,37 @@ app.post('/api/admin/copy-year', async (c) => {
   return c.json({ ok: true, copied: n });
 });
 
-app.get('/api/admin/audit', async (c) => {
-  const { schoolId } = c.get('member');
-  const rows = await c.env.DB.prepare('SELECT a.*, m.name FROM audit a LEFT JOIN members m ON m.email = a.email AND m.school_id = a.school_id WHERE a.school_id = ? ORDER BY a.id DESC LIMIT 300').bind(schoolId).all();
-  return c.json(rows.results);
-});
+// 변경 기록: 학교별 · 아이디(이메일)별 · 작업·메뉴별로 거르고, 오래된 기록은 before(id)로 이어 보기
+//   다른 학교는 그 학교 관리자일 때만 내용까지, 플랫폼 운영자는 누가·언제·무엇(메뉴)만 (내용은 숨김)
+async function auditList(c, defaultSchool) {
+  const user = c.get('user');
+  const q = c.req.query();
+  const db = c.env.DB;
+  const mine = (await db.prepare("SELECT s.id, s.name FROM members m JOIN schools s ON s.id = m.school_id WHERE m.email = ? AND m.role = 'admin' ORDER BY s.name").bind(user.email).all()).results;
+  const schools = user.super ? (await db.prepare('SELECT id, name FROM schools ORDER BY name').all()).results : mine;
+  const sid = q.school || defaultSchool || schools[0]?.id;
+  if (!schools.some((s) => s.id === sid)) return c.json({ error: '이 학교의 변경 기록을 볼 권한이 없습니다.' }, 403);
+  const full = mine.some((s) => s.id === sid);
+  const where = ['a.school_id = ?'];
+  const args = [sid];
+  if (q.email) { where.push('a.email = ?'); args.push(q.email); }
+  if (q.action) { where.push('a.action = ?'); args.push(q.action); }
+  if (q.module) { where.push("(a.module = ? OR ',' || a.module || ',' LIKE ?)"); args.push(q.module, `%,${q.module},%`); }
+  if (q.from) { where.push('a.at >= ?'); args.push(q.from); }
+  if (q.to) { where.push('a.at < ?'); args.push(q.to); }
+  if (Number(q.before)) { where.push('a.id < ?'); args.push(Number(q.before)); }
+  const limit = Math.min(Number(q.limit) || 200, 1000);
+  const rows = (await db.prepare(`SELECT a.id, a.at, a.email, a.action, a.module, a.record_id, a.detail, m.name FROM audit a LEFT JOIN members m ON m.email = a.email AND m.school_id = a.school_id
+    WHERE ${where.join(' AND ')} ORDER BY a.id DESC LIMIT ?`).bind(...args, limit).all()).results;
+  const users = (await db.prepare(`SELECT a.email, MAX(m.name) AS name, MAX(m.role) AS role, COUNT(*) AS n, MAX(a.at) AS last FROM audit a LEFT JOIN members m ON m.email = a.email AND m.school_id = a.school_id
+    WHERE a.school_id = ? GROUP BY a.email ORDER BY n DESC`).bind(sid).all()).results;
+  return c.json({
+    school: sid, schools, full, more: rows.length === limit, users,
+    rows: rows.map((r) => (full ? r : { ...r, detail: null })),
+  });
+}
+app.get('/api/admin/audit', (c) => auditList(c, c.get('member').schoolId));
+app.get('/api/platform/audit', (c) => auditList(c, ''));
 
 // 백업 (비밀번호는 암호화된 상태 그대로, 이 학교 것만)
 app.get('/api/admin/export', async (c) => {
@@ -821,7 +847,7 @@ async function activityByToken(db, token) {
   const row = await db.prepare("SELECT id, owner, data FROM records WHERE module = 'activities' AND json_extract(data, '$.token') = ?").bind(token).first();
   return row ? { id: row.id, owner: row.owner, data: JSON.parse(row.data) } : null;
 }
-const subLimit = (a) => Number(a.data.limit) || (a.data.kind === '클래스 보드' ? 300 : 2000);
+const subLimit = (a) => Number(a.data.limit) || (a.data.kind === '클래스 보드' ? 300 : a.data.kind === '실시간 퀴즈' ? 6000 : 2000);
 async function boardPosts(env, a) {
   const rows = (await env.DB.prepare('SELECT id, num, name, body, created_at FROM submissions WHERE activity_id = ? AND hidden = 0 ORDER BY id DESC LIMIT 200').bind(a.id).all()).results;
   const out = [];
@@ -833,6 +859,8 @@ app.get('/pub/a/:token', async (c) => {
   if (!a) return c.json({ error: '활동을 찾을 수 없습니다. 선생님께 링크를 다시 받아 주세요.' }, 404);
   const base = { title: a.data.title, kind: a.data.kind, subject: a.data.subject || '', question: a.data.question || '', open: !!a.data.open, limit: subLimit(a), showNames: !!a.data.showNames };
   if (a.data.kind === '클래스 보드') base.posts = await boardPosts(c.env, a);
+  // 퀴즈: 문제·보기만 보냄 (정답은 학생 화면에 보내지 않음)
+  if (a.data.kind === '실시간 퀴즈') base.questions = (a.data.questions || []).map((q) => ({ q: q.q, choices: q.choices || [], type: q.choices?.length ? '객관식' : '단답형' }));
   return c.json(base);
 });
 app.post('/pub/a/:token', async (c) => {

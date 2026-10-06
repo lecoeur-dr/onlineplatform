@@ -246,17 +246,57 @@ async function copy(root) {
     } }, '복사'));
 }
 
+const ACT = { create: '추가', update: '수정', delete: '삭제', reveal: '비밀번호 보기', import: '가져오기', settings: '설정', user: '사용자', 'copy-year': '연도 복사', export: '백업', observe: '참관 신청', unobserve: '참관 취소', 'self-on': '본인 체크', 'self-off': '본인 체크 해제', 'neis-sync': '나이스 동기화' };
+// DB 시각(UTC 'YYYY-MM-DD HH:MM:SS') → 한국 시각
+const kst = (at) => { const d = new Date(`${String(at).replace(' ', 'T')}Z`); if (Number.isNaN(d.getTime())) return at; const k = new Date(d.getTime() + 9 * 3600000); return k.toISOString().slice(0, 16).replace('T', ' '); };
+const ROLE_KO = { admin: '관리자', staff: '교직원', viewer: '열람', pending: '대기', blocked: '차단' };
+const auditF = { school: '', email: '', action: '', module: '' };
+
 async function audit(root) {
-  const rows = await api('/api/admin/audit');
-  const ACT = { create: '추가', update: '수정', delete: '삭제', reveal: '비밀번호 보기', import: '가져오기', settings: '설정', user: '사용자', 'copy-year': '연도 복사', export: '백업', observe: '참관 신청', unobserve: '참관 취소', 'self-on': '본인 체크', 'self-off': '본인 체크 해제', 'neis-sync': '나이스 동기화' };
-  clear(root, h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-    h('thead', {}, h('tr', {}, ['시각(UTC)', '사용자', '작업', '메뉴', '내용'].map((t) => h('th', {}, t)))),
-    h('tbody', {}, rows.map((a) => h('tr', {},
-      h('td', { class: 'nowrap small' }, a.at),
-      h('td', {}, a.name || a.email || ''),
-      h('td', {}, ACT[a.action] || a.action),
-      h('td', {}, a.module ? a.module.split(',').map((m) => MODULES[m]?.label || m).join(', ') : ''),
-      h('td', { class: 'small' }, a.detail && a.action !== 'delete' ? a.detail : '')))))));
+  const qs = (extra = {}) => new URLSearchParams(Object.entries({ ...auditF, ...extra }).filter(([, v]) => v)).toString();
+  let res;
+  try { res = await api(`/api/admin/audit?${qs()}`); } catch (e) { auditF.school = ''; return clear(root, h('p', { class: 'alert warn' }, e.message)); }
+  if (Array.isArray(res)) res = { rows: res, users: [], schools: [], full: true }; // 체험 모드
+  let rows = res.rows;
+  const reload = () => audit(root);
+  const set = (k, v) => { auditF[k] = v; if (k === 'school') auditF.email = ''; reload(); };
+  const label = (u) => `${u.name || '(이름 없음)'} · ${u.email || '-'}`;
+  const tbody = h('tbody', {});
+  const drawRows = () => clear(tbody, rows.map((a) => h('tr', {},
+    h('td', { class: 'nowrap small' }, kst(a.at)),
+    h('td', {}, h('button', { class: 'link-btn', title: '이 아이디만 보기', onclick: () => set('email', a.email || '') }, a.name || a.email || ''), a.name && a.email ? h('div', { class: 'muted small' }, a.email) : null),
+    h('td', {}, h('span', { class: `tag ${a.action === 'delete' ? 'warn' : a.action === 'create' ? 'ok' : 'ghost'}` }, ACT[a.action] || a.action)),
+    h('td', {}, a.module ? a.module.split(',').map((m) => MODULES[m]?.label || m).join(', ') : ''),
+    h('td', { class: 'small' }, h('div', { class: 'clamp2', title: a.detail && a.action !== 'delete' ? a.detail : '' }, a.detail && a.action !== 'delete' ? a.detail : '')))));
+  drawRows();
+  const more = h('button', { class: 'btn', style: { display: res.more ? '' : 'none' }, onclick: async () => {
+    const r = await api(`/api/admin/audit?${qs({ before: rows[rows.length - 1].id })}`);
+    rows = rows.concat(r.rows); drawRows(); more.style.display = r.more ? '' : 'none';
+  } }, '더 보기');
+  const csv = () => {
+    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const school = res.schools.find((s) => s.id === res.school)?.name || state.me?.schoolName || '';
+    download(`변경기록_${school}_${auditF.email || '전체'}.csv`, '﻿' + [['학교', '시각(한국)', '이름', '아이디', '작업', '메뉴', '내용'].map(q).join(','), ...rows.map((a) => [school, kst(a.at), a.name, a.email, ACT[a.action] || a.action, a.module ? a.module.split(',').map((m) => MODULES[m]?.label || m).join(' ') : '', a.action === 'delete' ? '' : a.detail].map(q).join(','))].join('\n'), 'text/csv');
+  };
+  const mods = [...new Set(Object.keys(MODULES))].filter((m) => MODULES[m].space !== 'desk' && MODULES[m].space !== 'market');
+  clear(root,
+    h('div', { class: 'toolbar wrap' },
+      res.schools.length > 1 ? h('select', { title: '학교', onchange: (e) => set('school', e.target.value) }, res.schools.map((s) => h('option', { value: s.id, selected: s.id === res.school }, `🏫 ${s.name}`))) : null,
+      h('select', { title: '아이디', onchange: (e) => set('email', e.target.value) }, h('option', { value: '' }, `👤 모든 사용자 (${res.users.length}명)`),
+        res.users.map((u) => h('option', { value: u.email || '', selected: (u.email || '') === auditF.email }, `${label(u)} · ${u.n}건`))),
+      h('select', { title: '작업', onchange: (e) => set('action', e.target.value) }, h('option', { value: '' }, '모든 작업'), Object.entries(ACT).map(([k, v]) => h('option', { value: k, selected: k === auditF.action }, v))),
+      h('select', { title: '메뉴', onchange: (e) => set('module', e.target.value) }, h('option', { value: '' }, '모든 메뉴'), mods.map((m) => h('option', { value: m, selected: m === auditF.module }, MODULES[m].label))),
+      auditF.email || auditF.action || auditF.module ? h('button', { class: 'btn small', onclick: () => { auditF.email = ''; auditF.action = ''; auditF.module = ''; reload(); } }, '거르기 해제') : null,
+      h('span', { class: 'grow' }), h('span', { class: 'muted small' }, `${rows.length}건${res.more ? '+' : ''}`),
+      h('button', { class: 'btn', onclick: csv }, 'CSV')),
+    !auditF.email && res.users.length ? h('div', { class: 'note-chips' }, res.users.slice(0, 30).map((u) => h('button', { class: 'chip-btn', title: `${u.email} · 마지막 ${kst(u.last)}`, onclick: () => set('email', u.email || '') },
+      u.name || u.email || '-', u.role ? h('span', { class: 'muted small' }, ` ${ROLE_KO[u.role] || u.role}`) : null, h('span', { class: 'cnt' }, u.n)))) : null,
+    res.full ? null : h('p', { class: 'alert warn' }, '플랫폼 운영자 보기: 이 학교의 관리자가 아니므로 누가·언제·어느 메뉴만 보이고 내용은 숨깁니다.'),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {}, ['시각(한국)', '사용자(아이디)', '작업', '메뉴', '내용'].map((t) => h('th', {}, t)))), tbody)),
+    rows.length ? null : h('p', { class: 'muted' }, '조건에 맞는 변경 기록이 없습니다.'),
+    more,
+    h('p', { class: 'hint' }, '학교마다 따로 쌓이고, 아이디(이메일)별로 몇 건을 바꿨는지 볼 수 있습니다. 여러 학교의 관리자라면 위에서 학교를 고르세요. 개인 공간(Deskterior) 기록은 남기지 않습니다.'));
 }
 
 async function backup(root) {

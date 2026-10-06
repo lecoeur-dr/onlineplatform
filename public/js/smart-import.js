@@ -391,3 +391,52 @@ export function parseStandards(src, defaults = {}) {
   }
   return [...groups.values()];
 }
+
+// ---------- 💰 예산 엑셀(편성표·세부산출내역) → 예산 입력 줄 ----------
+//   머리글 줄을 찾아 칸을 맞춤: 세부사업·세부항목·비목(원가통계비목)·산출내역·산출식·금액·비고
+//   사업명은 아래로 이어 쓰고(병합 셀·빈칸), 합계·소계 줄은 건너뜀. '(단위: 천원)'이면 1,000을 곱함
+const BCOLS = {
+  program: /^(세부\s*사업(명)?|단위\s*사업(명)?|사업\s*명|공모\s*사업(명)?|사업)$/,
+  item: /^(세부\s*항목|항\s*목(명)?|품\s*명|내\s*역\s*사업|세세\s*항목)$/,
+  category: /(비\s*목|통\s*계\s*목|원가\s*통계)/,
+  detail: /^(산출\s*(내역|근거|기초)|세부\s*산출\s*(내역|근거)|내\s*용|적\s*요)$/,
+  formula: /^(산출\s*식|계산\s*식|수\s*식)$/,
+  amount: /^(금\s*액|예\s*산\s*(액|금액)?|편\s*성\s*(액|금액)|배\s*정\s*액|본\s*예\s*산|계)(\s*\(.*\))?$/,
+  note: /^(비\s*고|협\s*의)$/,
+};
+const TOTAL_RE = /^(총?\s*합\s*계|소\s*계|총\s*계|계|합)$/;
+const num = (s) => { const t = String(s ?? '').replace(/[,\s원₩]/g, ''); return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : null; };
+
+export function parseBudgetSheet(src, evalFn = () => null) {
+  const out = [];
+  for (const table of src.tables) {
+    let map = null;
+    let unit = 1;
+    let lastProgram = '';
+    for (const row of table) {
+      const cells = row.map((c) => String(c ?? '').replace(/\s+/g, ' ').trim());
+      if (cells.some((c) => /단위\s*[:：]?\s*천\s*원/.test(c))) unit = 1000;
+      const cand = {};
+      cells.forEach((c, i) => { const k = c.replace(/\s*\((천?원)\)\s*$/, ''); for (const [key, re] of Object.entries(BCOLS)) if (cand[key] === undefined && re.test(k)) { cand[key] = i; if (/천\s*원/.test(c)) unit = 1000; } });
+      if (cand.amount !== undefined && ['program', 'item', 'category', 'detail'].some((k) => cand[k] !== undefined)) { map = cand; lastProgram = ''; continue; }
+      if (!map || !cells.some(Boolean)) continue;
+      const get = (k) => (map[k] !== undefined ? cells[map[k]] || '' : '');
+      const program = get('program') || lastProgram;
+      if (get('program')) lastProgram = get('program');
+      const labels = [get('program'), get('item'), get('category'), get('detail')];
+      if (labels.some((x) => TOTAL_RE.test(x.replace(/\s/g, '')) || /^(합\s*계|소\s*계|총\s*계)/.test(x))) continue;
+      let amount = num(get('amount'));
+      let formula = get('formula');
+      const detail = get('detail');
+      if (!formula && detail && /\d\s*[×xX*✕]\s*\d|\d[^\d\s]*\s*[×xX*✕]/.test(detail)) {
+        const v = evalFn(detail);
+        if (v !== null && (amount === null || Math.abs(v - amount * unit) < 1)) formula = detail;
+      }
+      if (amount === null && formula) amount = evalFn(formula) !== null ? evalFn(formula) / unit : null;
+      if (amount === null) continue; // 금액 없는 줄 = 사업 제목·설명 줄
+      if (!get('item') && !get('category') && !detail && !formula) continue; // 사업 합계 줄
+      out.push({ program, item: get('item'), category: get('category'), detail: formula === detail ? '' : detail, formula, amount: Math.round(amount * unit), note: get('note') });
+    }
+  }
+  return out;
+}

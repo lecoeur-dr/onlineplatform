@@ -404,25 +404,28 @@ export const TOOLS = [
 
 export const toolById = (id) => TOOLS.find((t) => t.id === id);
 
-// 🖥 교실 화면: 위젯을 골라 한 화면에 (선택은 이 기기에 저장)
-const WIDGETS = [
+// 🖥 교실 화면: 위젯을 골라 한 화면에 (Teachshop → 내 교실에서 구성·순서까지 저장)
+export const WIDGETS = [
   ['clock', '🕘 시계'], ['timer', '⏱ 타이머'], ['signal', '🤫 활동 신호'], ['lessons', '🗓 오늘 시간표'], ['note', '📒 오늘 알림장'], ['picker', '🎲 이름 뽑기'], ['text', '📝 메모'],
 ];
-async function renderScreen(el, ctx) {
-  const on = new Set(ctx.load('w') || ['clock', 'timer', 'signal', 'lessons', 'note', 'picker']);
-  const DOW = ['일', '월', '화', '수', '목', '금', '토'];
-  const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  let extra = { lessons: null, note: null };
+const SDOW = ['일', '월', '화', '수', '목', '금', '토'];
+export async function loadScreenExtra() {
+  const now = new Date(); const ymd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const extra = { lessons: null, note: null };
   try {
     const { api } = await import('./ui.js'); const { state } = await import('./state.js');
     const d = await api(`/api/bundle?year=${state.year}&modules=myTimetable,dailyNotes`);
-    const tt = d.myTimetable[0]?.data.grid; const di = tt ? tt.days.indexOf(DOW[today.getDay()]) : -1;
+    const tt = d.myTimetable[0]?.data.grid; const di = tt ? tt.days.indexOf(SDOW[now.getDay()]) : -1;
     extra.lessons = tt && di >= 0 ? tt.periods.map((p, pi) => [p, tt.cells[pi]?.[di] || '']) : [];
     extra.note = d.dailyNotes.find((n) => n.data.date === ymd)?.data || null;
   } catch { /* 체험·오프라인 */ }
-  const grid = h('div', { class: 'screen-grid' });
+  return extra;
+}
+// 위젯 하나 그리기: 교실 화면 전용 위젯 또는 기본 도구(t:도구id)
+export function screenWidget(k, ctx, extra) {
+  if (k.startsWith('t:')) { const t = toolById(k.slice(2)); const box = h('div', {}); if (t && t.id !== 'screen') t.run(box, ctx); return box; }
   const W = {
-    clock: () => { const t = h('div', { class: 'scr-clock' }); const d = h('div', { class: 'muted' }); const tick = () => { if (!t.isConnected) return; const n = new Date(); t.textContent = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; d.textContent = `${n.getMonth() + 1}월 ${n.getDate()}일 ${DOW[n.getDay()]}요일`; setTimeout(tick, 1000 * 15); }; setTimeout(tick); return [t, d]; },
+    clock: () => { const t = h('div', { class: 'scr-clock' }); const d = h('div', { class: 'muted' }); const tick = () => { if (!t.isConnected) return; const n = new Date(); t.textContent = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; d.textContent = `${n.getMonth() + 1}월 ${n.getDate()}일 ${SDOW[n.getDay()]}요일`; setTimeout(tick, 1000 * 15); }; setTimeout(tick); return [t, d]; },
     timer: () => { const box = h('div', {}); toolById('timer').run(box, ctx); return box; },
     signal: () => { const box = h('div', {}); toolById('signal').run(box, ctx); return box; },
     lessons: () => (extra.lessons?.length ? h('ul', { class: 'scr-lessons' }, extra.lessons.map(([p, t]) => h('li', {}, h('span', { class: 'muted' }, p), ' ', t || '-'))) : h('p', { class: 'muted' }, 'Deskterior → 수업 → 내 시간표를 만들면 보입니다.')),
@@ -430,7 +433,14 @@ async function renderScreen(el, ctx) {
     picker: () => { const out = h('div', { class: 'scr-pick' }, '🎲'); return [out, h('button', { class: 'btn primary', onclick: () => { const s = ctx.students; if (s.length) out.textContent = s[Math.floor(Math.random() * s.length)].name; } }, '뽑기')]; },
     text: () => h('div', { class: 'scr-text', contenteditable: 'true', oninput: (e) => ctx.save('text', e.target.innerText) }, ctx.load('text') || '여기에 적으세요 ✍️'),
   };
-  const draw = () => clear(grid, WIDGETS.filter(([k]) => on.has(k)).map(([k, name]) => h('section', { class: `scr-card scr-w-${k}` }, h('div', { class: 'scr-title' }, name), W[k]())));
-  clear(el, h('div', { class: 'tool-bar' }, WIDGETS.map(([k, name]) => h('label', { class: 'inline' }, h('input', { type: 'checkbox', checked: on.has(k), onchange: (e) => { if (e.target.checked) on.add(k); else on.delete(k); ctx.save('w', [...on]); draw(); } }), ` ${name}`))), grid);
+  return W[k] ? W[k]() : h('p', { class: 'muted' }, '없는 위젯입니다.');
+}
+export const widgetName = (k) => (k.startsWith('t:') ? (() => { const t = toolById(k.slice(2)); return t ? `${t.icon} ${t.name}` : k; })() : (WIDGETS.find(([x]) => x === k)?.[1] || k));
+async function renderScreen(el, ctx) {
+  const on = new Set(ctx.load('w') || ['clock', 'timer', 'signal', 'lessons', 'note', 'picker']);
+  const extra = await loadScreenExtra();
+  const grid = h('div', { class: 'screen-grid' });
+  const draw = () => clear(grid, WIDGETS.filter(([k]) => on.has(k)).map(([k, name]) => h('section', { class: `scr-card scr-w-${k}` }, h('div', { class: 'scr-title' }, name), screenWidget(k, ctx, extra))));
+  clear(el, h('div', { class: 'tool-bar' }, WIDGETS.map(([k, name]) => h('label', { class: 'inline' }, h('input', { type: 'checkbox', checked: on.has(k), onchange: (e) => { if (e.target.checked) on.add(k); else on.delete(k); ctx.save('w', [...on]); draw(); } }), ` ${name}`)), h('a', { class: 'btn small', href: '#/desk/market/classroom' }, '⚙ 내 교실에서 꾸미기')), grid);
   draw();
 }

@@ -27,6 +27,11 @@
   .post { break-inside: avoid; background: var(--soft); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; white-space: pre-wrap; }
   .post .who { font-size: 13px; color: var(--muted); margin-top: 6px; }
   .count { text-align: right; font-size: 13px; color: var(--muted); }
+  .qz { margin: 14px 0; }
+  .qz .qq { font-weight: 800; margin-bottom: 8px; white-space: pre-wrap; }
+  .qz label.ch { display: flex; gap: 10px; align-items: center; font-weight: 600; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; margin: 6px 0; cursor: pointer; }
+  .qz label.ch input { width: auto; }
+  .qz label.ch.on { border-color: var(--primary); background: var(--soft); }
 </style>
 </head>
 <body>
@@ -52,6 +57,7 @@
     try { a = await call('GET'); } catch (e) { app.replaceChildren(el('div', { class: 'card err', text: e.message })); return; }
     document.title = a.title;
     const board = a.kind === '클래스 보드';
+    if (a.kind === '실시간 퀴즈') return renderQuiz(a);
     const num = el('input', { inputmode: 'numeric', placeholder: '번호', value: store.get('pub_num') });
     const name = el('input', { placeholder: board ? '이름 (선택)' : '이름', value: store.get('pub_name') });
     const body = el('textarea', { placeholder: board ? '생각을 적어 보세요' : '답안을 쓰세요', maxlength: String(a.limit) });
@@ -79,6 +85,30 @@
         : el('div', { class: 'card muted', text: '지금은 제출을 받지 않아요.' }),
       postsBox);
     if (board) setInterval(async () => { if (document.hidden) return; try { const r = await call('GET'); postsBox.replaceChildren(postsView(r.posts || [], r)); } catch { /* 무시 */ } }, 6000);
+  }
+  // 실시간 퀴즈: 문제마다 보기를 고르거나 답을 써서 한 번에 제출 (다시 내면 마지막 답으로 바뀜)
+  function renderQuiz(a) {
+    const num = el('input', { inputmode: 'numeric', placeholder: '번호', value: store.get('pub_num') });
+    const name = el('input', { placeholder: '이름', value: store.get('pub_name') });
+    const answers = (a.questions || []).map(() => '');
+    const qs = (a.questions || []).map((q, i) => el('div', { class: 'qz' }, el('div', { class: 'qq', text: `${i + 1}. ${q.q}` }),
+      q.choices.length ? q.choices.map((c, k) => { const lab = el('label', { class: 'ch' }, el('input', { type: 'radio', name: `q${i}`, onchange: () => { answers[i] = String(k + 1); lab.parentNode.querySelectorAll('.ch').forEach((x) => x.classList.toggle('on', x === lab)); } }), `${k + 1}) ${c}`); return lab; })
+        : el('input', { placeholder: '답', oninput: (e) => { answers[i] = e.target.value; } })));
+    const msg = el('div', { class: 'msg' });
+    const send = el('button', { onclick: async () => {
+      send.disabled = true; msg.className = 'msg'; msg.textContent = '';
+      try {
+        if (answers.some((x) => !String(x).trim()) && !confirm('답하지 않은 문제가 있어요. 그래도 낼까요?')) { send.disabled = false; return; }
+        store.set('pub_num', num.value); store.set('pub_name', name.value);
+        await call('POST', { num: num.value, name: name.value, body: JSON.stringify(answers) });
+        msg.className = 'msg ok'; msg.textContent = '제출했어요! 선생님 화면에서 결과를 확인해요.';
+      } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+      send.disabled = false;
+    } }, '제출하기');
+    app.replaceChildren(
+      el('div', { class: 'card' }, el('div', { class: 'muted', text: [a.subject, '실시간 퀴즈'].filter(Boolean).join(' · ') }), el('h1', { text: a.title }), a.question ? el('div', { class: 'q', text: a.question }) : null),
+      a.open ? el('div', { class: 'card' }, el('div', { class: 'row' }, el('div', {}, el('label', { text: '번호' }), num), el('div', {}, el('label', { text: '이름' }), name)), qs, send, msg)
+        : el('div', { class: 'card muted', text: '지금은 퀴즈를 받지 않아요.' }));
   }
   render();
 </script>

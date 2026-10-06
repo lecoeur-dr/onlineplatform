@@ -8,6 +8,7 @@ import { yearMonths } from '../modules.js';
 import { tableView } from './table.js';
 import { openRecordForm } from '../form.js';
 import { evalFormula, amountFrom } from '../calc.js';
+import { readSource, readText, parseBudgetSheet } from '../smart-import.js';
 
 
 export const KINDS = ['학교본예산', '공모사업'];
@@ -340,6 +341,7 @@ async function kindView(root, kind) {
       h('div', { class: 'seg wrap' }, ['', ...list.map((p) => p.name)].map((n) => h('button', { class: pick === n ? 'on' : '', onclick: () => choose(n) }, n || `전체 ${kind}`))),
       h('span', { class: 'grow' }),
       kind === '공모사업' && canEdit('contests') ? h('button', { class: 'btn', onclick: () => openRecordForm('contests', null, { onSaved: reload }) }, '+ 공모사업 등록') : null,
+      (kind === '학교본예산' ? canEdit('budget') : list.some(canEditProgram)) ? h('button', { class: 'btn', onclick: () => budgetUpload({ kind, d, list, pick, reload }) }, '📥 엑셀 올리기') : null,
       editHere && canEdit('spending') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행내역') : null),
     pc ? h('div', { class: 'contest-info' }, h('span', {}, '🏆 담당 공모사업'),
       h('span', { class: 'muted small' }, [pc.data.agency, pc.data.period, pc.data.grades, `담당자: ${contestManagers(pc).join(', ') || '(미지정 — 관리자만)'}`].filter(Boolean).join(' · '))) : null,
@@ -355,6 +357,72 @@ async function kindView(root, kind) {
   budgetGrid(budgetBox, budgetRows, { kind, program: pick, reload, canEdit: (name) => (name ? canEditProgram(progOf(name)) : kind === '학교본예산' && canEdit('budget')) });
   await tableView(spendBox, 'spending', { rows: spendRows.slice().sort((a, b) => String(b.data.date).localeCompare(String(a.data.date))), embed: true, hide: ['source'], defaults: { date: today(), source: kind, program: pick }, reload });
   if (kind === '공모사업') await tableView(contestBox, 'contests', { rows: d.contests.filter((c) => !pick || c.data.name === pick), embed: true, reload, rowClass: (c) => (canEditProgram({ kind: '공모사업', contest: c }) ? '' : 'locked') });
+}
+
+// 📥 예산 엑셀 올리기: 학교 편성표·세부산출내역(xlsx·csv) 또는 복사한 표 → 미리보기에서 골라 [추가] 또는 [바꾸기]
+function budgetUpload({ kind, d, list, pick, reload }) {
+  const allowed = kind === '공모사업' ? list.filter(canEditProgram).map((p) => p.name) : null;
+  let rows = [];
+  let target = kind === '공모사업' ? (pick && allowed.includes(pick) ? pick : allowed[0] || '') : pick || '';
+  let useFile = kind !== '공모사업' && !pick;
+  let mode = 'add';
+  const preview = h('div', {});
+  const info = h('div', { class: 'muted small' });
+  const progOfRow = (r) => (useFile ? r.program || target : target);
+  const draw = () => {
+    const on = rows.filter((r) => r.on);
+    info.textContent = rows.length ? `인식 ${rows.length}줄 · 선택 ${on.length}줄 · 합계 ${won(on.reduce((t, r) => t + r.amount, 0))}` : '';
+    clear(preview, rows.length ? h('div', { class: 'table-wrap', style: { maxHeight: '46vh' } }, h('table', { class: 'table compact' },
+      h('thead', {}, h('tr', {}, h('th', {}, h('input', { type: 'checkbox', checked: rows.every((r) => r.on), onchange: (e) => { rows.forEach((r) => { r.on = e.target.checked; }); draw(); } })), ['사업', '세부항목', '비목', '산출내역·식', '금액', '비고'].map((x) => h('th', {}, x)))),
+      h('tbody', {}, rows.map((r) => {
+        const bad = kind === '공모사업' && !allowed.includes(progOfRow(r));
+        return h('tr', { class: bad ? 'locked' : '' }, h('td', {}, h('input', { type: 'checkbox', checked: r.on, disabled: bad, onchange: (e) => { r.on = e.target.checked; draw(); } })),
+          h('td', { class: 'small' }, progOfRow(r) || h('span', { class: 'muted' }, '(없음)'), bad ? h('div', { class: 'muted small' }, '담당 아님') : null), h('td', {}, r.item), h('td', { class: 'small' }, r.category),
+          h('td', { class: 'small' }, r.formula || r.detail), h('td', { class: 'num' }, won(r.amount)), h('td', { class: 'small' }, r.note));
+      })))) : h('p', { class: 'muted small' }, '파일을 고르거나 표를 붙여넣으면 여기에 미리보기가 나옵니다.'));
+  };
+  const take = (src) => {
+    rows = parseBudgetSheet(src, evalFormula).map((r) => ({ ...r, on: true }));
+    if (kind === '공모사업') rows.forEach((r) => { if (!allowed.includes(progOfRow(r))) r.on = false; });
+    if (!rows.length) toast('금액이 있는 예산 줄을 찾지 못했습니다. 머리글(세부사업·비목·산출내역·금액 등)이 있는 표인지 확인해 주세요.', 'error');
+    draw();
+  };
+  const paste = h('textarea', { rows: 3, placeholder: '엑셀·한글에서 머리글 줄까지 표를 복사해 붙여넣어도 됩니다' });
+  const progPick = kind === '공모사업'
+    ? h('label', {}, h('span', {}, '넣을 공모사업'), h('select', { onchange: (e) => { target = e.target.value; useFile = false; rows.forEach((r) => { r.on = allowed.includes(progOfRow(r)) && r.on !== false; }); draw(); } },
+      allowed.map((n) => h('option', { value: n, selected: n === target }, n))))
+    : h('label', {}, h('span', {}, '세부사업'), h('select', { onchange: (e) => { useFile = e.target.value === '__file'; target = useFile ? '' : e.target.value; draw(); } },
+      h('option', { value: '__file', selected: useFile }, '파일에 적힌 사업명 그대로'),
+      [...new Set([pick, ...list.map((p) => p.name)].filter(Boolean))].map((n) => h('option', { value: n, selected: !useFile && n === target }, `모두 「${n}」(으)로`))));
+  modal(`📥 ${kind} 엑셀 올리기`, h('div', { class: 'form' },
+    h('p', { class: 'muted small' }, '학교 예산 편성표·세부산출내역(엑셀·CSV)을 올리면 머리글(세부사업·세부항목·비목·산출내역·산출식·금액·비고)을 찾아 줄마다 읽습니다. 합계·소계 줄은 빼고, 「단위: 천원」이면 원 단위로 바꿉니다. 파일은 서버로 보내지 않고 이 브라우저에서만 읽습니다.'),
+    h('input', { type: 'file', accept: '.xlsx,.xls,.xlsm,.csv,.tsv,.txt', onchange: async (e) => { const f = e.target.files[0]; if (!f) return; try { take(await readSource(f)); } catch (err) { toast(err.message, 'error'); } } }),
+    paste, h('button', { type: 'button', class: 'btn small', onclick: () => take(readText(paste.value)) }, '붙여넣은 표 읽기'),
+    h('div', { class: 'grid-2' }, progPick,
+      h('label', {}, h('span', {}, '넣는 방법'), h('select', { onchange: (e) => { mode = e.target.value; } },
+        h('option', { value: 'add' }, '기존 예산 뒤에 추가'), h('option', { value: 'replace' }, '바꾸기 (해당 사업의 기존 예산 입력을 지우고 새로)')))),
+    info, preview), [
+    (close) => h('button', { class: 'btn', onclick: close }, '취소'),
+    (close) => h('button', { class: 'btn primary', onclick: async (e) => {
+      const pickRows = rows.filter((r) => r.on && (kind !== '공모사업' || allowed.includes(progOfRow(r))));
+      if (!pickRows.length) { toast('넣을 줄을 골라 주세요.', 'error'); return; }
+      const progs = new Set(pickRows.map(progOfRow));
+      const sourceOf = (b) => b.data.source || (d.contests.some((c) => c.data.name === b.data.program) ? '공모사업' : '학교본예산');
+      const olds = mode === 'replace' ? d.budget.filter((b) => sourceOf(b) === kind && progs.has(b.data.program || '')) : [];
+      if (olds.length && !(await confirmBox(`${[...progs].map((x) => x || '(사업명 없음)').join(', ')}의 기존 예산 입력 ${olds.length}줄을 지우고 ${pickRows.length}줄로 바꿉니다. 계속할까요?`))) return;
+      e.target.disabled = true;
+      let n = 0;
+      try {
+        for (const b of olds) await api(`/api/records/budget/${b.id}`, { method: 'DELETE' });
+        for (const r of pickRows) {
+          await api('/api/records/budget', { method: 'POST', body: { year: state.year, data: { source: kind, program: progOfRow(r), item: r.item, category: r.category, detail: r.detail, formula: r.formula, amount: r.amount, note: r.note } } });
+          n++;
+        }
+        toast(`${n}줄을 넣었습니다.${olds.length ? ` (기존 ${olds.length}줄 삭제)` : ''}`); close(); reload();
+      } catch (err) { toast(`${n}줄까지 넣고 멈췄습니다: ${err.message}`, 'error'); e.target.disabled = false; reload(); }
+    } }, '예산에 넣기'),
+  ], { wide: true });
+  draw();
 }
 
 export const schoolBudgetView = (root) => kindView(root, '학교본예산');

@@ -22,7 +22,7 @@ async function qrSvg(text) {
   if (!window.qrcode) return '';
   const q = window.qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
 }
-function linkBox(a) {
+export function linkBox(a) {
   const qr = h('div', { class: 'link-qr' });
   const url = studentLink(a);
   if (apiDemo()) clear(qr, h('p', { class: 'muted small' }, '체험 모드에서는 학생 링크가 열리지 않습니다.'));

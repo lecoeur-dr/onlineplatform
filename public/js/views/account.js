@@ -1,5 +1,5 @@
 // 계정·학교: 학교 가입(초대 코드·학교 찾기) · 새 학교 개설 · 플랫폼 운영(학교 승인) · 내 정보
-import { h, api, clear, toast, confirmBox } from '../ui.js';
+import { h, api, clear, toast, confirmBox, modal } from '../ui.js';
 import { state, remember } from '../state.js';
 import { APP_NAME, DESK_NAME, ROLES } from '../modules.js';
 import { pushState, enablePush, disablePush, pushSupported } from './inbox.js';
@@ -122,7 +122,25 @@ export async function platformView(root) {
         h('td', { class: 'small' }, s.created_by || '-'), h('td', { class: 'small' }, s.created_at),
         h('td', { class: 'nowrap' },
           s.status !== 'active' ? h('button', { class: 'btn small primary', onclick: () => set(s.id, 'active') }, '승인·재개') : null,
+          h('button', { class: 'btn small', onclick: () => schoolAudit(s) }, '변경 기록'),
           s.status === 'active' ? h('button', { class: 'btn small danger ghost', onclick: async () => { if (await confirmBox(`${s.name} 사용을 중지할까요? (자료는 남습니다)`)) set(s.id, 'closed'); } }, '중지') : null)))))));
+}
+
+// 운영자: 학교별 변경 기록 (아이디별 건수 + 최근 기록, 내용은 숨김)
+async function schoolAudit(s) {
+  const box = h('div', {});
+  const load = async (email = '') => {
+    const r = await api(`/api/platform/audit?school=${encodeURIComponent(s.id)}${email ? `&email=${encodeURIComponent(email)}` : ''}&limit=200`);
+    clear(box,
+      h('div', { class: 'note-chips' }, h('button', { class: `chip-btn ${email ? '' : 'on'}`, onclick: () => load('') }, '전체'),
+        r.users.map((u) => h('button', { class: `chip-btn ${u.email === email ? 'on' : ''}`, title: u.email, onclick: () => load(u.email) }, u.name || u.email || '-', h('span', { class: 'cnt' }, u.n)))),
+      h('div', { class: 'table-wrap', style: { maxHeight: '50vh' } }, h('table', { class: 'table compact' },
+        h('thead', {}, h('tr', {}, ['시각(UTC)', '아이디', '작업', '메뉴'].map((t) => h('th', {}, t)))),
+        h('tbody', {}, r.rows.map((a) => h('tr', {}, h('td', { class: 'small nowrap' }, a.at), h('td', { class: 'small' }, a.name ? `${a.name} · ${a.email}` : a.email), h('td', {}, a.action), h('td', { class: 'small' }, a.module || '')))))),
+      r.full ? null : h('p', { class: 'hint' }, '운영자는 학교 자료를 볼 수 없으므로 내용은 숨깁니다.'));
+  };
+  modal(`🛰 ${s.name} · 변경 기록`, box, [], { wide: true });
+  load().catch((e) => clear(box, h('p', { class: 'alert warn' }, e.message)));
 }
 
 export async function meView(root, refresh) {

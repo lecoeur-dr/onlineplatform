@@ -780,3 +780,55 @@ html[data-theme="dark"] .dl-item.over .dl-d { background: #3a1616; }
 .np-briefs { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .np-briefs li { padding: 4px 6px; border-radius: 8px; }
 .np-briefs li:hover { background: var(--bg-2); }
+
+/* ---------- Deskterior 추가 메뉴 · 내 책상 꾸미기 · 내 교실 ---------- */
+.toolbar.slim { margin: 4px 0 10px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.order-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; max-height: 52vh; overflow: auto; }
+.order-list li { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); opacity: .62; }
+.order-list li.on { opacity: 1; border-color: var(--primary); background: var(--primary-soft, var(--panel-2)); }
+.order-list li.dragging { outline: 2px dashed var(--primary); }
+.order-list .handle { cursor: grab; color: var(--muted); font-size: 18px; user-select: none; }
+.order-list label { cursor: pointer; }
+.chip-check { padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; }
+.list.rank { padding-left: 22px; }
+.pf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.pf-card { display: flex; gap: 12px; align-items: flex-start; }
+.pf-ico { font-size: 30px; line-height: 1; }
+.quiz-q textarea { width: 100%; }
+.quiz-ch { display: grid; gap: 6px; margin: 6px 0; }
+.quiz-ch label { display: flex; align-items: center; gap: 6px; }
+.quiz-ch input:not([type]) { flex: 1; }
+.quiz-rates { display: grid; gap: 6px; }
+.qr-row { display: flex; align-items: center; gap: 10px; }
+.qr-no { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); font-weight: 800; font-size: 12px; }
+.qr-row .bar { position: relative; height: 16px; border-radius: 8px; background: var(--panel-2); overflow: hidden; }
+.qr-row .bar span { position: absolute; inset: 0 auto 0 0; background: var(--primary); opacity: .75; }
+.qr-row .bar em { position: relative; font-size: 11px; font-style: normal; font-weight: 800; padding-left: 6px; }
+.ok-cell { color: var(--ok); font-weight: 800; }
+.no-cell { color: var(--danger); }
+.table.compact td, .table.compact th { padding: 5px 7px; }
+td.center { text-align: center; }
+.tag.warn { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); }
+.room-stage { border-radius: 22px; padding: 18px; border: 1px solid var(--line); background: var(--bg-2, var(--panel-2)); --room-text: var(--text); color: var(--room-text); }
+.room-stage:fullscreen { border-radius: 0; padding: 28px; overflow: auto; }
+.room-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.room-head h2 { margin: 0; font-size: 28px; font-weight: 900; }
+.room-grid { display: grid; gap: 14px; grid-auto-flow: row dense; }
+.room-grid .room-wide { grid-column: span 2; }
+.room-big { font-size: 120%; }
+.room-big .scr-title { font-size: 16px; }
+.room-big .scr-lessons, .room-big .scr-note { font-size: 26px; }
+.room-big .scr-clock { font-size: 96px; }
+.room-bg-sky { background: linear-gradient(160deg, #e0f2fe, #f0f9ff); }
+.room-bg-mint { background: linear-gradient(160deg, #dcfce7, #f0fdf4); }
+.room-bg-peach { background: linear-gradient(160deg, #ffedd5, #fff7ed); }
+.room-bg-sky, .room-bg-mint, .room-bg-peach { --room-text: #0f172a; }
+.room-bg-sky .scr-card, .room-bg-mint .scr-card, .room-bg-peach .scr-card { background: rgba(255,255,255,.78); color: #0f172a; }
+.room-bg-night { background: #0b1020; --room-text: #e5e7eb; }
+.room-bg-night .scr-card { background: #151b2e; border-color: #263049; color: #e5e7eb; }
+.room-bg-board { background: #1f3b2d; --room-text: #f1f5f0; }
+.room-bg-board .scr-card { background: #274a39; border-color: #35614b; color: #f1f5f0; }
+.room-bg-night .muted, .room-bg-board .muted, .room-bg-night .scr-title, .room-bg-board .scr-title { color: #a8b3c7; }
+@media (max-width: 760px) { .room-grid { grid-template-columns: 1fr !important; } .room-grid .room-wide { grid-column: auto; } .grid-2 { grid-template-columns: 1fr; } }
+.order-list .icon-btn { width: 28px; height: 28px; min-width: 28px; padding: 0; }

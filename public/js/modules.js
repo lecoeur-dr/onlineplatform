@@ -529,16 +529,58 @@ export const MODULES = {
   },
   // 학생 참여 활동(로그인 없이 링크로 제출): 서·논술형 답안 · 클래스 보드. 제출물은 submissions 표에 암호화
   activities: {
-    label: '학생 활동', icon: '🔗', scope: 'year', edit: 'staff', space: 'desk', extras: ['token', 'planId'],
+    label: '학생 활동', icon: '🔗', scope: 'year', edit: 'staff', space: 'desk', extras: ['token', 'planId', 'questions'],
     fields: [
       { key: 'title', label: '제목', type: 'text', required: true },
-      { key: 'kind', label: '종류', type: 'select', options: ['서·논술형', '클래스 보드'], required: true },
+      { key: 'kind', label: '종류', type: 'select', options: ['서·논술형', '클래스 보드', '실시간 퀴즈'], required: true },
       { key: 'subject', label: '과목', type: 'select', list: 'subjects', free: true },
       { key: 'question', label: '문항·안내', type: 'textarea', hint: '학생 화면에 그대로 보입니다' },
       { key: 'open', label: '제출 받는 중', type: 'bool' },
       { key: 'showNames', label: '보드에서 이름 보이기', type: 'bool' },
       { key: 'limit', label: '글자 수 제한', type: 'number', hint: '비우면 서·논술형 2000자, 보드 300자' },
     ],
+  },
+  // 포트폴리오: 학생 작품·산출물 기록 (링크·메모)
+  portfolios: {
+    label: '포트폴리오', icon: '🗂', scope: 'date', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'date', label: '날짜', type: 'date', required: true },
+      { key: 'student', label: '학생', type: 'select', list: 'students', free: true, required: true },
+      { key: 'subject', label: '과목·활동', type: 'select', list: 'subjects', free: true },
+      { key: 'title', label: '작품·활동명', type: 'text', required: true },
+      { key: 'kind', label: '종류', type: 'select', options: ['글', '그림', '사진', '영상', '프로젝트', '실험·관찰', '기타'] },
+      { key: 'link', label: '파일·사진 링크', type: 'url', hint: '구글 드라이브·패들렛 등 링크' },
+      { key: 'note', label: '관찰·성장 메모', type: 'textarea', enc: true },
+    ],
+  },
+  // 진로·진학: 희망 진로·관심 분야·진학 정보 (중·고는 진학, 초등은 진로 탐색)
+  careers: {
+    label: '진로·진학', icon: '🧭', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'student', label: '학생', type: 'select', list: 'students', free: true, required: true },
+      { key: 'hope', label: '희망 진로', type: 'text' },
+      { key: 'parentHope', label: '보호자 희망', type: 'text' },
+      { key: 'interest', label: '관심 분야·강점', type: 'text' },
+      { key: 'school', label: '진학 예정·희망 학교', type: 'text' },
+      { key: 'activity', label: '진로 활동', type: 'textarea' },
+      { key: 'note', label: '상담 메모', type: 'textarea', enc: true },
+    ],
+  },
+  // 학습지: 문제 + 정답 (빈칸은 {정답} 으로) → 학생용·정답지 인쇄
+  worksheets: {
+    label: '학습지', icon: '📄', scope: 'year', edit: 'staff', space: 'desk',
+    fields: [
+      { key: 'title', label: '제목', type: 'text', required: true },
+      { key: 'subject', label: '과목', type: 'select', list: 'subjects', free: true },
+      { key: 'unit', label: '단원·차시', type: 'text' },
+      { key: 'content', label: '내용', type: 'textarea', required: true, hint: '빈칸으로 만들 말은 {중괄호}로: 식물은 {광합성}으로 양분을 만든다. 문제는 한 줄에 하나' },
+      { key: 'memo', label: '메모', type: 'text' },
+    ],
+  },
+  // Deskterior 설정 (한 사람당 하나): 내 책상 카드 구성, 내 교실 화면 구성
+  deskSettings: {
+    label: '내 설정', icon: '⚙', scope: 'global', edit: 'staff', space: 'desk', extras: ['home', 'screen'],
+    fields: [{ key: 'name', label: '이름', type: 'text' }],
   },
   // 성취기준 DB: 과목·학년군마다 한 묶음(items: [{area, code, text}]). 평가계획 가져오기·교육과정 문서 붙여넣기로 채움
   standards: {
@@ -649,6 +691,8 @@ export const DESK_GROUPS = [
     { id: 'students', label: '명단 관리', module: 'students' },
     { id: 'seats', label: '자리 배치', module: 'seatPlan' },
     { id: 'roles', label: '1인 1역', module: 'classRoles' },
+    { id: 'portfolio', label: '포트폴리오', module: 'portfolios' },
+    { id: 'career', label: '진로·진학', module: 'careers' },
     { id: 'tools', label: '뽑기·타이머' },
   ] },
   { id: 'lesson', label: '수업', icon: '📘', tabs: [
@@ -656,6 +700,8 @@ export const DESK_GROUPS = [
     { id: 'notes', label: '알림장', module: 'dailyNotes' },
     { id: 'weekly', label: '주간학습안내', module: 'weeklyPlans' },
     { id: 'board', label: '클래스 보드', module: 'activities' },
+    { id: 'quiz', label: '실시간 퀴즈', module: 'activities' },
+    { id: 'worksheets', label: '학습지', module: 'worksheets' },
     { id: 'timetable', label: '내 시간표', module: 'myTimetable' },
     { id: 'progress', label: '진도·시수', module: 'progress' },
   ] },
@@ -675,6 +721,7 @@ export const DESK_GROUPS = [
   { id: 'market', label: 'Teachshop', icon: '🧰', tabs: [
     { id: 'overview', label: '공방 둘러보기' },
     { id: 'mine', label: '내가 올린 도구' },
+    { id: 'classroom', label: '내 교실' },
   ] },
 ];
 

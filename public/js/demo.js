@@ -204,6 +204,16 @@ function seed() {
   db.subs = { [essay.id]: STUDENTS.slice(0, 4).map((name, i) => ({ id: i + 1, num: String(i + 1), name, body: ans[i], hidden: false, createdAt: `${YEAR}-10-02 10:0${i}:00`, updatedAt: `${YEAR}-10-02 10:0${i}:00` })) };
   const board = put('activities', { title: '오늘 배운 점 한 줄', kind: '클래스 보드', question: '오늘 과학 시간에 새롭게 안 것은 무엇인가요?', open: true, showNames: true, token: 'demo0board0000000000000' }, { year: YEAR });
   db.subs[board.id] = ['자석으로 철을 분리할 수 있다는 것!', '소금물을 증발시키면 소금이 남아요', '거름종이는 물은 통과시키고 모래는 막아요', '혼합물은 성질을 이용해서 분리한다'].map((body, i) => ({ id: 100 + i, num: String(i + 5), name: STUDENTS[i + 4], body, hidden: false, createdAt: `${YEAR}-10-02 11:0${i}:00` }));
+  const quiz = put('activities', { title: '혼합물 분리 확인 퀴즈', kind: '실시간 퀴즈', subject: '과학', open: true, token: 'demo0quiz00000000000000', questions: [
+    { q: '철가루를 분리할 때 쓰는 도구는?', choices: ['자석', '거름종이', '체', '알코올램프'], answer: '1' },
+    { q: '소금물에서 소금을 얻는 방법은?', choices: ['거르기', '증발시키기', '자석 쓰기', '흔들기'], answer: '2' },
+    { q: '물에 녹지 않는 모래를 분리하는 방법을 쓰세요.', choices: [], answer: '거르기,거름' },
+  ] }, { year: YEAR });
+  db.subs[quiz.id] = [['1', '2', '거르기'], ['1', '2', '체'], ['1', '1', '거름'], ['3', '2', '거르기'], ['1', '2', '거르기']].map((a, i) => ({ id: 200 + i, num: String(i + 1), name: STUDENTS[i], body: JSON.stringify(a), hidden: false, createdAt: `${YEAR}-10-02 12:0${i}:00` }));
+  put('portfolios', { date: wd(-3), student: '강다온', subject: '미술', title: '가을 풍경 수채화', kind: '그림', link: 'https://www.example.com/art', note: '번지기 기법을 스스로 탐구함' });
+  put('portfolios', { date: wd(-1), student: '김가람', subject: '과학', title: '전기 회로 탐구 보고서', kind: '실험·관찰', link: '', note: '직렬·병렬 차이를 그림으로 정리' });
+  put('careers', { student: '강다온', hope: '수의사', parentHope: '본인 희망 존중', interest: '동물·생명과학', activity: '동물 보호 캠페인 포스터 제작' }, { year: YEAR });
+  put('worksheets', { title: '혼합물의 분리', subject: '과학', unit: '4. 혼합물의 분리', content: '철가루는 {자석}을 이용해 분리한다.\n물에 녹지 않는 모래는 {거름종이}로 거른다.\n소금물을 {증발}시키면 소금이 남는다.' }, { year: YEAR });
   put('classRoles', { role: '칠판 정리', students: ['강다온', '김가람'] }, { year: YEAR });
   put('classRoles', { role: '우유 당번', students: ['김나래', '노을빛'] }, { year: YEAR });
   put('classRoles', { role: '화분 물 주기', students: ['류하늘'] }, { year: YEAR });
@@ -223,7 +233,7 @@ function seed() {
     { id: 2, title: '📣 조례 전달사항', body: '오늘 3교시에 소방 대피 훈련이 있습니다.', url: '/#/notice/briefings', read: 0, created_at: `${TODAY} 07:58:00`, school_name: SCHOOL },
     { id: 1, title: '🙋 학교 가입 요청', body: '백새봄 선생님이 가입을 요청했습니다.', url: '/#/admin', read: 0, created_at: `${TODAY} 07:50:00`, school_name: SCHOOL },
   ];
-  db.audit = [{ id: 1, at: `${TODAY} 08:00:00`, email: ME.email, name: ME.name, action: 'create', module: 'briefings', record_id: 'd1', detail: null }];
+  db.audit = [{ id: 3, at: `${TODAY} 08:20:00`, email: 't1@example.com', name: '이서준', action: 'update', module: 'events', record_id: 'd3', detail: null }, { id: 2, at: `${TODAY} 08:10:00`, email: 't3@example.com', name: '박지우', action: 'create', module: 'purchases', record_id: 'd2', detail: null }, { id: 1, at: `${TODAY} 08:00:00`, email: ME.email, name: ME.name, action: 'create', module: 'briefings', record_id: 'd1', detail: null }];
   return db;
 }
 
@@ -373,7 +383,12 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
   }
   if (p === '/api/admin/invite') return { code: 'demo2026' };
   if (p === '/api/admin/settings') return write(() => { if (body.currentYear) d.settings.currentYear = body.currentYear; if (body.lists) d.settings.lists = body.lists; if (body.schoolName) d.settings.schoolName = body.schoolName; if (body.theme) d.settings.theme = body.theme; return d.settings; });
-  if (p === '/api/admin/audit') return d.audit.slice(0, 100);
+  if (p === '/api/admin/audit') {
+    const all = d.audit;
+    const users = [...new Set(all.map((a) => a.email))].map((email) => ({ email, name: all.find((a) => a.email === email)?.name, role: 'admin', n: all.filter((a) => a.email === email).length, last: all.find((a) => a.email === email)?.at }));
+    const rows = all.filter((a) => (!q('email') || a.email === q('email')) && (!q('action') || a.action === q('action')) && (!q('module') || a.module === q('module')));
+    return { school: 'demo', schools: [{ id: 'demo', name: SCHOOL }], full: true, more: false, users, rows: rows.slice(0, 200) };
+  }
   if (p === '/api/admin/export') return { exportedAt: new Date().toISOString(), demo: true, records: d.records };
   if (p === '/api/admin/import') {
     return write(() => {

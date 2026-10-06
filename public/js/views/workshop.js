@@ -7,7 +7,7 @@ import { TOOLS, toolById } from '../tools.js';
 
 const CATS = ['수업 도구', '수업 활동', '학급 운영', '평가', '학습지', '업무 서식', '기타'];
 
-async function roster() {
+export async function roster() {
   const rows = await api(`/api/records/students?year=${state.year}`);
   return rows.map((r) => ({ num: r.data.num, name: r.data.name, gender: r.data.gender }))
     .filter((s) => s.name).sort((a, b) => (Number(a.num) || 999) - (Number(b.num) || 999));
