@@ -865,3 +865,12 @@ td.center { text-align: center; }
 .req { color: var(--danger); }
 .collection.todo { border-color: var(--primary); }
 .attend-line { display: inline-block; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); }
+/* 취합 현황 막대: [보기 | 막대 | 인원 | 이름] 칸 폭 고정 */
+.tally { display: grid; gap: 8px; }
+.tally-row { display: grid; grid-template-columns: minmax(80px, 160px) minmax(120px, 1fr) 64px minmax(0, 1.2fr); gap: 10px; align-items: center; }
+.tally-label { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tally-track { height: 14px; border-radius: 7px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+.tally-fill { display: block; height: 100%; background: var(--primary); border-radius: 7px; }
+.tally-num { font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.tally-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .tally-row { grid-template-columns: 80px 1fr 56px; } .tally-who { grid-column: 1 / -1; white-space: normal; } }

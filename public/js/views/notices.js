@@ -212,7 +212,7 @@ export async function meetingPlansView(root) {
         d.title ? h('div', {}, d.title) : null,
         h('div', { class: 'muted small' }, [d.place && `📍 ${d.place}`, d.dept && `주관 ${d.dept}`, `👥 ${(d.attendees || []).length ? `${d.attendees.length}명` : '전체 교직원'}`].filter(Boolean).join(' · ')),
         d.collectionId && colOf.get(d.collectionId) ? (() => { const cc = colOf.get(d.collectionId); const tl = cc.data.tally?.q1 || {}; const tg = targetsOf(cc); const miss = tg.filter((n) => !(cc.data.done || []).includes(n)).length;
-          return h('a', { class: 'attend-line', href: '#/notice/collections' }, `🙋 참석 ${tl['참석'] || 0} · 불참 ${tl['불참'] || 0} · 미정 ${tl['미정'] || 0} · 미응답 ${miss}`); })() : null,
+          return h('a', { class: 'attend-line', href: '#/notice/collections' }, `🙋 참석 ${tl['참석'] || 0} · 불참 ${tl['불참'] || 0} · 미응답 ${miss}`); })() : null,
         d.agenda ? h('ol', { class: 'small mplan-agenda' }, String(d.agenda).split('\n').filter((x) => x.trim()).map((x) => h('li', {}, x.replace(/^\s*[-·•]\s*/, '')))) : null,
         h('div', { class: 'row-actions' },
           d.eventId ? h('a', { class: 'tag ok', href: '#/schedule/overview' }, '📅 학사일정 등록됨') : h('span', { class: 'tag ghost' }, '학사일정 미등록'),

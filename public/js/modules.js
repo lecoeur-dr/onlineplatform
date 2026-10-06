@@ -190,7 +190,7 @@ export const MODULES = {
   collections: {
     label: '취합', icon: '📥', scope: 'year', edit: 'staff', extras: ['questions', 'tally', 'noticeId', 'meetingId'],
     fields: [
-      { key: 'kind', label: '유형', type: 'select', options: ['확인', '제출', '참석 조사', '선택', '설문'], hint: '확인: 체크만 · 제출: 링크 받기 · 참석 조사: 참석/불참/미정 · 선택: 보기에서 고르기(정원) · 설문: 여러 문항' },
+      { key: 'kind', label: '유형', type: 'select', options: ['확인', '제출', '참석 조사', '선택', '설문'], hint: '확인: 체크만 · 제출: 링크 받기 · 참석 조사: 참석/불참 · 선택: 보기에서 고르기(정원) · 설문: 여러 문항' },
       { key: 'title', label: '제목', type: 'text', required: true, hint: '예) 학급 교육과정 운영계획 제출' },
       { key: 'due', label: '마감일', type: 'date' },
       { key: 'target', label: '대상', type: 'names', pick: 'staff', hint: '비워 두면 전체 교직원' },
@@ -238,7 +238,7 @@ export const MODULES = {
       { key: 'note', label: '준비물·안내', type: 'textarea' },
       { key: 'toCalendar', label: '학사일정에 등록', type: 'bool', hint: '체크하면 통합 달력에 "회의"로 올라갑니다' },
       { key: 'toNotice', label: '공지에 등록', type: 'bool', hint: '체크하면 공지·업무 → 공지에 안내가 올라갑니다' },
-      { key: 'askAttend', label: '참석 여부 받기', type: 'bool', hint: '체크하면 참석 대상에게 참석/불참/미정을 묻는 취합이 자동으로 만들어집니다' },
+      { key: 'askAttend', label: '참석 여부 받기', type: 'bool', hint: '체크하면 참석 대상에게 참석/불참을 묻는 취합이 자동으로 만들어집니다' },
     ],
   },
   notices: {

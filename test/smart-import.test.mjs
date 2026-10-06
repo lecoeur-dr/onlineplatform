@@ -188,7 +188,9 @@ test('취합: 참석 조사 기본 문항·집계·정원·필수 검사', async
   const { presetQuestions, tallyOf, checkAnswers } = await import('../public/js/collect.js');
   const att = presetQuestions('참석 조사');
   assert.equal(att[0].type, 'attend');
-  assert.deepEqual(tallyOf(att, [{ q1: '참석' }, { q1: '불참', q2: '출장' }, { q1: '참석' }]).q1, { 참석: 2, 불참: 1, 미정: 0 });
+  assert.equal(att.length, 1);
+  assert.deepEqual(tallyOf(att, [{ q1: '참석' }, { q1: '불참' }, { q1: '참석' }, { q1: '미정' }]).q1, { 참석: 2, 불참: 1 });
+  assert.match(checkAnswers(att, { q1: '미정' }).error, /없는 보기/);
   assert.match(checkAnswers(att, {}).error, /참석 여부/);
   const sel = [{ id: 'q1', type: 'single', label: '연수', required: true, options: ['A', 'B'], caps: [2, 0] }];
   assert.match(checkAnswers(sel, { q1: 'A' }, { othersTally: { q1: { A: 2, B: 0 } } }).error, /정원/);

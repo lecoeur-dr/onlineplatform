@@ -3,12 +3,13 @@ import { h, api, clear, fmtDate, today, addDays, toast, modal, confirmBox, downl
 import { state, canEdit, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { seg } from './schedule.js';
-import { KINDS, KIND_INFO, Q_TYPES, CHOICE_TYPES, presetQuestions, capOf, answerText } from '../collect.js';
+import { KINDS, KIND_INFO, Q_TYPES, CHOICE_TYPES, presetQuestions, capOf, answerText, optsOf, ATTEND_OPTIONS } from '../collect.js';
 import { targetsOf, dday } from './notices.js';
 
 const kindOf = (r) => r.data.kind || '확인';
 const isOwner = (r) => r.createdBy === state.me?.email || state.me?.role === 'admin';
 const closed = (r) => !!r.data.due && r.data.due < today();
+const qsOf = (r) => { const qs = r.data.questions || []; return kindOf(r) === '참석 조사' ? qs.filter((q) => q.type === 'attend') : qs; };
 
 // ---------- 만들기 ----------
 function createCollection(reload, preset = {}) {
@@ -29,7 +30,7 @@ export function editQuestions(r, reload) {
   const box = h('div', {});
   const draw = () => clear(box, qs.map((q, i) => {
     const isChoice = CHOICE_TYPES.includes(q.type);
-    if (isChoice && !q.options?.length) q.options = q.type === 'attend' ? ['참석', '불참', '미정'] : ['보기 1', '보기 2'];
+    if (isChoice && !q.options?.length) q.options = q.type === 'attend' ? [...ATTEND_OPTIONS] : ['보기 1', '보기 2'];
     return h('div', { class: 'card q-edit' },
       h('div', { class: 'card-head' }, h('strong', {}, single ? '문항' : `${i + 1}번`), h('span', { class: 'grow' }),
         single ? null : h('button', { type: 'button', class: 'icon-btn small', title: '위로', disabled: i === 0, onclick: () => { [qs[i - 1], qs[i]] = [qs[i], qs[i - 1]]; draw(); } }, '↑'),
@@ -47,7 +48,7 @@ export function editQuestions(r, reload) {
           ['single', 'multi'].includes(q.type) ? h('input', { type: 'number', min: 0, placeholder: '정원', class: 'cap', value: (q.caps || [])[k] || '', oninput: (e) => { q.caps ||= []; q.caps[k] = Number(e.target.value) || 0; } }) : null,
           h('button', { type: 'button', class: 'icon-btn small', onclick: () => { q.options.splice(k, 1); (q.caps || []).splice(k, 1); draw(); } }, '✕'))),
         h('button', { type: 'button', class: 'link-btn small', onclick: () => { q.options.push(''); draw(); } }, '+ 보기 추가')) : null,
-      q.type === 'attend' ? h('div', { class: 'muted small' }, '보기: 참석 / 불참 / 미정') : null);
+      q.type === 'attend' ? h('div', { class: 'muted small' }, '보기: 참석 / 불참') : null);
   }));
   draw();
   modal(`✏️ ${r.data.title} · ${single ? '보기' : '문항'}`, h('div', { class: 'form' }, box,
@@ -66,7 +67,7 @@ async function respond(r, answers, reload) {
   try { await api(`/api/collections/${r.id}/respond`, { method: 'POST', body: { answers } }); toast('응답했습니다.'); reload(); return true; } catch (e) { toast(e.message, 'error'); return false; }
 }
 function questionInput(q, value, tally, onChange) {
-  const opts = q.options || [];
+  const opts = optsOf(q);
   const full = (o, i) => (tally?.[q.id]?.[o] || 0) >= capOf(q, i) && !(Array.isArray(value) ? value.includes(o) : value === o);
   const label = (o, i) => `${o}${Number.isFinite(capOf(q, i)) ? ` (${tally?.[q.id]?.[o] || 0}/${capOf(q, i)})` : ''}${full(o, i) ? ' · 마감' : ''}`;
   if (q.type === 'single' || q.type === 'attend') return h('div', { class: 'choice-list' }, opts.map((o, i) => h('label', { class: `choice ${full(o, i) ? 'full' : ''}` }, h('input', { type: 'radio', name: q.id, checked: value === o, disabled: full(o, i), onchange: () => onChange(o) }), ` ${label(o, i)}`)));
@@ -80,7 +81,7 @@ function questionInput(q, value, tally, onChange) {
 async function openRespond(r, reload) {
   const res = await api(`/api/collections/${r.id}/responses`);
   const answers = { ...(res.mine?.answers || {}) };
-  const qs = r.data.questions || [];
+  const qs = qsOf(r);
   modal(`${KIND_INFO[kindOf(r)].icon} ${r.data.title}`, h('div', { class: 'form' },
     r.data.content ? h('div', { class: 'alert info pre' }, r.data.content) : null,
     r.data.link && /^https?:/.test(r.data.link) ? h('p', {}, h('a', { class: 'btn', href: r.data.link, target: '_blank', rel: 'noopener' }, '🔗 링크 열기 (폴더·구글폼)'), h('span', { class: 'muted small' }, ' 이곳에 낸 뒤 아래 [제출]을 누르면 완료로 표시됩니다.')) : null,
@@ -95,7 +96,7 @@ async function openRespond(r, reload) {
 // ---------- 현황 (만든 사람·관리자, 또는 결과 공개) ----------
 async function openStatus(r, reload) {
   const res = await api(`/api/collections/${r.id}/responses`);
-  const qs = r.data.questions || [];
+  const qs = qsOf(r);
   const targets = res.targets;
   const done = new Set(kindOf(r) === '확인' ? r.data.done || [] : res.rows.map((x) => x.name));
   const missing = targets.filter((n) => !done.has(n));
@@ -109,11 +110,14 @@ async function openStatus(r, reload) {
     h('div', { class: 'kpi-grid' }, h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '응답'), h('div', { class: 'kpi-value' }, `${done.size} / ${targets.length}명`)),
       h('div', { class: `kpi ${missing.length ? 'warn' : ''}` }, h('div', { class: 'kpi-label' }, '미응답'), h('div', { class: 'kpi-value' }, `${missing.length}명`))),
     qs.filter((q) => CHOICE_TYPES.includes(q.type)).map((q) => h('section', { class: 'section' }, h('h3', {}, q.label),
-      h('div', { class: 'quiz-rates' }, (q.options || []).map((o, i) => {
+      h('div', { class: 'tally' }, optsOf(q).map((o, i) => {
         const n = r.data.tally?.[q.id]?.[o] || 0; const cap = capOf(q, i); const base = Number.isFinite(cap) ? cap : Math.max(1, done.size);
         const who = res.rows.filter((x) => [].concat(x.answers[q.id] || []).includes(o)).map((x) => x.name);
-        return h('div', { class: 'qr-row', title: who.join(', ') }, h('span', { class: 'grow small' }, o), h('div', { class: 'bar', style: { width: '180px' } }, h('span', { style: { width: `${Math.min(100, Math.round((n / base) * 100))}%` } }), h('em', {}, `${n}${Number.isFinite(cap) ? `/${cap}` : '명'}`)),
-          h('span', { class: 'muted small', style: { maxWidth: '260px' } }, who.join(', ')));
+        return h('div', { class: 'tally-row', title: who.join(', ') },
+          h('span', { class: 'tally-label' }, o),
+          h('div', { class: 'tally-track' }, h('span', { class: 'tally-fill', style: { width: `${Math.min(100, Math.round((n / base) * 100))}%` } })),
+          h('strong', { class: 'tally-num' }, `${n}${Number.isFinite(cap) ? `/${cap}` : '명'}`),
+          h('span', { class: 'tally-who muted small' }, who.join(', ')));
       })))),
     res.canSeeAll && res.rows.length && qs.length ? h('section', { class: 'section' }, h('h3', {}, '응답 표'), h('div', { class: 'table-wrap', style: { maxHeight: '40vh' } }, h('table', { class: 'table compact' },
       h('thead', {}, h('tr', {}, ['이름', ...qs.map((x) => x.label)].map((x) => h('th', {}, x)))),
@@ -137,7 +141,7 @@ function card(r, reload) {
   const pct = targets.length ? Math.round((done.length / targets.length) * 100) : 0;
   const late = closed(r);
   const owner = isOwner(r);
-  const q1 = (r.data.questions || [])[0];
+  const q1 = qsOf(r)[0];
   // 참석 조사·선택(하나)은 카드에서 바로 한 번에 응답
   const quick = !late && mine && q1 && ((k === '참석 조사' && q1.type === 'attend') || (k === '선택' && q1.type === 'single'));
   const showCounts = (k === '선택') || r.data.showResults || owner;
@@ -150,19 +154,17 @@ function card(r, reload) {
       r.data.due ? h('span', { class: `tag ${late ? 'danger' : ''}` }, `${fmtDate(r.data.due)} · ${late ? '마감' : dday(r.data.due)}`) : null),
     r.data.content ? h('div', { class: 'pre small clamp2' }, r.data.content) : null,
     h('div', { class: 'bar', title: `${done.length}/${targets.length}` }, h('span', { style: { width: `${pct}%` } }), h('em', {}, `응답 ${done.length} / ${targets.length}명`)),
-    quick ? h('div', { class: 'quick-row' }, (q1.options || []).map((o, i) => {
+    quick ? h('div', { class: 'quick-row' }, optsOf(q1).map((o, i) => {
       const n = r.data.tally?.q1?.[o] || 0; const cap = capOf(q1, i); const isFull = n >= cap;
       const picked = iDone && r._my === o;
       return h('button', { class: `btn small ${picked ? 'primary' : ''}`, disabled: isFull && !picked, onclick: async () => {
-        const ans = { q1: o };
-        if (k === '참석 조사' && o !== '참석') { const why = prompt(`${o} 사유 (선택)`) ?? ''; if (why) ans.q2 = why; }
-        await respond(r, ans, reload);
+        await respond(r, { q1: o }, reload);
       } }, `${o}${showCounts ? ` ${n}${Number.isFinite(cap) ? `/${cap}` : ''}` : ''}${isFull && !picked ? ' 마감' : ''}`);
     })) : null,
     h('div', { class: 'row-actions' },
       k === '확인' && mine && !late ? h('button', { class: `btn small ${iDone ? '' : 'primary'}`, onclick: async () => { try { await api(`/api/records/collections/${r.id}/self`, { method: 'POST', body: { on: !iDone } }); reload(); } catch (e) { toast(e.message, 'error'); } } }, iDone ? '✔ 확인함 (취소)' : '확인했어요') : null,
       k !== '확인' && mine && !late && !quick ? h('button', { class: `btn small ${iDone ? '' : 'primary'}`, onclick: () => openRespond(r, reload) }, iDone ? '✔ 응답함 · 보기/수정' : k === '제출' ? '제출하기' : '응답하기') : null,
-      quick && iDone ? h('button', { class: 'link-btn small', onclick: () => openRespond(r, reload) }, '사유·수정') : null,
+      quick && iDone && qsOf(r).length > 1 ? h('button', { class: 'link-btn small', onclick: () => openRespond(r, reload) }, '응답 보기·수정') : null,
       r.data.link && /^https?:/.test(r.data.link) ? h('a', { class: 'btn small', href: r.data.link, target: '_blank', rel: 'noopener' }, '🔗 링크') : null,
       h('span', { class: 'grow' }),
       owner || r.data.showResults ? h('button', { class: 'btn small', onclick: () => openStatus(r, reload) }, '📊 현황') : null,
