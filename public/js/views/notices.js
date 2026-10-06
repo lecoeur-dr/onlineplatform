@@ -144,7 +144,7 @@ export async function meetingsView(root) {
       h('span', { class: 'muted' }, `회의 ${groups.length}번 · 안건 ${shown.length}개`),
       h('span', { class: 'grow' }),
       canEdit('meetings') ? h('button', { class: 'btn primary', onclick: () => newMeeting(kind, reload) }, '+ 새 회의록') : null),
-    groups.map((g, i) => meetingCard(g, reload, i < 5)),
+    groups.map((g) => meetingCard(g, reload, false)),
     groups.length ? null : h('p', { class: 'muted' }, '회의 기록이 없습니다.'));
 }
 
