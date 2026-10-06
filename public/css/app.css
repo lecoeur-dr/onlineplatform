@@ -485,3 +485,7 @@ label.inline { display: inline-flex; align-items: center; gap: 4px; font-size: 1
   .nav-logout { display: block; }
   .space-tabs { flex: none; }
 }
+/* 주요 안내 칸은 달마다 높이가 같아야 함: 높이가 바뀌면 아래 달력이 밀려 스크롤 감지가 달을 왔다 갔다 하며 깜빡임 */
+.cal-banner .banner-note { height: 132px; overflow-y: auto; overscroll-behavior: contain; }
+.cal-banner .banner-note .note-panel { margin: 4px 0; min-height: calc(100% - 8px); box-sizing: border-box; }
+@media (max-width: 700px) { .cal-banner .banner-note { height: 104px; } }

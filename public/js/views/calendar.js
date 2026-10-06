@@ -115,6 +115,8 @@ export function renderCalendar(root, o) {
     if (!el) return;
     const stickyBanner = banner && getComputedStyle(banner).position === 'sticky';
     const offset = 50 + (stickyBanner ? banner.offsetHeight : 0) + 34;
+    // 버튼으로 이동하는 동안에는 스크롤 감지를 잠시 멈춤 (지나가는 달마다 배너를 다시 그리지 않도록)
+    ui.lockUntil = Date.now() + (smooth ? 900 : 150);
     window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - offset + 2, behavior: smooth ? 'smooth' : 'auto' });
   };
 
@@ -195,7 +197,7 @@ export function renderCalendar(root, o) {
       let ticking = false;
       root._onScroll = () => {
         if (!root.isConnected) { window.removeEventListener('scroll', root._onScroll); return; }
-        if (ticking) return;
+        if (ticking || Date.now() < (ui.lockUntil || 0)) return;
         ticking = true;
         requestAnimationFrame(() => {
           ticking = false;
