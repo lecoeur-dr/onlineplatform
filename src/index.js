@@ -532,6 +532,7 @@ app.post('/api/records/:module', async (c) => {
   if (m === 'activities') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
   if (m === 'events') clean.noticeId = '';
   if (m === 'meetingPlans') { clean.eventId = ''; clean.noticeId = ''; clean.collectionId = ''; }
+  if (m === 'meetings' && t.member?.role !== 'admin') clean.showRecent = false; // 한눈에 게시는 관리자만
   if (m === 'collections') { clean.tally = {}; clean.noticeId = ''; clean.meetingId = ''; clean.done = []; if (!Array.isArray(clean.questions) || !clean.questions.length) clean.questions = presetQuestions(clean.kind || '확인'); }
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
   const denied = await contestGuard(c, t, m, clean, null);
@@ -568,6 +569,7 @@ app.put('/api/records/:module/:id', async (c) => {
   if (m === 'activities') clean.token = prevData.token || randomToken(16);
   if (m === 'events') clean.noticeId = prevData.noticeId || '';
   if (m === 'meetingPlans') { clean.eventId = prevData.eventId || ''; clean.noticeId = prevData.noticeId || ''; clean.collectionId = prevData.collectionId || ''; }
+  if (m === 'meetings' && t.member?.role !== 'admin') clean.showRecent = !!prevData.showRecent;
   if (m === 'collections') { clean.tally = prevData.tally || {}; clean.noticeId = prevData.noticeId || ''; clean.meetingId = prevData.meetingId || ''; if (!Array.isArray(clean.questions)) clean.questions = prevData.questions || []; }
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
   const denied = await contestGuard(c, t, m, clean, prevData);

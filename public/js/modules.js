@@ -214,7 +214,7 @@ export const MODULES = {
     ],
   },
   meetings: {
-    label: '회의록', icon: '📝', scope: 'date', edit: 'staff', extras: ['planId'],
+    label: '회의록', icon: '📝', scope: 'date', edit: 'staff', extras: ['planId', 'showRecent'],
     fields: [
       { key: 'date', label: '회의일', type: 'date', required: true },
       { key: 'meeting', label: '회의명', type: 'select', list: 'meetingTypes', free: true },

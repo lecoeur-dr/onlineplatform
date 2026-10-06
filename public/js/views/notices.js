@@ -60,7 +60,8 @@ export async function noticeOverview(root, date = today()) {
   const pinned = d.notices.filter((n) => !isExpired(n) && n.data.pinned && (!n.data.month || n.data.month === ym));
   const month = d.notices.filter((n) => !isExpired(n) && n.data.month === ym && !n.data.pinned);
   const due = d.notices.filter((n) => n.data.due && n.data.due >= today() && n.data.due <= addDays(today(), 14));
-  const recent = groupMeetings(d.meetings).slice(0, 3);
+  // 최근 회의: 관리자가 회의록에서 '한눈에 게시'로 올린 회의만
+  const recent = groupMeetings(d.meetings.filter((r) => r.data.showRecent)).slice(0, 3);
   const board = h('div', {});
   const setDate = (x) => clear(board, dayBoard(d, x, setDate, reload));
   setDate(date);
@@ -75,7 +76,7 @@ export async function noticeOverview(root, date = today()) {
         month.length ? [h('h3', {}, `${monthLabel(ym)} 공지`), month.map((n) => noticeCard(n, reload, { compact: true }))] : null,
         due.length ? [h('h3', {}, '⏰ 2주 안 마감'), due.map((n) => noticeCard(n, reload, { compact: true }))] : null),
       h('div', {},
-        h('h3', {}, '📝 최근 회의'), recent.length ? recent.map((g) => meetingCard(g, reload, false)) : h('p', { class: 'muted' }, '회의 기록이 없습니다.'))));
+        h('h3', {}, '📝 최근 회의'), recent.length ? recent.map((g) => meetingCard(g, reload, false)) : h('p', { class: 'muted' }, state.me?.role === 'admin' ? '게시한 회의가 없습니다. 회의록 탭에서 "한눈에 게시"를 체크하면 여기에 올라갑니다.' : '게시된 회의가 없습니다.'))));
 }
 
 // 공지: 분류별 · 부서별
@@ -121,13 +122,25 @@ export function groupMeetings(rows) {
   return [...map.values()].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-function meetingCard(g, reload, open = true) {
+function meetingCard(g, reload, open = true, { toggle = false } = {}) {
   const redo = g.rows.filter((r) => r.data.status === '재논의').length;
+  const shown = g.rows.some((r) => r.data.showRecent);
+  // 관리자: 이 회의를 '공지·업무 → 한눈에'의 최근 회의에 올리기/내리기 (회의의 안건 전체에 적용)
+  const setShown = async (on, box) => {
+    box.disabled = true;
+    try {
+      for (const r of g.rows) if (!!r.data.showRecent !== on) Object.assign(r, await api(`/api/records/meetings/${r.id}`, { method: 'PUT', body: { data: { ...r.data, showRecent: on }, version: r.version } }));
+      toast(on ? '한눈에 최근 회의에 올렸습니다.' : '한눈에서 내렸습니다.'); reload();
+    } catch (e) { toast(e.message, 'error'); box.checked = !on; box.disabled = false; }
+  };
   return h('details', { class: 'card meeting', open },
     h('summary', {},
       h('strong', {}, `${fmtDate(g.date)} · ${g.meeting}`),
       h('span', { class: 'muted' }, ` 안건 ${g.rows.length}개`),
-      redo ? h('span', { class: 'badge warn' }, `재논의 ${redo}`) : null),
+      redo ? h('span', { class: 'badge warn' }, `재논의 ${redo}`) : null,
+      toggle ? h('label', { class: 'inline show-recent', title: '공지·업무 → 한눈에의 최근 회의에 표시', onclick: (e) => e.stopPropagation() },
+        h('input', { type: 'checkbox', checked: shown, onchange: (e) => setShown(e.target.checked, e.target) }), ' 한눈에 게시')
+        : shown ? h('span', { class: 'tag ok' }, '📌 한눈에 게시') : null),
     h('table', { class: 'table compact' },
       h('thead', {}, h('tr', {}, ['안건', '결과', '상태'].map((t) => h('th', {}, t)))),
       h('tbody', {}, g.rows.map((r) => h('tr', { class: `click ${r.data.status === '재논의' ? 'hl' : ''}`, onclick: () => openRecordForm('meetings', r, { onSaved: reload }) },
@@ -150,7 +163,7 @@ export async function meetingsView(root) {
       h('span', { class: 'muted' }, `회의 ${groups.length}번 · 안건 ${shown.length}개`),
       h('span', { class: 'grow' }),
       canEdit('meetings') ? h('button', { class: 'btn primary', onclick: () => newMeeting(kind, reload) }, '+ 새 회의록') : null),
-    groups.map((g) => meetingCard(g, reload, false)),
+    groups.map((g) => meetingCard(g, reload, false, { toggle: state.me?.role === 'admin' })),
     groups.length ? null : h('p', { class: 'muted' }, '회의 기록이 없습니다.'));
 }
 
