@@ -845,3 +845,4 @@ td.center { text-align: center; }
 .sp-group { display: flex; gap: 10px; align-items: flex-start; }
 .sp-group .sp-dept { min-width: 92px; margin: 6px 0 0; flex-direction: column; align-items: flex-start; gap: 0; }
 .account-box { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.req-note { margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); white-space: pre-wrap; }

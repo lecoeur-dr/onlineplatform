@@ -26,6 +26,10 @@ function mySchools(refresh) {
 export async function joinView(root, refresh) {
   const out = h('div', {});
   const myNameInput = () => h('input', { name: 'name', placeholder: '학교에서 쓰는 내 이름 (실명)', value: state.me.accountName || '', required: true });
+  // 신청 메모: 예시는 회색 안내 글(placeholder)이라 쓰기 시작하면 사라짐
+  const noteRow = (who = '학교 관리자') => h('div', { class: 'row' }, h('label', {}, '신청 메모 (선택)'),
+    h('textarea', { name: 'note', rows: 2, maxlength: 300, placeholder: '예) 춘천 춘천초등학교입니다.\n예) 3학년 2반 담임 김OO입니다.' }),
+    h('small', { class: 'muted' }, `${who}에게 함께 보입니다. 누구인지 알 수 있게 소속·학년·반 등을 적어 주세요.`));
 
   // 초대 링크로 들어온 경우 바로 요청
   const invite = remember('invite');
@@ -53,7 +57,7 @@ export async function joinView(root, refresh) {
     e.preventDefault();
     const f = new FormData(e.target);
     try {
-      const r = await api('/api/schools', { method: 'POST', body: { name: f.get('school'), myName: f.get('name'), dept: f.get('dept'), neisCode: picked?.code, neis: picked } });
+      const r = await api('/api/schools', { method: 'POST', body: { name: f.get('school'), myName: f.get('name'), dept: f.get('dept'), note: f.get('note'), neisCode: picked?.code, neis: picked } });
       toast(r.status === 'active' ? '학교를 만들었습니다.' : '개설을 신청했습니다. 운영자 승인 뒤 사용할 수 있습니다.');
       remember('school', r.id);
       refresh();
@@ -78,6 +82,7 @@ export async function joinView(root, refresh) {
   h('div', { class: 'row' }, h('label', {}, '학교 이름 *'), h('input', { name: 'school', required: true })),
   h('div', { class: 'row' }, h('label', {}, '내 이름 *'), myNameInput()),
   h('div', { class: 'row' }, h('label', {}, '내 부서'), h('input', { name: 'dept', placeholder: '예: 교무' })),
+  noteRow('플랫폼 운영자'),
   h('button', { class: 'btn primary' }, '학교 개설 신청'));
 
   // 지금 로그인한 계정 + 다른 계정으로 바꾸기 (관리자가 내보낸 계정으로 들어오면 이 화면이 나옴)
@@ -93,9 +98,10 @@ export async function joinView(root, refresh) {
       h('div', {},
         h('section', { class: 'card' }, h('h3', {}, '🔑 초대 코드로 가입'),
           h('p', { class: 'muted small' }, '학교 관리자에게 받은 초대 링크를 열었거나 코드를 받았다면 입력하세요. 관리자가 승인하면 학교 자료가 보입니다.'),
-          h('form', { class: 'form', onsubmit: (e) => { e.preventDefault(); const f = new FormData(e.target); join({ code: f.get('code'), name: f.get('name') }); } },
+          h('form', { class: 'form', onsubmit: (e) => { e.preventDefault(); const f = new FormData(e.target); join({ code: f.get('code'), name: f.get('name'), note: f.get('note') }); } },
             h('div', { class: 'row' }, h('label', {}, '초대 코드'), h('input', { name: 'code', required: true, placeholder: '예: 3fa9c21b' })),
             h('div', { class: 'row' }, h('label', {}, '내 이름'), myNameInput()),
+            noteRow(),
             h('button', { class: 'btn primary' }, '가입 요청'))),
         h('section', { class: 'card' }, h('h3', {}, '🔎 학교 찾아서 가입'),
           h('form', { class: 'form', onsubmit: async (e) => {
@@ -103,10 +109,11 @@ export async function joinView(root, refresh) {
             const f = new FormData(e.target);
             const list = await api(`/api/schools/search?q=${encodeURIComponent(f.get('q'))}`);
             clear(results, list.length ? h('ul', { class: 'list' }, list.map((s) => h('li', {}, h('strong', {}, s.name), ' ',
-              h('button', { class: 'btn small primary', onclick: () => join({ schoolId: s.id, name: f.get('name') }) }, '가입 요청')))) : h('p', { class: 'muted' }, `${APP_NAME}에 등록된 학교가 없습니다. 오른쪽에서 새로 개설할 수 있습니다.`));
+              h('button', { class: 'btn small primary', onclick: () => join({ schoolId: s.id, name: f.get('name'), note: f.get('note') }) }, '가입 요청')))) : h('p', { class: 'muted' }, `${APP_NAME}에 등록된 학교가 없습니다. 오른쪽에서 새로 개설할 수 있습니다.`));
           } },
           h('div', { class: 'row' }, h('label', {}, '학교 이름'), h('input', { name: 'q', required: true, minlength: 2 })),
           h('div', { class: 'row' }, h('label', {}, '내 이름'), myNameInput()),
+          noteRow(),
           h('button', { class: 'btn' }, '찾기')),
           results)),
       h('section', { class: 'card' }, h('h3', {}, '🏫 새 학교 개설'),
@@ -123,7 +130,7 @@ export async function platformView(root) {
     h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
       h('thead', {}, h('tr', {}, ['학교', '상태', '구성원', '기록', '신청자', '만든 날', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, list.map((s) => h('tr', { class: s.status === 'pending' ? 'hl' : '' },
-        h('td', {}, h('strong', {}, s.name), s.neis_code ? h('div', { class: 'muted small' }, `나이스 ${s.neis_code}`) : null),
+        h('td', {}, h('strong', {}, s.name), s.neis_code ? h('div', { class: 'muted small' }, `나이스 ${s.neis_code}`) : null, s.note ? h('div', { class: 'small req-note' }, `💬 ${s.note}`) : null),
         h('td', {}, STATUS[s.status] || s.status), h('td', { class: 'num' }, s.members), h('td', { class: 'num' }, s.records),
         h('td', { class: 'small' }, s.created_by || '-'), h('td', { class: 'small' }, s.created_at),
         h('td', { class: 'nowrap' },

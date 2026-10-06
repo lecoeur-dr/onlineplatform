@@ -265,8 +265,9 @@ app.post('/api/schools/join', async (c) => {
   const name = String(b.name || user.name || '').trim().slice(0, 30);
   const prev = await db.prepare('SELECT role FROM members WHERE school_id = ? AND email = ?').bind(school.id, user.email).first();
   if (prev) return c.json({ ok: true, status: prev.role, school });
-  await db.prepare("INSERT INTO members (school_id, email, role, name) VALUES (?, ?, 'pending', ?)").bind(school.id, user.email, name).run();
-  await notify(c, await schoolAdmins(db, school.id), { title: '🙋 학교 가입 요청', body: `${name || user.email} 선생님이 가입을 요청했습니다.`, url: '/#/admin' }, school.id);
+  const note = String(b.note || '').trim().slice(0, 300);
+  await db.prepare("INSERT INTO members (school_id, email, role, name, note) VALUES (?, ?, 'pending', ?, ?)").bind(school.id, user.email, name, note).run();
+  await notify(c, await schoolAdmins(db, school.id), { title: '🙋 학교 가입 요청', body: `${name || user.email} 선생님이 가입을 요청했습니다.${note ? ` 「${note.slice(0, 60)}」` : ''}`, url: '/#/admin' }, school.id);
   return c.json({ ok: true, status: 'pending', school });
 });
 
@@ -286,12 +287,12 @@ app.post('/api/schools', async (c) => {
   const id = `s${randomToken(5)}`;
   const status = user.super ? 'active' : 'pending';
   await db.batch([
-    db.prepare('INSERT INTO schools (id, name, status, invite_code, neis_code, created_by) VALUES (?, ?, ?, ?, ?, ?)').bind(id, name, status, randomToken(4), b.neisCode || null, user.email),
+    db.prepare('INSERT INTO schools (id, name, status, invite_code, neis_code, created_by, note) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, name, status, randomToken(4), b.neisCode || null, user.email, String(b.note || '').trim().slice(0, 300)),
     db.prepare("INSERT INTO members (school_id, email, role, name, dept) VALUES (?, ?, 'admin', ?, ?)").bind(id, user.email, String(b.myName || user.name || ''), String(b.dept || '')),
     putSetting(db, id, 'currentYear', new Date().getFullYear()),
   ]);
   if (b.neis?.atpt && b.neis?.code) await putSetting(db, id, 'neis', { atpt: String(b.neis.atpt), code: String(b.neis.code), name: String(b.neis.name || name), office: String(b.neis.office || '') }).run();
-  if (status === 'pending') await notify(c, adminEmails(c.env), { title: '🏫 새 학교 개설 신청', body: `${name} (${user.email})`, url: '/#/platform' });
+  if (status === 'pending') await notify(c, adminEmails(c.env), { title: '🏫 새 학교 개설 신청', body: `${name} (${user.email})${b.note ? ` 「${String(b.note).slice(0, 60)}」` : ''}`, url: '/#/platform' });
   return c.json({ ok: true, id, status });
 });
 
@@ -738,7 +739,7 @@ async function saveLastSync(db, schoolId, neis, result) {
 
 app.get('/api/admin/users', async (c) => {
   const { schoolId } = c.get('member');
-  const rows = await c.env.DB.prepare(`SELECT m.email, m.name, m.role, m.dept, m.created_at, u.last_login, u.name AS account_name FROM members m LEFT JOIN users u ON u.email = m.email
+  const rows = await c.env.DB.prepare(`SELECT m.email, m.name, m.role, m.dept, m.note, m.created_at, u.last_login, u.name AS account_name FROM members m LEFT JOIN users u ON u.email = m.email
     WHERE m.school_id = ? ORDER BY m.role = 'pending' DESC, m.role, m.name`).bind(schoolId).all();
   return c.json(rows.results);
 });
