@@ -10,10 +10,11 @@ import { scheduleOverview, eventsList, tripsView, reviewView } from './views/sch
 import { classOverview, programsView, openClassesTab, substitutesView } from './views/classes.js';
 import { reservationsView } from './views/reservations.js';
 import { dutiesView } from './views/duties.js';
-import { noticeOverview, noticesView, meetingsView, meetingPlansView, collectionsView, briefingsView } from './views/notices.js';
+import { noticeOverview, noticesView, meetingsView, meetingPlansView, briefingsView } from './views/notices.js';
 import { deadlinesView } from './views/deadlines.js';
 import { moneyOverview, purchasesView, budgetView, schoolBudgetView, contestBudgetView, spendView } from './views/money.js';
 import { infoOverview, contactsView, rulesView, resourcesView, assignmentsView } from './views/info.js';
+import { collectionsView } from './views/collections.js';
 import { DESK_VIEWS } from './views/desk.js';
 import { joinView, platformView, meView } from './views/account.js';
 import { bellButton, refreshBell } from './views/inbox.js';
@@ -253,7 +254,7 @@ function quickAddButton() {
       ['trips', '🚌 복무·출장', { date: today(), kind: '출장', person: state.me.name || '' }],
       ['substitutes', '🔁 보결', { date: today() }],
       ['briefings', '📣 전달사항', { date: today(), kind: '조례' }],
-      ['collections', '📥 수합', {}],
+      ['collections', '📥 취합', { kind: '확인', allowEdit: true }],
       ['reservations', '🏫 특별실 예약', { date: today(), user: state.me.name || '' }],
       ['duties', '🧑‍🏫 담당 배정', { date: today() }],
       ['memos', '✏️ 달력 메모', { date: today() }],

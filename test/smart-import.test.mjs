@@ -183,3 +183,20 @@ test('예산 엑셀: 머리글 찾기·사업명 이어쓰기·소계 건너뛰�
   assert.equal(k[0].amount, 1200000);
   assert.equal(k[0].program, '체험학습');
 });
+
+test('취합: 참석 조사 기본 문항·집계·정원·필수 검사', async () => {
+  const { presetQuestions, tallyOf, checkAnswers } = await import('../public/js/collect.js');
+  const att = presetQuestions('참석 조사');
+  assert.equal(att[0].type, 'attend');
+  assert.deepEqual(tallyOf(att, [{ q1: '참석' }, { q1: '불참', q2: '출장' }, { q1: '참석' }]).q1, { 참석: 2, 불참: 1, 미정: 0 });
+  assert.match(checkAnswers(att, {}).error, /참석 여부/);
+  const sel = [{ id: 'q1', type: 'single', label: '연수', required: true, options: ['A', 'B'], caps: [2, 0] }];
+  assert.match(checkAnswers(sel, { q1: 'A' }, { othersTally: { q1: { A: 2, B: 0 } } }).error, /정원/);
+  assert.deepEqual(checkAnswers(sel, { q1: 'B' }, { othersTally: { q1: { A: 2, B: 9 } } }).clean, { q1: 'B' });
+  assert.match(checkAnswers(sel, { q1: 'C' }).error, /없는 보기/);
+  const multi = [{ id: 'q1', type: 'multi', label: '희망', options: ['x', 'y', 'z'], max: 2 }];
+  assert.match(checkAnswers(multi, { q1: ['x', 'y', 'z'] }).error, /2개까지/);
+  const sub = presetQuestions('제출');
+  assert.match(checkAnswers(sub, { q1: 'abc' }).error, /http/);
+  assert.deepEqual(checkAnswers(sub, {}, { linkGiven: true }).clean, {});
+});

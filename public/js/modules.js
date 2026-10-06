@@ -186,15 +186,20 @@ export const MODULES = {
       { key: 'note', label: '설명', type: 'text' },
     ],
   },
+  // 📥 취합: 확인 · 제출 · 참석 조사 · 선택(정원) · 설문. 응답은 responses 표, 집계는 tally, 응답한 사람은 done
   collections: {
-    label: '수합', icon: '📥', scope: 'year', edit: 'staff',
+    label: '취합', icon: '📥', scope: 'year', edit: 'staff', extras: ['questions', 'tally', 'noticeId', 'meetingId'],
     fields: [
+      { key: 'kind', label: '유형', type: 'select', options: ['확인', '제출', '참석 조사', '선택', '설문'], hint: '확인: 체크만 · 제출: 링크 받기 · 참석 조사: 참석/불참/미정 · 선택: 보기에서 고르기(정원) · 설문: 여러 문항' },
       { key: 'title', label: '제목', type: 'text', required: true, hint: '예) 학급 교육과정 운영계획 제출' },
       { key: 'due', label: '마감일', type: 'date' },
-      { key: 'target', label: '대상', type: 'names', hint: '이름을 쉼표로 구분. 비워 두면 전체 교직원' },
+      { key: 'target', label: '대상', type: 'names', pick: 'staff', hint: '비워 두면 전체 교직원' },
       { key: 'content', label: '안내', type: 'textarea' },
-      { key: 'link', label: '제출 링크·폴더', type: 'url' },
-      { key: 'done', label: '제출 완료', type: 'names', hint: '각자 [제출 완료] 버튼으로 체크' },
+      { key: 'link', label: '링크 (폴더·구글폼 등)', type: 'url', hint: '구글폼이나 드라이브 폴더 주소. 제출 유형에서 링크를 걸어 두면 각자 그곳에 낸 뒤 [제출 완료]만 눌러도 됩니다' },
+      { key: 'allowEdit', label: '마감 전 응답 수정 허용', type: 'bool' },
+      { key: 'showResults', label: '결과를 대상자 모두에게 공개', type: 'bool', hint: '끄면 만든 사람과 관리자만 결과를 봅니다 (선택 유형의 보기별 인원·정원은 항상 보임)' },
+      { key: 'toNotice', label: '공지에도 올리기', type: 'bool', hint: '마감일이 지나면 공지도 자동으로 내려갑니다' },
+      { key: 'done', label: '응답·제출 완료', type: 'names', hint: '응답하면 자동으로 채워집니다' },
     ],
   },
   programs: {
@@ -220,7 +225,7 @@ export const MODULES = {
   },
   // 회의 예정: 저장하면 학사일정(회의)·공지에 자동 등록 (eventId·noticeId 로 연결, 고치면 함께 고쳐짐)
   meetingPlans: {
-    label: '회의', icon: '🗓', scope: 'date', edit: 'staff', extras: ['eventId', 'noticeId'],
+    label: '회의', icon: '🗓', scope: 'date', edit: 'staff', extras: ['eventId', 'noticeId', 'collectionId'],
     fields: [
       { key: 'date', label: '회의일', type: 'date', required: true },
       { key: 'time', label: '시간', type: 'text', hint: '예) 15:00, 7교시 후' },
@@ -233,6 +238,7 @@ export const MODULES = {
       { key: 'note', label: '준비물·안내', type: 'textarea' },
       { key: 'toCalendar', label: '학사일정에 등록', type: 'bool', hint: '체크하면 통합 달력에 "회의"로 올라갑니다' },
       { key: 'toNotice', label: '공지에 등록', type: 'bool', hint: '체크하면 공지·업무 → 공지에 안내가 올라갑니다' },
+      { key: 'askAttend', label: '참석 여부 받기', type: 'bool', hint: '체크하면 참석 대상에게 참석/불참/미정을 묻는 취합이 자동으로 만들어집니다' },
     ],
   },
   notices: {
@@ -679,7 +685,7 @@ export const GROUPS = [
     { id: 'overview', label: '한눈에' },
     { id: 'notices', label: '공지', module: 'notices' },
     { id: 'briefings', label: '전달사항', module: 'briefings' },
-    { id: 'collections', label: '수합', module: 'collections' },
+    { id: 'collections', label: '취합', module: 'collections' },
     { id: 'duties', label: '담당 배정', module: 'duties' },
     { id: 'meetingPlans', label: '회의', module: 'meetingPlans' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
@@ -751,7 +757,7 @@ export const DESK_GROUPS = [
 
 export const spaceOf = (moduleId) => MODULES[moduleId]?.space || 'school';
 
-// 이름 목록을 각자 켜고 끌 수 있는 칸 (참관 신청, 수합 제출, 마켓 좋아요)
+// 이름 목록을 각자 켜고 끌 수 있는 칸 (참관 신청, 취합 확인, 마켓 좋아요)
 // 행정·예산 권한 칸 (학교 관리 → 권한)
 export const MONEY_ACCESS = [
   { id: 'overview', label: '예산 대시보드', hint: '학교본예산 합계·집행률 보기(읽기 전용)' },

@@ -22,13 +22,13 @@ export async function dashboardView(root) {
     ...d.openClasses.map(openClassItem), ...d.substitutes.map(substituteItem),
   ].filter(Boolean);
   for (const x of d.duties) all.push({ mod: 'duties', r: x, date: x.data.date, cat: '담당', color: '#0e7490', label: `🧑‍🏫 ${x.data.title}${x.data.role ? ` · ${x.data.role}` : ''}`, sub: x.data.person || '' });
-  for (const c of d.collections) if (c.data.due) all.push({ mod: 'collections', r: c, date: c.data.due, cat: '수합', color: '#0e7490', label: `📥 마감: ${c.data.title}`, sub: '' });
+  for (const c of d.collections) if (c.data.due) all.push({ mod: 'collections', r: c, date: c.data.due, cat: '취합', color: '#0e7490', label: `📥 마감: ${c.data.title}`, sub: '' });
   for (const n of d.notices) if (n.data.due) all.push({ mod: 'notices', r: n, date: n.data.due, cat: '공지', color: '#b7791f', label: `📢 마감: ${n.data.title || n.data.content.split('\n')[0]}`, sub: n.data.dept || '' });
 
   const pinned = d.notices.filter((n) => !isExpired(n) && n.data.pinned && (!n.data.month || n.data.month === ym));
   const redo = d.meetings.filter((m) => m.data.status === '재논의').slice(-5);
 
-  // 내 할 일: 내 보결(7일 안) · 내가 낼 수합 · 내 복무
+  // 내 할 일: 내 보결(7일 안) · 내가 낼 취합 · 내 복무
   const mySubs = d.substitutes.filter((s) => s.data.substitute === me && s.data.date >= t && s.data.date <= addDays(t, 7)).sort((a, b) => a.data.date.localeCompare(b.data.date));
   const myCols = d.collections.filter(isMyTask).sort((a, b) => String(a.data.due || '9999').localeCompare(String(b.data.due || '9999')));
   const myDuties = d.duties.filter((x) => x.data.person === me && x.data.date >= t && x.data.date <= addDays(t, 14)).sort((a, b) => a.data.date.localeCompare(b.data.date));
@@ -99,7 +99,7 @@ export async function dashboardView(root) {
           myCols.map((c) => h('li', { class: 'click', onclick: () => { location.hash = '#/notice/collections'; } }, `📥 ${c.data.title}`, h('span', { class: 'muted' }, ` ${c.data.due ? dday(c.data.due) : ''}`))),
           myDuties.map((x) => h('li', { class: 'click', onclick: () => { location.hash = '#/notice/duties'; } }, `🧑‍🏫 ${fmtDate(x.data.date)} ${x.data.title}`, h('span', { class: 'muted' }, ` ${[x.data.role, x.data.place, x.data.time].filter(Boolean).join(' · ')}`))),
           myResv.map((x) => h('li', { class: 'click', onclick: () => { location.hash = '#/class/reservations'; } }, `🏫 ${fmtDate(x.data.date)} ${x.data.period} ${x.data.place} 예약`)),
-          myLeaves.map((x) => item(tripItem(x)))) : h('p', { class: 'muted' }, '오늘 이후 내 보결·담당·제출할 수합이 없습니다.'),
+          myLeaves.map((x) => item(tripItem(x)))) : h('p', { class: 'muted' }, '오늘 이후 내 보결·담당·낼 취합이 없습니다.'),
         !state.me.name ? h('p', { class: 'muted small' }, '학교 관리 → 사용자에서 내 이름(실명)이 등록되어야 내 할 일이 보입니다.') : null),
       mealBox,
       h('div', { class: 'card' }, h('h3', {}, '📝 재논의 안건'),

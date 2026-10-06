@@ -32,7 +32,7 @@ function dayBoard(d, date, setDate, reload) {
     ...d.substitutes.map(substituteItem), ...d.memos.map(memoItem), ...dutyItems(d.duties),
     ...d.reservations.map((r) => ({ mod: 'reservations', r, date: r.data.date, cat: '특별실 예약', color: '#0369a1', label: `🏫 ${r.data.period || ''} ${r.data.place || ''}`.trim(), sub: [r.data.user, r.data.className].filter(Boolean).join(' ') })),
     ...groupMeetings(d.meetings).map((g) => ({ mod: 'meetings', r: g.rows[0], date: g.date, cat: '회의', color: '#0f8f86', label: `📝 ${g.meeting} (안건 ${g.rows.length})`, go: '#/notice/meetings' })),
-    ...d.collections.filter((c) => c.data.due).map((c) => ({ mod: 'collections', r: c, date: c.data.due, cat: '수합 마감', color: '#0e7490', label: `📥 마감: ${c.data.title}`, go: '#/notice/collections' })),
+    ...d.collections.filter((c) => c.data.due).map((c) => ({ mod: 'collections', r: c, date: c.data.due, cat: '취합 마감', color: '#0e7490', label: `📥 마감: ${c.data.title}`, go: '#/notice/collections' })),
     ...d.deadlines.map(deadlineItem),
     ...d.notices.filter((n) => n.data.due).map((n) => ({ mod: 'notices', r: n, date: n.data.due, cat: '공지 마감', color: '#b7791f', label: `📢 마감: ${n.data.title || String(n.data.content || '').split('\n')[0]}` })),
   ].filter((it) => it && it.date && it.date <= date && (it.endDate || it.date) >= date);
@@ -184,8 +184,9 @@ async function newMeeting(kind, reload) {
 
 // ---------- 회의 (예정) : 저장하면 학사일정·공지 자동 등록 ----------
 export async function meetingPlansView(root) {
-  const [plans, recs] = await Promise.all([api(`/api/records/meetingPlans?year=${state.year}`), api(`/api/records/meetings?year=${state.year}`)]);
+  const [plans, recs, cols] = await Promise.all([api(`/api/records/meetingPlans?year=${state.year}`), api(`/api/records/meetings?year=${state.year}`), api(`/api/records/collections?year=${state.year}`).catch(() => [])]);
   const reload = () => meetingPlansView(root);
+  const colOf = new Map(cols.map((x) => [x.id, x]));
   const t = today();
   const done = new Set(recs.map((r) => r.data.planId).filter(Boolean));
   const mode = remember('mp_mode') || 'up';
@@ -210,6 +211,8 @@ export async function meetingPlansView(root) {
           dd >= 0 ? h('span', { class: `tag ${dd <= 1 ? 'warn' : 'ghost'}` }, dd === 0 ? '오늘' : `D-${dd}`) : null),
         d.title ? h('div', {}, d.title) : null,
         h('div', { class: 'muted small' }, [d.place && `📍 ${d.place}`, d.dept && `주관 ${d.dept}`, `👥 ${(d.attendees || []).length ? `${d.attendees.length}명` : '전체 교직원'}`].filter(Boolean).join(' · ')),
+        d.collectionId && colOf.get(d.collectionId) ? (() => { const cc = colOf.get(d.collectionId); const tl = cc.data.tally?.q1 || {}; const tg = targetsOf(cc); const miss = tg.filter((n) => !(cc.data.done || []).includes(n)).length;
+          return h('a', { class: 'attend-line', href: '#/notice/collections' }, `🙋 참석 ${tl['참석'] || 0} · 불참 ${tl['불참'] || 0} · 미정 ${tl['미정'] || 0} · 미응답 ${miss}`); })() : null,
         d.agenda ? h('ol', { class: 'small mplan-agenda' }, String(d.agenda).split('\n').filter((x) => x.trim()).map((x) => h('li', {}, x.replace(/^\s*[-·•]\s*/, '')))) : null,
         h('div', { class: 'row-actions' },
           d.eventId ? h('a', { class: 'tag ok', href: '#/schedule/overview' }, '📅 학사일정 등록됨') : h('span', { class: 'tag ghost' }, '학사일정 미등록'),
@@ -220,62 +223,15 @@ export async function meetingPlansView(root) {
     h('p', { class: 'hint' }, '회의를 등록하면 학사일정(분류: 회의)과 공지에 자동으로 올라가고, 회의 내용을 고치면 함께 고쳐집니다. 체크를 끄거나 회의를 지우면 자동으로 올린 일정·공지도 함께 지워집니다. 회의가 끝나면 [📝 회의록 쓰기]로 미리 적은 안건을 회의록으로 불러옵니다.'));
 }
 
-// ---------- 수합 (제출 체크) ----------
+// ---------- 취합 공통 (화면은 collections.js) ----------
 
 export const targetsOf = (r) => (r.data.target?.length ? r.data.target : state.staff.map((x) => x.name).filter(Boolean));
-export const isMyTask = (r) => targetsOf(r).includes(myName()) && !(r.data.done || []).includes(myName());
+export const isMyTask = (r) => targetsOf(r).includes(myName()) && !(r.data.done || []).includes(myName()) && !(r.data.due && r.data.due < today());
 
 export function dday(due) {
   if (!due) return '';
   const diff = Math.round((new Date(`${due}T00:00:00`) - new Date(`${today()}T00:00:00`)) / 86400000);
   return diff === 0 ? 'D-day' : diff > 0 ? `D-${diff}` : `마감 ${-diff}일 지남`;
-}
-
-function collectionCard(r, reload, onToggle) {
-  const targets = targetsOf(r);
-  const done = (r.data.done || []).filter((n) => targets.includes(n));
-  const missing = targets.filter((n) => !done.includes(n));
-  const me = myName();
-  const mine = targets.includes(me);
-  const iDone = (r.data.done || []).includes(me);
-  const pct = targets.length ? Math.round((done.length / targets.length) * 100) : 0;
-  const late = r.data.due && r.data.due < today() && missing.length;
-  return h('div', { class: `card collection ${late ? 'late' : ''}` },
-    h('div', { class: 'notice-head' },
-      h('strong', { class: 'click', onclick: () => openRecordForm('collections', r, { onSaved: reload }) }, r.data.title),
-      h('span', { class: 'grow' }),
-      r.data.due ? h('span', { class: `tag ${late ? 'danger' : ''}` }, `${fmtDate(r.data.due)} · ${dday(r.data.due)}`) : null),
-    r.data.content ? h('div', { class: 'pre small' }, r.data.content) : null,
-    h('div', { class: 'bar', title: `${done.length}/${targets.length}` }, h('span', { style: { width: `${pct}%` } }), h('em', {}, `제출 ${done.length} / ${targets.length}명`)),
-    h('div', { class: 'row-actions' },
-      mine && state.me.role !== 'viewer' ? h('button', { class: `btn small ${iDone ? '' : 'primary'}`, onclick: () => onToggle(r, !iDone) }, iDone ? '✔ 제출함 (취소)' : '제출 완료') : null,
-      r.data.link && /^https?:/.test(r.data.link) ? h('a', { class: 'btn small', href: r.data.link, target: '_blank', rel: 'noopener' }, '제출 링크 열기') : null),
-    missing.length ? h('details', { class: 'small' }, h('summary', {}, `미제출 ${missing.length}명`), h('div', { class: 'muted' }, missing.join(', '))) : h('div', { class: 'small muted' }, '모두 제출했습니다.'));
-}
-
-export async function collectionsView(root) {
-  const rows = await api(`/api/records/collections?year=${state.year}`);
-  const reload = () => collectionsView(root);
-  const mode = remember('col_mode') || 'open';
-  const t = today();
-  const toggle = async (r, on) => {
-    try { Object.assign(r, await api(`/api/records/collections/${r.id}/self`, { method: 'POST', body: { on } })); toast(on ? '제출 완료로 표시했습니다.' : '제출 표시를 취소했습니다.'); draw(); }
-    catch (e) { toast(e.message, 'error'); }
-  };
-  const draw = () => {
-    const shown = rows
-      .filter((r) => mode === 'all' || (mode === 'mine' ? isMyTask(r) : (!r.data.due || r.data.due >= addDays(t, -7)) && targetsOf(r).some((n) => !(r.data.done || []).includes(n))))
-      .sort((a, b) => String(a.data.due || '9999').localeCompare(String(b.data.due || '9999')));
-    const mineN = rows.filter(isMyTask).length;
-    clear(root,
-      h('div', { class: 'toolbar' },
-        seg([['open', '진행 중'], ['mine', `내가 낼 것${mineN ? ` (${mineN})` : ''}`], ['all', '전체']], mode, (v) => { remember('col_mode', v); collectionsView(root); }),
-        h('span', { class: 'grow' }),
-        canEdit('collections') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('collections', null, { onSaved: reload }) }, '+ 수합') : null),
-      h('p', { class: 'hint' }, '대상을 비워 두면 승인된 전체 교직원이 대상입니다. 각자 [제출 완료]를 누르면 미제출 명단이 자동으로 줄어듭니다.'),
-      shown.length ? h('div', { class: 'cards' }, shown.map((r) => collectionCard(r, reload, toggle))) : h('p', { class: 'muted' }, '해당하는 수합이 없습니다.'));
-  };
-  draw();
 }
 
 // 📣 조례·종례 전달사항: 날짜별로 모아 보고, 담임은 그대로 읽어 줄 수 있게 크게 보기

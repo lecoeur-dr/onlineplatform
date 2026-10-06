@@ -3,6 +3,7 @@
 //   - 가상 데이터는 오늘 날짜를 기준으로 만들어지고, 이 탭(sessionStorage)에만 잠시 남음
 //   - 등장하는 학교·사람·학생 이름은 모두 지어낸 것
 import { MODULES, DEFAULT_LISTS, SELF_TOGGLE, yearRange, normalizeData, spaceOf } from './modules.js';
+import { tallyOf, checkAnswers, presetQuestions } from './collect.js';
 
 const KEY = 'gy_demo_db';
 const FLAG = 'gy_demo';
@@ -305,6 +306,28 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
     if (method === 'DELETE') return write(() => { d.subs[m[1]] = []; return { ok: true }; });
     return write(() => { const x = list.find((s) => s.id === Number(m[2])); if (x) x.hidden = body?.hidden !== false; return { ok: true }; });
   }
+  // 취합 응답 (체험용 가짜 서버: 서버와 같은 규칙)
+  m = p.match(/^\/api\/collections\/([^/]+)\/(responses|respond|remind)$/);
+  if (m) {
+    const col = d.records.find((x) => x.id === m[1] && x.module === 'collections');
+    if (!col) fail(404, '취합을 찾을 수 없습니다.');
+    d.resp ||= {};
+    const list = d.resp[m[1]] ||= [];
+    const targets = col.data.target?.length ? col.data.target : d.members.filter((x) => x.role !== 'pending').map((x) => x.name);
+    const refresh = () => { col.data.tally = tallyOf(col.data.questions || [], list.map((x) => x.answers)); if (col.data.kind !== '확인') col.data.done = list.map((x) => x.name); col.version++; };
+    if (m[2] === 'responses') return { owner: true, canSeeAll: true, targets, mine: list.find((x) => x.name === d.name) ? { ...list.find((x) => x.name === d.name), mine: true } : null, rows: list, me: d.name };
+    if (m[2] === 'remind') return { ok: true, sent: targets.filter((n) => !(col.data.done || []).includes(n)).length };
+    return write(() => {
+      const i = list.findIndex((x) => x.name === d.name);
+      if (method === 'DELETE') { if (i >= 0) list.splice(i, 1); refresh(); return toClient(col); }
+      const chk = checkAnswers(col.data.questions || [], body.answers || {}, { othersTally: tallyOf(col.data.questions || [], list.filter((x) => x.name !== d.name).map((x) => x.answers)), linkGiven: !!col.data.link });
+      if (chk.error) fail(400, chk.error);
+      const row = { name: d.name, answers: chk.clean, at: nowStamp() };
+      if (i >= 0) list[i] = row; else list.push(row);
+      refresh();
+      return toClient(col);
+    });
+  }
   if (p === '/api/staff') {
     const out = d.members.filter((x) => x.role !== 'pending').map(({ name, dept }) => ({ name, dept }));
     for (const r of d.records) if (r.module === 'assignments' && r.data.name && !out.some((x) => x.name === r.data.name)) out.push({ name: r.data.name, dept: r.data.dept || '' });
@@ -336,6 +359,7 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
       const data = normalizeData(mod, body.data);
       if (MODULES[mod].scope === 'date' && !data.date) fail(400, '날짜를 입력해 주세요.');
       clash(mod, data);
+      if (mod === 'collections' && !(data.questions || []).length) data.questions = presetQuestions(data.kind || '확인');
       if (mod === 'activities') data.token = Math.random().toString(16).slice(2).padEnd(24, '0');
       const r = { id: `d${d.seq++}`, module: mod, data, version: 1, sort: d.seq, year: MODULES[mod].scope === 'year' ? Number(body.year || year) : null, date: MODULES[mod].scope === 'date' ? data.date : null, owner: spaceOf(mod) === 'school' ? null : ME.email, author: d.name, updatedBy: ME.email, updatedAt: nowStamp() };
       if (mod === 'market') r.data.likes = [];
@@ -343,6 +367,7 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
       if (mod === 'meetingPlans') { // 서버의 회의 → 학사일정·공지 자동 등록과 같은 동작(체험용, 등록만)
         const head = [data.meeting, data.title].filter(Boolean).join(' · ') || '회의';
         if (data.toCalendar) { const eid = `d${d.seq++}`; d.records.push({ id: eid, module: 'events', data: normalizeData('events', { date: data.date, title: head, category: '회의', place: data.place || '', dept: data.dept || '', source: '회의 예정' }), version: 1, sort: d.seq, year: null, date: data.date, owner: null, updatedBy: ME.email, updatedAt: nowStamp() }); r.data.eventId = eid; }
+        if (data.askAttend) { const cid = `d${d.seq++}`; d.records.push({ id: cid, module: 'collections', data: { ...normalizeData('collections', { kind: '참석 조사', title: `[참석] ${head}`, due: data.date, target: data.attendees || [], allowEdit: true }), questions: presetQuestions('참석 조사'), tally: {}, meetingId: r.id, done: [] }, version: 1, sort: d.seq, year: Number(year), date: null, owner: null, updatedBy: ME.email, updatedAt: nowStamp() }); r.data.collectionId = cid; }
         if (data.toNotice) { const nid = `d${d.seq++}`; d.records.push({ id: nid, module: 'notices', data: normalizeData('notices', { title: `[회의] ${head}`, category: '부서 안내', content: `🗓 ${data.date} · ${head}\n${data.agenda || ''}`, due: data.date }), version: 1, sort: d.seq, year: Number(year), date: null, owner: null, updatedBy: ME.email, updatedAt: nowStamp() }); r.data.noticeId = nid; }
       }
       if (mod === 'events' && data.toNotice) { // 서버의 '공지사항에도 올리기'와 같은 동작

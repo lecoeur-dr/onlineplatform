@@ -4,6 +4,7 @@ import { searchSchools, syncSchedule, getMeals, getTimetable, getDayTimetable } 
 import { mountAuth, loadUser, adminEmails } from './auth.js';
 import { randomToken, encryptText, decryptText } from './crypto.js';
 import { evalFormula } from '../public/js/calc.js';
+import { presetQuestions, tallyOf, checkAnswers } from '../public/js/collect.js';
 import { notify, pushReady, sendPush } from './push.js';
 
 const app = new Hono();
@@ -91,7 +92,7 @@ async function toClient(env, row) {
   for (const k of encKeys(row.module)) if (data[k]) { try { data[k] = await decryptText(env, data[k]); } catch { data[k] = '(복호화 실패)'; } }
   const out = { id: row.id, year: row.year, date: row.date, sort: row.sort, version: row.version, data, updatedBy: row.updated_by, updatedAt: row.updated_at };
   if (row.author_name !== undefined) { out.author = row.author_name || ''; out.owner = row.owner; }
-  if (row.module === 'boards') out.createdBy = row.created_by;
+  if (row.module === 'boards' || row.module === 'collections') out.createdBy = row.created_by;
   return out;
 }
 
@@ -388,7 +389,7 @@ async function notifyChange(c, m, data, prev, schoolId) {
   }
   if (m === 'collections' && !prev) {
     const to = data.target?.length ? await emailsByName(db, schoolId, data.target) : await allMembers(db, schoolId);
-    return notify(c, to, { title: '📥 새 수합', body: `${short(data.title)}${data.due ? ` (마감 ${data.due.slice(5)})` : ''}`, url: '/#/notice/collections' }, schoolId);
+    return notify(c, to, { title: '📥 새 취합', body: `${short(data.title)}${data.due ? ` (마감 ${data.due.slice(5)})` : ''}`, url: '/#/notice/collections' }, schoolId);
   }
   if (m === 'briefings' && !prev) {
     return notify(c, await allMembers(db, schoolId), { title: `📣 ${data.kind || ''} 전달사항`, body: `${d}${short(data.content)}`, url: '/#/notice/briefings' }, schoolId);
@@ -477,7 +478,11 @@ async function upsertLinked(c, schoolId, m, linkedId, data, year) {
   await audit(c, 'create', m, id, '회의 예정에서 자동 등록');
   return id;
 }
-const dropLinked = (c, schoolId, m, id) => (id ? c.env.DB.prepare('DELETE FROM records WHERE id = ? AND module = ? AND school_id = ?').bind(id, m, schoolId).run() : null);
+const dropLinked = async (c, schoolId, m, id) => {
+  if (!id) return;
+  await c.env.DB.prepare('DELETE FROM records WHERE id = ? AND module = ? AND school_id = ?').bind(id, m, schoolId).run();
+  if (m === 'collections') await c.env.DB.prepare('DELETE FROM responses WHERE collection_id = ? AND school_id = ?').bind(id, schoolId).run();
+};
 const schoolYearOf = (date) => { const [y, mo] = date.split('-').map(Number); return mo <= 2 ? y - 1 : y; };
 
 // 회의 예정 → 학사일정(분류 '회의')·공지 자동 등록/수정/해제
@@ -496,7 +501,24 @@ async function syncMeetingPlan(c, schoolId, planId, d) {
       d.agenda ? `안건\n${String(d.agenda).split('\n').filter(Boolean).map((x) => `- ${x.replace(/^[-·•]\s*/, '')}`).join('\n')}` : '', d.note ? `안내: ${d.note}` : ''].filter(Boolean).join('\n');
     noticeId = await upsertLinked(c, schoolId, 'notices', noticeId, normalizeData('notices', { title: `[회의] ${head} (${md(d.date)})`, category: '부서 안내', content, dept: d.dept || '', due: d.date }), schoolYearOf(d.date));
   } else if (noticeId) { await dropLinked(c, schoolId, 'notices', noticeId); noticeId = ''; }
-  await c.env.DB.prepare("UPDATE records SET data = json_set(data, '$.eventId', ?, '$.noticeId', ?) WHERE id = ?").bind(eventId, noticeId, planId).run();
+  let collectionId = d.collectionId || '';
+  if (d.askAttend) {
+    const base = { kind: '참석 조사', title: `[참석] ${head} (${md(d.date)})`, due: d.date, target: d.attendees || [], content: [`🗓 ${md(d.date)}${d.time ? ` ${d.time}` : ''}${d.place ? ` · ${d.place}` : ''}`, d.agenda ? `안건: ${String(d.agenda).split('\n').filter(Boolean).join(' / ')}` : ''].filter(Boolean).join('\n'), meetingId: planId };
+    const exists = collectionId && await c.env.DB.prepare("SELECT id FROM records WHERE id = ? AND module = 'collections' AND school_id = ?").bind(collectionId, schoolId).first();
+    collectionId = await upsertLinked(c, schoolId, 'collections', exists ? collectionId : '', exists ? base : { ...base, questions: presetQuestions('참석 조사'), allowEdit: true, showResults: false, done: [] }, schoolYearOf(d.date));
+  } else if (collectionId) { await dropLinked(c, schoolId, 'collections', collectionId); collectionId = ''; }
+  await c.env.DB.prepare("UPDATE records SET data = json_set(data, '$.eventId', ?, '$.noticeId', ?, '$.collectionId', ?) WHERE id = ?").bind(eventId, noticeId, collectionId, planId).run();
+}
+
+// 취합 → 공지 (공지에도 올리기). 마감일 = 취합 마감일 → 지나면 공지도 자동으로 내려감
+async function syncCollectionNotice(c, schoolId, id, d) {
+  if (!schoolId) return;
+  let noticeId = d.noticeId || '';
+  if (d.toNotice) {
+    const content = [d.content || '', d.due ? `마감: ${Number(d.due.slice(5, 7))}월 ${Number(d.due.slice(8, 10))}일` : '', '공지·업무 → 취합에서 응답해 주세요.'].filter(Boolean).join('\n');
+    noticeId = await upsertLinked(c, schoolId, 'notices', noticeId, normalizeData('notices', { title: `[취합] ${d.title || ''}`, category: '일반', content, due: d.due || '' }), d.due ? schoolYearOf(d.due) : (await getSettings(c.env.DB, schoolId)).currentYear);
+  } else if (noticeId) { await dropLinked(c, schoolId, 'notices', noticeId); noticeId = ''; }
+  if (noticeId !== (d.noticeId || '')) await c.env.DB.prepare("UPDATE records SET data = json_set(data, '$.noticeId', ?) WHERE id = ?").bind(noticeId, id).run();
 }
 
 app.post('/api/records/:module', async (c) => {
@@ -509,7 +531,8 @@ app.post('/api/records/:module', async (c) => {
   if (m === 'market') { clean.likes = []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); }
   if (m === 'activities') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
   if (m === 'events') clean.noticeId = '';
-  if (m === 'meetingPlans') { clean.eventId = ''; clean.noticeId = ''; }
+  if (m === 'meetingPlans') { clean.eventId = ''; clean.noticeId = ''; clean.collectionId = ''; }
+  if (m === 'collections') { clean.tally = {}; clean.noticeId = ''; clean.meetingId = ''; clean.done = []; if (!Array.isArray(clean.questions) || !clean.questions.length) clean.questions = presetQuestions(clean.kind || '확인'); }
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
   const denied = await contestGuard(c, t, m, clean, null);
   if (denied) return c.json({ error: denied }, 403);
@@ -525,6 +548,7 @@ app.post('/api/records/:module', async (c) => {
   if (t.space === 'school') { await audit(c, 'create', m, id); await notifyChange(c, m, clean, null, t.member.schoolId); }
   if (m === 'events') await syncEventNotice(c, t.member?.schoolId, id, { ...clean, noticeId: '' });
   if (m === 'meetingPlans') await syncMeetingPlan(c, t.member?.schoolId, id, clean);
+  if (m === 'collections') await syncCollectionNotice(c, t.member?.schoolId, id, clean);
   return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first()));
 });
 
@@ -542,7 +566,8 @@ app.put('/api/records/:module/:id', async (c) => {
   const clean = normalizeData(m, body.data);
   if (m === 'activities') clean.token = prevData.token || randomToken(16);
   if (m === 'events') clean.noticeId = prevData.noticeId || '';
-  if (m === 'meetingPlans') { clean.eventId = prevData.eventId || ''; clean.noticeId = prevData.noticeId || ''; }
+  if (m === 'meetingPlans') { clean.eventId = prevData.eventId || ''; clean.noticeId = prevData.noticeId || ''; clean.collectionId = prevData.collectionId || ''; }
+  if (m === 'collections') { clean.tally = prevData.tally || {}; clean.noticeId = prevData.noticeId || ''; clean.meetingId = prevData.meetingId || ''; if (!Array.isArray(clean.questions)) clean.questions = prevData.questions || []; }
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
   const denied = await contestGuard(c, t, m, clean, prevData);
   if (denied) return c.json({ error: denied }, 403);
@@ -565,6 +590,7 @@ app.put('/api/records/:module/:id', async (c) => {
     await notifyChange(c, m, clean, plain, t.member.schoolId);
     if (m === 'events') await syncEventNotice(c, t.member.schoolId, id, clean);
     if (m === 'meetingPlans') await syncMeetingPlan(c, t.member.schoolId, id, clean);
+    if (m === 'collections') await syncCollectionNotice(c, t.member.schoolId, id, clean);
   }
   return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first()));
 });
@@ -581,7 +607,8 @@ app.delete('/api/records/:module/:id', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
   if (m === 'activities') await c.env.DB.prepare('DELETE FROM submissions WHERE activity_id = ?').bind(id).run();
-  if (m === 'meetingPlans' && t.member) { const pd = JSON.parse(prev.data); await dropLinked(c, t.member.schoolId, 'events', pd.eventId); await dropLinked(c, t.member.schoolId, 'notices', pd.noticeId); }
+  if (m === 'meetingPlans' && t.member) { const pd = JSON.parse(prev.data); await dropLinked(c, t.member.schoolId, 'events', pd.eventId); await dropLinked(c, t.member.schoolId, 'notices', pd.noticeId); await dropLinked(c, t.member.schoolId, 'collections', pd.collectionId); }
+  if (m === 'collections' && t.member) { const pd = JSON.parse(prev.data); await c.env.DB.prepare('DELETE FROM responses WHERE collection_id = ? AND school_id = ?').bind(id, t.member.schoolId).run(); await dropLinked(c, t.member.schoolId, 'notices', pd.noticeId); }
   if (t.space === 'school') await audit(c, 'delete', m, id, m === 'secrets' ? null : prev.data);
   return c.json({ ok: true });
 });
@@ -629,6 +656,74 @@ async function toggleSelf(c, m) {
 }
 app.post('/api/records/openClasses/:id/observe', (c) => toggleSelf(c, 'openClasses'));
 app.post('/api/records/:module/:id/self', (c) => toggleSelf(c, requireModule(c)));
+
+// ---------- 📥 취합 응답 ----------
+const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+async function loadCollection(c) {
+  const mem = await requireSchool(c);
+  const row = await c.env.DB.prepare("SELECT * FROM records WHERE id = ? AND module = 'collections' AND school_id = ?").bind(c.req.param('id'), mem.schoolId).first();
+  if (!row) throw Object.assign(new Error('취합을 찾을 수 없습니다.'), { status: 404 });
+  const data = JSON.parse(row.data);
+  const owner = row.created_by === c.get('user').email || mem.role === 'admin';
+  const targets = data.target?.length ? data.target : (await c.env.DB.prepare("SELECT name FROM members WHERE school_id = ? AND role IN ('admin','staff','viewer') AND name != ''").bind(mem.schoolId).all()).results.map((r) => r.name);
+  return { mem, row, data, owner, targets };
+}
+// 응답 집계·응답자 명단을 취합 기록에 반영 (여러 명이 동시에 내도 서로 덮어쓰지 않게 버전 확인 후 재시도)
+async function refreshCollection(c, id) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const row = await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first();
+    if (!row) return;
+    const data = JSON.parse(row.data);
+    const rs = (await c.env.DB.prepare('SELECT name, answers FROM responses WHERE collection_id = ?').bind(id).all()).results;
+    data.tally = tallyOf(data.questions || [], rs.map((r) => JSON.parse(r.answers)));
+    // 확인 유형은 [확인했어요] 체크(done)가 곧 응답, 나머지는 응답한 사람으로 done 을 맞춤
+    if (data.kind && data.kind !== '확인') data.done = [...new Set(rs.map((r) => r.name).filter(Boolean))];
+    const res = await c.env.DB.prepare("UPDATE records SET data = ?, version = version + 1 WHERE id = ? AND version = ?").bind(JSON.stringify(data), id, row.version).run();
+    if (res.meta.changes) return;
+  }
+}
+app.get('/api/collections/:id/responses', async (c) => {
+  const { mem, data, owner, targets } = await loadCollection(c);
+  const rows = (await c.env.DB.prepare('SELECT email, name, answers, updated_at FROM responses WHERE collection_id = ? ORDER BY updated_at').bind(c.req.param('id')).all()).results.map((r) => ({ name: r.name, answers: JSON.parse(r.answers), at: r.updated_at, mine: r.email === c.get('user').email }));
+  const canSeeAll = owner || !!data.showResults;
+  return c.json({ owner, canSeeAll, targets, mine: rows.find((r) => r.mine) || null, rows: canSeeAll ? rows : [], me: mem.name });
+});
+app.post('/api/collections/:id/respond', async (c) => {
+  const { mem, row, data, owner, targets } = await loadCollection(c);
+  if (mem.role === 'viewer') return c.json({ error: '열람 권한으로는 응답할 수 없습니다.' }, 403);
+  const email = c.get('user').email;
+  const name = mem.name || c.get('user').name || email;
+  if (!targets.includes(name) && !owner) return c.json({ error: '이 취합의 대상이 아닙니다.' }, 403);
+  if (data.due && data.due < kstToday()) return c.json({ error: '마감된 취합입니다.' }, 409);
+  const prev = await c.env.DB.prepare('SELECT id FROM responses WHERE collection_id = ? AND email = ?').bind(row.id, email).first();
+  if (prev && data.allowEdit === false) return c.json({ error: '이미 응답했습니다. 이 취합은 수정할 수 없습니다.' }, 409);
+  const b = await c.req.json();
+  const others = (await c.env.DB.prepare('SELECT answers FROM responses WHERE collection_id = ? AND email != ?').bind(row.id, email).all()).results.map((r) => JSON.parse(r.answers));
+  const chk = checkAnswers(data.questions || [], b.answers || {}, { othersTally: tallyOf(data.questions || [], others), linkGiven: !!data.link });
+  if (chk.error) return c.json({ error: chk.error }, 400);
+  const answers = JSON.stringify(chk.clean);
+  if (prev) await c.env.DB.prepare("UPDATE responses SET answers = ?, name = ?, updated_at = datetime('now') WHERE id = ?").bind(answers, name, prev.id).run();
+  else await c.env.DB.prepare('INSERT INTO responses (school_id, collection_id, email, name, answers) VALUES (?, ?, ?, ?, ?)').bind(mem.schoolId, row.id, email, name, answers).run();
+  await refreshCollection(c, row.id);
+  await audit(c, 'respond', 'collections', row.id);
+  return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(row.id).first()));
+});
+app.delete('/api/collections/:id/respond', async (c) => {
+  const { row, data } = await loadCollection(c);
+  if (data.due && data.due < kstToday()) return c.json({ error: '마감된 취합입니다.' }, 409);
+  if (data.allowEdit === false) return c.json({ error: '이 취합은 응답을 고치거나 취소할 수 없습니다.' }, 409);
+  await c.env.DB.prepare('DELETE FROM responses WHERE collection_id = ? AND email = ?').bind(row.id, c.get('user').email).run();
+  await refreshCollection(c, row.id);
+  return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(row.id).first()));
+});
+// 미응답자에게 다시 알림 (만든 사람·관리자)
+app.post('/api/collections/:id/remind', async (c) => {
+  const { mem, data, owner, targets } = await loadCollection(c);
+  if (!owner) return c.json({ error: '만든 사람이나 관리자만 보낼 수 있습니다.' }, 403);
+  const missing = targets.filter((n) => !(data.done || []).includes(n));
+  await notify(c, await emailsByName(c.env.DB, mem.schoolId, missing), { title: '⏰ 취합 응답 요청', body: `${data.title}${data.due ? ` (마감 ${data.due.slice(5)})` : ''}`, url: '/#/notice/collections' }, mem.schoolId);
+  return c.json({ ok: true, sent: missing.length });
+});
 
 // 새 글 표시: since 이후 다른 사람이 만들거나 고친 학교 기록
 const LABEL_KEYS = ['title', 'agenda', 'item', 'name', 'text', 'program', 'site', 'content', 'teacher', 'requester'];
@@ -1036,7 +1131,23 @@ app.delete('/api/activities/:id/submissions', async (c) => {
   return c.json({ ok: true });
 });
 
+// 마감 전날(한국 시각) 아침: 아직 응답하지 않은 대상자에게만 취합 알림
+async function remindDueCollections(env, ctx) {
+  const tomorrow = new Date(Date.now() + 9 * 3600000 + 86400000).toISOString().slice(0, 10);
+  const rows = (await env.DB.prepare("SELECT r.id, r.school_id, r.data FROM records r JOIN schools s ON s.id = r.school_id AND s.status = 'active' WHERE r.module = 'collections' AND json_extract(r.data, '$.due') = ?").bind(tomorrow).all()).results;
+  const fake = { env, get: () => null, req: { url: env.APP_ORIGIN || 'https://onlineplatform.lecoeur.workers.dev/' }, executionCtx: ctx };
+  for (const r of rows) {
+    try {
+      const d = JSON.parse(r.data);
+      const targets = d.target?.length ? d.target : (await env.DB.prepare("SELECT name FROM members WHERE school_id = ? AND role IN ('admin','staff') AND name != ''").bind(r.school_id).all()).results.map((x) => x.name);
+      const missing = targets.filter((n) => !(d.done || []).includes(n));
+      if (missing.length) await notify(fake, await emailsByName(env.DB, r.school_id, missing), { title: '⏰ 내일 마감 취합', body: d.title || '', url: '/#/notice/collections' }, r.school_id);
+    } catch (e) { console.error('collection remind', r.id, e.message); }
+  }
+}
+
 async function scheduled(_event, env, ctx) {
+  ctx.waitUntil(remindDueCollections(env, ctx).catch((e) => console.error('remind', e.message)));
   ctx.waitUntil((async () => {
     if (!env.NEIS_API_KEY) return;
     const schools = await env.DB.prepare("SELECT s.id FROM schools s JOIN school_settings t ON t.school_id = s.id AND t.key = 'neis' WHERE s.status = 'active' AND t.value != 'null'").all();

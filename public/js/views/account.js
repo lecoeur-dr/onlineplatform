@@ -168,7 +168,7 @@ export async function meView(root, refresh) {
         st === 'on' ? h('button', { class: 'btn', onclick: async () => { await disablePush(); drawPush(); } }, '알림 끄기')
           : h('button', { class: 'btn primary', onclick: async () => { try { await enablePush(); } catch (e) { toast(e.message, 'error'); } drawPush(); } }, '이 기기에서 알림 받기'),
         st === 'on' ? h('button', { class: 'btn', onclick: () => api('/api/push/test', { method: 'POST' }).then(() => toast('시험 알림을 보냈습니다.')) }, '시험 알림') : null),
-      h('p', { class: 'hint' }, '보결·담당 배정, 전체 공지, 새 수합, 전달사항, 학교 가입 승인 때 알림이 옵니다. 기기마다 따로 켭니다.'));
+      h('p', { class: 'hint' }, '보결·담당 배정, 전체 공지, 새 취합, 전달사항, 학교 가입 승인 때 알림이 옵니다. 기기마다 따로 켭니다.'));
   };
   drawPush();
   const themeBox = h('div', {});
