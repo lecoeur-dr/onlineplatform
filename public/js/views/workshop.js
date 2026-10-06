@@ -31,7 +31,7 @@ export async function workshopHome(root) {
   const fav = favs();
   const likes = (r) => (r.data.likes || []).length;
   const items = [
-    ...TOOLS.map((t) => ({ key: `b:${t.id}`, builtin: true, t, title: t.name, desc: t.desc, cat: t.cat, maker: 'OnlineFlatform', likes: 0, date: '' })),
+    ...TOOLS.map((t) => ({ key: `b:${t.id}`, builtin: true, t, title: t.name, desc: t.desc, cat: t.cat, maker: 'OnlinePlatform', likes: 0, date: '' })),
     ...rows.map((r) => ({ key: `r:${r.id}`, r, title: r.data.title, desc: r.data.desc || '', cat: r.data.category || '기타', maker: r.author, likes: likes(r), date: String(r.updatedAt || '').slice(0, 10), html: r.data.kind === 'HTML 도구' && !!r.data.html, mine: r.owner === me })),
   ];
   const shown = items.filter((it) => (view === 'all'
@@ -82,7 +82,7 @@ export async function workshopHome(root) {
         h('div', { class: 'muted small' }, `${it.builtin ? '🧰' : '👤'} ${it.maker}${it.builtin ? '' : ' 선생님'}${it.date ? ` · ${it.date}` : ''}`),
         it.mine ? h('button', { class: 'link-btn', onclick: (e) => { e.stopPropagation(); openRecordForm('market', it.r, { onSaved: reload }); } }, '수정') : null)))) :
       h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🧰'), h('p', {}, '조건에 맞는 도구가 없습니다.')),
-    h('p', { class: 'hint' }, 'Teachshop은 OnlineFlatform을 쓰는 모든 학교 선생님이 함께 보는 공간입니다. 자료에 학생 개인정보를 담지 마세요. ', h('button', { class: 'link-btn', onclick: makerGuide }, 'HTML 도구 만드는 법')));
+    h('p', { class: 'hint' }, 'Teachshop은 OnlinePlatform을 쓰는 모든 학교 선생님이 함께 보는 공간입니다. 자료에 학생 개인정보를 담지 마세요. ', h('button', { class: 'link-btn', onclick: makerGuide }, 'HTML 도구 만드는 법')));
 }
 
 // 교실 화면 큰 카드
@@ -183,5 +183,5 @@ function makerGuide() {
       h('li', {}, 'Teachshop → [+ 올리기] → 종류 "HTML 도구" → HTML 코드 칸에 전체를 붙여넣습니다.'),
       h('li', {}, '학생 이름이 필요하면 아래처럼 message를 받으세요. 선생님이 [학생 명단 보내기]를 누를 때만 { type: "roster", students: [{ num, name }] }가 전달됩니다.')),
     h('pre', { class: 'code' }, code),
-    h('p', { class: 'hint' }, '도구는 안전 상자(sandbox)에서 실행되어 OnlineFlatform 로그인·자료에 접근할 수 없습니다. 외부 서버로 학생 정보를 보내는 도구는 올리지 마세요.')), [], { wide: true });
+    h('p', { class: 'hint' }, '도구는 안전 상자(sandbox)에서 실행되어 OnlinePlatform 로그인·자료에 접근할 수 없습니다. 외부 서버로 학생 정보를 보내는 도구는 올리지 마세요.')), [], { wide: true });
 }

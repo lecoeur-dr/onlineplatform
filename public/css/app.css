@@ -393,7 +393,7 @@ tr.is-new, .card.is-new { background: color-mix(in srgb, var(--danger) 6%, var(-
 .tt.resv th { white-space: nowrap; }
 @media (max-width: 700px) { .tt.resv td { min-width: 84px; } }
 
-/* ---------- OnlineFlatform / Deskterior 두 공간 ---------- */
+/* ---------- OnlinePlatform / Deskterior 두 공간 ---------- */
 .space-tabs { display: flex; gap: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
 .space-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 9px; color: var(--muted); text-decoration: none; font-weight: 800; font-size: 16px; letter-spacing: -.2px; }
 .space-tab .ico { font-size: 18px; }

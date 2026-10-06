@@ -22,7 +22,7 @@ import { loadNews, markSeen, paintBadges } from './news.js';
 import { isDemo, startDemo, exitDemo, resetDemo, demoApi } from './demo.js';
 import { applyTheme } from './theme.js';
 
-// OnlineFlatform(학교) 영역/탭 → 화면
+// OnlinePlatform(학교) 영역/탭 → 화면
 const VIEWS = {
   'home/': dashboardView,
   'schedule/overview': scheduleOverview,

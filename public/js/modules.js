@@ -10,7 +10,7 @@
 // space: school(기본, 학교 공유) | desk(Deskterior 개인 공간, 본인만) | market(Teachshop: 모든 선생님 공유)
 // enc  : 필드에 enc:true → 서버에 암호화해 저장 (학생 관련 기록)
 
-export const APP_NAME = 'OnlineFlatform';
+export const APP_NAME = 'OnlinePlatform';
 export const DESK_NAME = 'Deskterior';
 export const SHOP_NAME = 'Teachshop';
 export const ROLES = { admin: '관리자', staff: '교직원', viewer: '열람', pending: '승인대기', blocked: '차단' };

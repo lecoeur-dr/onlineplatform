@@ -6,7 +6,7 @@ export const state = {
   schools: [],    // 내가 속한(신청한) 학교 [{ id, name, status, role }]
   member: null,   // 지금 학교에서의 내 자격 (없으면 학교 가입 전)
   settings: null, // { currentYear, schoolName, lists, neis }
-  space: 'school', // school(OnlineFlatform) | desk(Deskterior)
+  space: 'school', // school(OnlinePlatform) | desk(Deskterior)
   year: null,     // 화면에서 보고 있는 학년도
   budgetSources: [], // (예전) 예산·공모사업 이름
   budgetPrograms: [], // 사업 드롭다운: 학교본예산 세부사업 + 공모사업명

@@ -1,18 +1,18 @@
 ---
-title: OnlineFlatform 멀티 학교 · Deskterior · 3차 기능 설계
+title: OnlinePlatform 멀티 학교 · Deskterior · 3차 기능 설계
 date: 2026-10-01
-tags: [온라인교무실, OnlineFlatform, Deskterior, 설계]
+tags: [온라인교무실, OnlinePlatform, Deskterior, 설계]
 status: 적용
 ---
 
-# OnlineFlatform 멀티 학교 · Deskterior · 3차 기능 설계
+# OnlinePlatform 멀티 학교 · Deskterior · 3차 기능 설계
 
 ## 0. 결론
 
 | 요청 | 반영 |
 |---|---|
-| 이름 변경 | **OnlineFlatform** (`public/js/modules.js`의 `APP_NAME` 한 곳에서 바꿈) |
-| 상단 2탭 | 🏫 **OnlineFlatform**(학교 업무) / 🪴 **Deskterior**(내 학급·수업) — 탭마다 왼쪽 메뉴가 바뀜 |
+| 이름 변경 | **OnlinePlatform** (`public/js/modules.js`의 `APP_NAME` 한 곳에서 바꿈) |
+| 상단 2탭 | 🏫 **OnlinePlatform**(학교 업무) / 🪴 **Deskterior**(내 학급·수업) — 탭마다 왼쪽 메뉴가 바뀜 |
 | 왼쪽 메뉴 접기 | 큰 항목 옆 ▾ 로 접고 펴기, 기기에 기억 |
 | 로그인 | 구글 계정이면 누구나 로그인 → 학교 자료는 **학교 관리자 승인** 뒤 열림 |
 | 여러 학교 | 학교마다 데이터·설정·구성원·권한이 분리. 한 사람이 여러 학교에 속할 수 있음(상단에서 학교 전환) |
@@ -219,7 +219,7 @@ status: 적용
 
 사용자가 보낸 tdesk 화면(학급 홈 · 수업 · 평가 도구)을 기준으로 비교·반영.
 
-| tdesk | OnlineFlatform 반영 |
+| tdesk | OnlinePlatform 반영 |
 |---|---|
 | 학급 홈: 출석·지각·결석·이번 주 행동발달 + 학생 표(출결·칭찬·행동발달·보호자 연락) | 학급 → 학생 카드 위 오늘 현황 KPI + [카드/표] 전환, 표에 오늘 출결·칭찬·이번 주 기록·📞 보호자(연락처에서 번호 인식) |
 | 평가 도구: 평가계획 점검 | 📋 평가계획 점검: 필수 칸·수준별 기준 빈 칸·같은 문장·학년군 불일치·관점 유무, 과목별 횟수·성취기준 반영률, 바로 고치기 |
@@ -227,7 +227,7 @@ status: 적용
 | 서·논술형 평가 (학생 링크 제출 → 채점 기준 초안 채점 → 세특 재료) | ✍️ 서·논술형 평가: 학생 링크·QR(로그인 없음) → 답안 암호화 저장 → 평가 계획 연결 → AI 초안 채점(S번호) → 관점별 수준·종합·근거를 평가 기록에 → 교과발달 초안 |
 | 루브릭 만들기 | 🧩 루브릭 만들기: 계획별 평가 관점 편집 바로가기 |
 | 수업: 클래스 보드 (학생 글 실시간 게시판) | 수업 → 🗒 클래스 보드: 질문 + 학생 링크·QR, 5초마다 새 글, 이름 보이기/숨기기, 글 숨기기, 전체 화면 |
-| 감독 배정 | 미반영 (중·고 시험 감독용, 초등 수요 낮음) — 필요 시 OnlineFlatform(학교 공간) 업무 도구로 추가 |
+| 감독 배정 | 미반영 (중·고 시험 감독용, 초등 수요 낮음) — 필요 시 OnlinePlatform(학교 공간) 업무 도구로 추가 |
 
 ### 학생 제출 구조
 - `activities`(Deskterior 기록, 교사 본인): 제목·종류(서·논술형/클래스 보드)·과목·문항·제출 받는 중·이름 보이기·글자 수 제한, `token`(서버가 만듦), `planId`
@@ -294,7 +294,7 @@ status: 적용
 | 플랫폼 운영 | 학교별 [변경 기록] — 아이디별 건수·시각·메뉴만(내용 숨김) | `GET /api/platform/audit?school=` |
 
 - 색인 추가: `migrations/0005_audit_index.sql` (school_id, id) / (school_id, email, id)
-- 변경 기록은 학교 공간(OnlineFlatform)만 남김. Deskterior 개인 기록은 남기지 않음(개인정보 최소화)
+- 변경 기록은 학교 공간(OnlinePlatform)만 남김. Deskterior 개인 기록은 남기지 않음(개인정보 최소화)
 
 ## 17. 행정·예산 권한 · 학사일정 → 주요 안내·공지 (2026-10-06)
 

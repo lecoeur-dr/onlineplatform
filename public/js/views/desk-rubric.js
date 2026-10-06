@@ -180,15 +180,15 @@ export function importAiRemarks(students, apply) {
 export function downloadGuide(limit = 1500) {
   const md = `---
 name: gyogwa-baldal-writer
-description: OnlineFlatform에서 내보낸 "교과학습발달상황 작성 요청"(S01 | 근거 형식)을 받아 학생별 교과학습발달상황 문장을 생활기록부 문체로 작성한다. 요청문에 "교과학습발달상황 작성 요청"이 있으면 사용.
+description: OnlinePlatform에서 내보낸 "교과학습발달상황 작성 요청"(S01 | 근거 형식)을 받아 학생별 교과학습발달상황 문장을 생활기록부 문체로 작성한다. 요청문에 "교과학습발달상황 작성 요청"이 있으면 사용.
 ---
 
-# 교과학습발달상황 작성 지침 (OnlineFlatform)
+# 교과학습발달상황 작성 지침 (OnlinePlatform)
 
 이 지침은 Claude 프로젝트 지침, Claude 스킬(SKILL.md), 제미나이 젬스 지침에 그대로 붙여 쓸 수 있습니다.
 
 ## 입력
-OnlineFlatform의 [🤖 AI 요청문 복사]로 만든 글: 평가 정보(성취기준·평가 요소·관점별 수준 기준) + 학생별 근거(S01 | …).
+OnlinePlatform의 [🤖 AI 요청문 복사]로 만든 글: 평가 정보(성취기준·평가 요소·관점별 수준 기준) + 학생별 근거(S01 | …).
 학생 이름은 들어 있지 않습니다. S번호는 익명 번호입니다.
 
 ## 작성 원칙
@@ -206,7 +206,7 @@ OnlineFlatform의 [🤖 AI 요청문 복사]로 만든 글: 평가 정보(성취
 S01 | 문장…함.
 S02 | 문장…음.
 \`\`\`
-→ OnlineFlatform [📥 AI 결과 붙여넣기]에 그대로 붙여넣으면 학생 칸이 채워집니다.
+→ OnlinePlatform [📥 AI 결과 붙여넣기]에 그대로 붙여넣으면 학생 칸이 채워집니다.
 
 ## 점검
 - 근거에 없는 낱말(대회, 수상, 리더십 등)이 들어갔는지 확인

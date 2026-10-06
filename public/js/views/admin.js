@@ -124,7 +124,7 @@ export async function showQr(target) {
       h('button', { class: 'btn', onclick: () => {
         const w = window.open('', '_blank');
         if (!w) return;
-        w.document.write(`<title>접속 QR</title><div style="text-align:center;font-family:sans-serif;padding:40px"><h1>${state.settings.schoolName || ''} · OnlineFlatform</h1><div style="width:420px;margin:auto">${box.innerHTML}</div><p style="font-size:20px">${url}</p></div>`);
+        w.document.write(`<title>접속 QR</title><div style="text-align:center;font-family:sans-serif;padding:40px"><h1>${state.settings.schoolName || ''} · OnlinePlatform</h1><div style="width:420px;margin:auto">${box.innerHTML}</div><p style="font-size:20px">${url}</p></div>`);
         w.document.close();
         w.print();
       } }, '인쇄'))));
