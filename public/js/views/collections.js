@@ -171,6 +171,12 @@ function card(r, reload) {
       h('span', { class: 'grow' }),
       owner || r.data.showResults ? h('button', { class: 'btn small', onclick: () => openStatus(r, reload) }, '📊 현황') : null,
       owner && (k === '선택' || k === '설문') ? h('button', { class: 'btn small', onclick: () => editQuestions(r, reload) }, k === '선택' ? '✏️ 보기' : '✏️ 문항') : null,
+      owner ? h('button', { class: 'link-btn small', onclick: () => openRecordForm('collections', r, { onSaved: reload }) }, '수정') : null,
+      owner ? h('button', { class: 'link-btn small danger', onclick: async () => {
+        const n = (r.data.done || []).length;
+        if (!(await confirmBox(`「${r.data.title}」 취합을 삭제할까요?${n ? `\n응답 ${n}건도 함께 지워지며 되돌릴 수 없습니다.` : ''}${r.data.noticeId ? '\n함께 올린 공지도 지워집니다.' : ''}`))) return;
+        try { await api(`/api/records/collections/${r.id}`, { method: 'DELETE' }); toast('삭제했습니다.'); reload(); } catch (e) { toast(e.message, 'error'); }
+      } }, '🗑 삭제') : null,
       owner ? h('button', { class: 'link-btn small', title: '같은 내용으로 새로 만들기', onclick: () => openRecordForm('collections', null, { defaults: { ...r.data, title: `${r.data.title} (복사)`, due: '', done: [], tally: {}, noticeId: '', meetingId: '' }, onSaved: reload }) }, '복제') : null),
     missing.length && (owner || r.data.showResults) ? h('details', { class: 'small' }, h('summary', {}, `미응답 ${missing.length}명`), h('div', { class: 'muted' }, missing.join(', '))) : !missing.length ? h('div', { class: 'small muted' }, '모두 응답했습니다.') : null);
 }

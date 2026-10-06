@@ -561,6 +561,7 @@ app.put('/api/records/:module/:id', async (c) => {
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   if (isPrivateOther(prev, user.email)) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
+  if (m === 'collections' && prev.created_by && prev.created_by !== user.email && t.member?.role !== 'admin') return c.json({ error: '취합은 만든 사람과 관리자만 고칠 수 있습니다.' }, 403);
   const body = await c.req.json();
   const prevData = JSON.parse(prev.data);
   const clean = normalizeData(m, body.data);
@@ -603,6 +604,7 @@ app.delete('/api/records/:module/:id', async (c) => {
   if (!prev) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   if (isPrivateOther(prev, c.get('user').email)) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
+  if (m === 'collections' && prev.created_by && prev.created_by !== c.get('user').email && t.member?.role !== 'admin') return c.json({ error: '취합은 만든 사람과 관리자만 삭제할 수 있습니다.' }, 403);
   const denied = await contestGuard(c, t, m, null, JSON.parse(prev.data));
   if (denied) return c.json({ error: denied }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
