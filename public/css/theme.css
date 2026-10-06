@@ -846,3 +846,5 @@ td.center { text-align: center; }
 .sp-group .sp-dept { min-width: 92px; margin: 6px 0 0; flex-direction: column; align-items: flex-start; gap: 0; }
 .account-box { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .req-note { margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); white-space: pre-wrap; }
+.mplan .mplan-agenda { margin: 4px 0; padding-left: 20px; }
+.pick-list li { display: flex; align-items: center; gap: 10px; }

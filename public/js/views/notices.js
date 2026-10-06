@@ -143,9 +143,75 @@ export async function meetingsView(root) {
       h('input', { type: 'search', placeholder: '안건·결과 검색', value: q, onchange: (e) => { remember('meeting_q', e.target.value); meetingsView(root); } }),
       h('span', { class: 'muted' }, `회의 ${groups.length}번 · 안건 ${shown.length}개`),
       h('span', { class: 'grow' }),
-      canEdit('meetings') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('meetings', null, { defaults: { date: today(), meeting: kind || '전체회의', status: '완료' }, onSaved: reload }) }, '+ 새 회의') : null),
+      canEdit('meetings') ? h('button', { class: 'btn primary', onclick: () => newMeeting(kind, reload) }, '+ 새 회의록') : null),
     groups.map((g, i) => meetingCard(g, reload, i < 5)),
     groups.length ? null : h('p', { class: 'muted' }, '회의 기록이 없습니다.'));
+}
+
+// 새 회의록: 예정된 회의(회의 탭)를 불러오거나, 빈 회의록으로 시작
+async function newMeeting(kind, reload) {
+  const [plans, recs] = await Promise.all([api(`/api/records/meetingPlans?year=${state.year}`), api(`/api/records/meetings?year=${state.year}`)]);
+  const used = new Set(recs.map((r) => r.data.planId).filter(Boolean));
+  const t = today();
+  const cand = plans.filter((p) => !used.has(p.id) && p.data.date <= addDays(t, 7)).sort((a, b) => b.data.date.localeCompare(a.data.date)).slice(0, 12);
+  const blank = () => openRecordForm('meetings', null, { defaults: { date: t, meeting: kind || '전체회의', status: '완료' }, onSaved: reload });
+  if (!cand.length) return blank();
+  const load = async (p, close) => {
+    const items = String(p.data.agenda || '').split('\n').map((x) => x.replace(/^\s*[-·•\d.)]+\s*/, '').trim()).filter(Boolean);
+    const base = { date: p.data.date, meeting: p.data.meeting || '회의', planId: p.id };
+    close();
+    if (!items.length) return openRecordForm('meetings', null, { defaults: { ...base, agenda: p.data.title || '', status: '완료' }, onSaved: reload });
+    try {
+      for (const agenda of items) await api('/api/records/meetings', { method: 'POST', body: { data: { ...base, agenda, status: '진행중' } } });
+      toast(`안건 ${items.length}개를 불러왔습니다. 안건을 눌러 결과를 적어 주세요.`); reload();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  const closeModal = modal('📝 새 회의록', h('div', {},
+    h('p', { class: 'muted small' }, '회의 탭에 등록한 회의를 불러오면 날짜·회의명·안건이 채워집니다. 불러오지 않고 빈 회의록으로 시작해도 됩니다.'),
+    h('ul', { class: 'list pick-list' }, cand.map((p) => h('li', {},
+      h('div', { class: 'grow' }, h('strong', {}, `${fmtDate(p.data.date)} · ${p.data.meeting || '회의'}`), p.data.title ? ` ${p.data.title}` : '',
+        h('div', { class: 'muted small' }, p.data.agenda ? `안건 ${String(p.data.agenda).split('\n').filter((x) => x.trim()).length}개` : '안건 미리 입력 없음')),
+      h('button', { class: 'btn small primary', onclick: () => load(p, closeModal) }, '불러오기'))))), [
+    (close) => h('button', { class: 'btn', onclick: () => { close(); blank(); } }, '불러오지 않고 빈 회의록으로'),
+  ]);
+}
+
+// ---------- 회의 (예정) : 저장하면 학사일정·공지 자동 등록 ----------
+export async function meetingPlansView(root) {
+  const [plans, recs] = await Promise.all([api(`/api/records/meetingPlans?year=${state.year}`), api(`/api/records/meetings?year=${state.year}`)]);
+  const reload = () => meetingPlansView(root);
+  const t = today();
+  const done = new Set(recs.map((r) => r.data.planId).filter(Boolean));
+  const mode = remember('mp_mode') || 'up';
+  const shown = plans.filter((p) => (mode === 'up' ? p.data.date >= t : p.data.date < t)).sort((a, b) => (mode === 'up' ? a.data.date.localeCompare(b.data.date) : b.data.date.localeCompare(a.data.date)));
+  const writeRecord = async (p) => {
+    const items = String(p.data.agenda || '').split('\n').map((x) => x.replace(/^\s*[-·•\d.)]+\s*/, '').trim()).filter(Boolean);
+    const base = { date: p.data.date, meeting: p.data.meeting || '회의', planId: p.id };
+    if (!items.length) return openRecordForm('meetings', null, { defaults: { ...base, agenda: p.data.title || '', status: '완료' }, onSaved: () => { location.hash = '#/notice/meetings'; } });
+    for (const agenda of items) await api('/api/records/meetings', { method: 'POST', body: { data: { ...base, agenda, status: '진행중' } } });
+    toast(`안건 ${items.length}개로 회의록을 만들었습니다.`); location.hash = '#/notice/meetings';
+  };
+  clear(root,
+    h('div', { class: 'toolbar' },
+      seg([['up', `다가오는 회의 (${plans.filter((p) => p.data.date >= t).length})`], ['past', '지난 회의']], mode, (v) => { remember('mp_mode', v); reload(); }),
+      h('span', { class: 'grow' }),
+      canEdit('meetingPlans') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('meetingPlans', null, { defaults: { date: t, meeting: '전체회의', toCalendar: true, toNotice: true }, onSaved: reload }) }, '+ 회의 등록') : null),
+    shown.length ? h('div', { class: 'cards' }, shown.map((p) => {
+      const d = p.data;
+      const dd = Math.round((new Date(`${d.date}T00:00:00`) - new Date(`${t}T00:00:00`)) / 86400000);
+      return h('div', { class: 'card mplan' },
+        h('div', { class: 'card-head' }, h('strong', { class: 'click', onclick: () => openRecordForm('meetingPlans', p, { onSaved: reload }) }, `${fmtDate(d.date)}${d.time ? ` ${d.time}` : ''} · ${d.meeting || '회의'}`),
+          dd >= 0 ? h('span', { class: `tag ${dd <= 1 ? 'warn' : 'ghost'}` }, dd === 0 ? '오늘' : `D-${dd}`) : null),
+        d.title ? h('div', {}, d.title) : null,
+        h('div', { class: 'muted small' }, [d.place && `📍 ${d.place}`, d.dept && `주관 ${d.dept}`, `👥 ${(d.attendees || []).length ? `${d.attendees.length}명` : '전체 교직원'}`].filter(Boolean).join(' · ')),
+        d.agenda ? h('ol', { class: 'small mplan-agenda' }, String(d.agenda).split('\n').filter((x) => x.trim()).map((x) => h('li', {}, x.replace(/^\s*[-·•]\s*/, '')))) : null,
+        h('div', { class: 'row-actions' },
+          d.eventId ? h('a', { class: 'tag ok', href: '#/schedule/overview' }, '📅 학사일정 등록됨') : h('span', { class: 'tag ghost' }, '학사일정 미등록'),
+          d.noticeId ? h('a', { class: 'tag ok', href: '#/notice/notices' }, '📢 공지 등록됨') : h('span', { class: 'tag ghost' }, '공지 미등록'),
+          h('span', { class: 'grow' }),
+          done.has(p.id) ? h('a', { class: 'tag blue', href: '#/notice/meetings' }, '📝 회의록 있음') : canEdit('meetings') ? h('button', { class: 'btn small', onclick: () => writeRecord(p).catch((e) => toast(e.message, 'error')) }, '📝 회의록 쓰기') : null));
+    })) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🗓'), h('p', {}, mode === 'up' ? '예정된 회의가 없습니다. [+ 회의 등록]으로 회의를 알리면 학사일정과 공지에 자동으로 올라갑니다.' : '지난 회의가 없습니다.')),
+    h('p', { class: 'hint' }, '회의를 등록하면 학사일정(분류: 회의)과 공지에 자동으로 올라가고, 회의 내용을 고치면 함께 고쳐집니다. 체크를 끄거나 회의를 지우면 자동으로 올린 일정·공지도 함께 지워집니다. 회의가 끝나면 [📝 회의록 쓰기]로 미리 적은 안건을 회의록으로 불러옵니다.'));
 }
 
 // ---------- 수합 (제출 체크) ----------

@@ -209,13 +209,30 @@ export const MODULES = {
     ],
   },
   meetings: {
-    label: '회의록', icon: '📝', scope: 'date', edit: 'staff',
+    label: '회의록', icon: '📝', scope: 'date', edit: 'staff', extras: ['planId'],
     fields: [
       { key: 'date', label: '회의일', type: 'date', required: true },
       { key: 'meeting', label: '회의명', type: 'select', list: 'meetingTypes', free: true },
       { key: 'agenda', label: '안건', type: 'textarea', required: true },
       { key: 'result', label: '결과', type: 'textarea' },
       { key: 'status', label: '상태', type: 'select', options: ['완료', '재논의', '진행중'] },
+    ],
+  },
+  // 회의 예정: 저장하면 학사일정(회의)·공지에 자동 등록 (eventId·noticeId 로 연결, 고치면 함께 고쳐짐)
+  meetingPlans: {
+    label: '회의', icon: '🗓', scope: 'date', edit: 'staff', extras: ['eventId', 'noticeId'],
+    fields: [
+      { key: 'date', label: '회의일', type: 'date', required: true },
+      { key: 'time', label: '시간', type: 'text', hint: '예) 15:00, 7교시 후' },
+      { key: 'meeting', label: '회의명', type: 'select', list: 'meetingTypes', free: true, required: true },
+      { key: 'title', label: '주제', type: 'text', hint: '예) 2학기 학예회 운영 협의' },
+      { key: 'place', label: '장소', type: 'select', list: 'places', free: true },
+      { key: 'dept', label: '주관 부서', type: 'select', list: 'depts', free: true },
+      { key: 'attendees', label: '참석 대상', type: 'names', pick: 'staff', hint: '비워 두면 전체 교직원' },
+      { key: 'agenda', label: '안건 (미리)', type: 'textarea', hint: '한 줄에 안건 하나 — 회의록을 쓸 때 그대로 불러옵니다' },
+      { key: 'note', label: '준비물·안내', type: 'textarea' },
+      { key: 'toCalendar', label: '학사일정에 등록', type: 'bool', hint: '체크하면 통합 달력에 "회의"로 올라갑니다' },
+      { key: 'toNotice', label: '공지에 등록', type: 'bool', hint: '체크하면 공지·업무 → 공지에 안내가 올라갑니다' },
     ],
   },
   notices: {
@@ -664,6 +681,7 @@ export const GROUPS = [
     { id: 'briefings', label: '전달사항', module: 'briefings' },
     { id: 'collections', label: '수합', module: 'collections' },
     { id: 'duties', label: '담당 배정', module: 'duties' },
+    { id: 'meetingPlans', label: '회의', module: 'meetingPlans' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },
   // 행정·예산: 공모 안내·기한 안내는 모두에게, 나머지는 관리자 + 학교 관리 → 권한에서 탭별로 연 사람만 (access 키)

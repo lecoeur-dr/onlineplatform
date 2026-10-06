@@ -340,6 +340,11 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
       const r = { id: `d${d.seq++}`, module: mod, data, version: 1, sort: d.seq, year: MODULES[mod].scope === 'year' ? Number(body.year || year) : null, date: MODULES[mod].scope === 'date' ? data.date : null, owner: spaceOf(mod) === 'school' ? null : ME.email, author: d.name, updatedBy: ME.email, updatedAt: nowStamp() };
       if (mod === 'market') r.data.likes = [];
       d.records.push(r);
+      if (mod === 'meetingPlans') { // 서버의 회의 → 학사일정·공지 자동 등록과 같은 동작(체험용, 등록만)
+        const head = [data.meeting, data.title].filter(Boolean).join(' · ') || '회의';
+        if (data.toCalendar) { const eid = `d${d.seq++}`; d.records.push({ id: eid, module: 'events', data: normalizeData('events', { date: data.date, title: head, category: '회의', place: data.place || '', dept: data.dept || '', source: '회의 예정' }), version: 1, sort: d.seq, year: null, date: data.date, owner: null, updatedBy: ME.email, updatedAt: nowStamp() }); r.data.eventId = eid; }
+        if (data.toNotice) { const nid = `d${d.seq++}`; d.records.push({ id: nid, module: 'notices', data: normalizeData('notices', { title: `[회의] ${head}`, category: '부서 안내', content: `🗓 ${data.date} · ${head}\n${data.agenda || ''}`, due: data.date }), version: 1, sort: d.seq, year: Number(year), date: null, owner: null, updatedBy: ME.email, updatedAt: nowStamp() }); r.data.noticeId = nid; }
+      }
       if (mod === 'events' && data.toNotice) { // 서버의 '공지사항에도 올리기'와 같은 동작
         const nid = `d${d.seq++}`;
         d.records.push({ id: nid, module: 'notices', data: normalizeData('notices', { title: String(data.title).split('\n')[0], category: '일반', content: `📅 ${data.date}${data.endDate ? ` ~ ${data.endDate}` : ''}  ${data.title}`, dept: data.dept || '', month: data.date.slice(0, 7) }), version: 1, sort: d.seq, year: Number(year), date: null, owner: null, updatedBy: ME.email, updatedAt: nowStamp() });

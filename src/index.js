@@ -461,6 +461,44 @@ async function syncEventNotice(c, schoolId, eventId, d) {
   await audit(c, 'create', 'notices', id, '학사일정에서 자동 등록');
 }
 
+// 자동으로 만든 연결 기록(학사일정·공지) 만들기·고치기·지우기. 연결 기록 id 를 돌려줌
+async function upsertLinked(c, schoolId, m, linkedId, data, year) {
+  const db = c.env.DB;
+  const email = c.get('user').email;
+  const old = linkedId ? await db.prepare('SELECT id, data FROM records WHERE id = ? AND module = ? AND school_id = ?').bind(linkedId, m, schoolId).first() : null;
+  const p = placement(m, data, year);
+  if (old) {
+    await db.prepare("UPDATE records SET data = ?, date = ?, updated_by = ?, updated_at = datetime('now'), version = version + 1 WHERE id = ?").bind(JSON.stringify({ ...JSON.parse(old.data), ...data }), p.date, email, old.id).run();
+    return old.id;
+  }
+  const id = randomToken(8);
+  await db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by, school_id, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)')
+    .bind(id, m, p.year, p.date, Date.now() % 1e9, JSON.stringify(data), email, email, schoolId).run();
+  await audit(c, 'create', m, id, '회의 예정에서 자동 등록');
+  return id;
+}
+const dropLinked = (c, schoolId, m, id) => (id ? c.env.DB.prepare('DELETE FROM records WHERE id = ? AND module = ? AND school_id = ?').bind(id, m, schoolId).run() : null);
+const schoolYearOf = (date) => { const [y, mo] = date.split('-').map(Number); return mo <= 2 ? y - 1 : y; };
+
+// 회의 예정 → 학사일정(분류 '회의')·공지 자동 등록/수정/해제
+async function syncMeetingPlan(c, schoolId, planId, d) {
+  if (!schoolId || !d.date) return;
+  const md = (x) => `${Number(x.slice(5, 7))}월 ${Number(x.slice(8, 10))}일`;
+  const head = [d.meeting, d.title].filter(Boolean).join(' · ') || '회의';
+  const who = (d.attendees || []).length ? (d.attendees || []).join(', ') : '전체 교직원';
+  let eventId = d.eventId || '';
+  let noticeId = d.noticeId || '';
+  if (d.toCalendar) {
+    eventId = await upsertLinked(c, schoolId, 'events', eventId, normalizeData('events', { date: d.date, title: `${head}${d.time ? ` (${d.time})` : ''}`, category: '회의', target: (d.attendees || []).length ? who : '', dept: d.dept || '', place: d.place || '', note: d.note || '', source: '회의 예정' }), schoolYearOf(d.date));
+  } else if (eventId) { await dropLinked(c, schoolId, 'events', eventId); eventId = ''; }
+  if (d.toNotice) {
+    const content = [`🗓 ${md(d.date)}${d.time ? ` ${d.time}` : ''} · ${head}`, [d.place && `장소: ${d.place}`, `참석: ${who}`, d.dept && `주관: ${d.dept}`].filter(Boolean).join(' · '),
+      d.agenda ? `안건\n${String(d.agenda).split('\n').filter(Boolean).map((x) => `- ${x.replace(/^[-·•]\s*/, '')}`).join('\n')}` : '', d.note ? `안내: ${d.note}` : ''].filter(Boolean).join('\n');
+    noticeId = await upsertLinked(c, schoolId, 'notices', noticeId, normalizeData('notices', { title: `[회의] ${head} (${md(d.date)})`, category: '부서 안내', content, dept: d.dept || '', due: d.date }), schoolYearOf(d.date));
+  } else if (noticeId) { await dropLinked(c, schoolId, 'notices', noticeId); noticeId = ''; }
+  await c.env.DB.prepare("UPDATE records SET data = json_set(data, '$.eventId', ?, '$.noticeId', ?) WHERE id = ?").bind(eventId, noticeId, planId).run();
+}
+
 app.post('/api/records/:module', async (c) => {
   const m = requireModule(c);
   const user = c.get('user');
@@ -471,6 +509,7 @@ app.post('/api/records/:module', async (c) => {
   if (m === 'market') { clean.likes = []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); }
   if (m === 'activities') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
   if (m === 'events') clean.noticeId = '';
+  if (m === 'meetingPlans') { clean.eventId = ''; clean.noticeId = ''; }
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
   const denied = await contestGuard(c, t, m, clean, null);
   if (denied) return c.json({ error: denied }, 403);
@@ -485,6 +524,7 @@ app.post('/api/records/:module', async (c) => {
     .bind(id, m, p.year, p.date, Number(body.sort) || Date.now() % 1e9, JSON.stringify(data), user.email, user.email, t.member?.schoolId || null, t.space === 'school' ? null : user.email).run();
   if (t.space === 'school') { await audit(c, 'create', m, id); await notifyChange(c, m, clean, null, t.member.schoolId); }
   if (m === 'events') await syncEventNotice(c, t.member?.schoolId, id, { ...clean, noticeId: '' });
+  if (m === 'meetingPlans') await syncMeetingPlan(c, t.member?.schoolId, id, clean);
   return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first()));
 });
 
@@ -502,6 +542,7 @@ app.put('/api/records/:module/:id', async (c) => {
   const clean = normalizeData(m, body.data);
   if (m === 'activities') clean.token = prevData.token || randomToken(16);
   if (m === 'events') clean.noticeId = prevData.noticeId || '';
+  if (m === 'meetingPlans') { clean.eventId = prevData.eventId || ''; clean.noticeId = prevData.noticeId || ''; }
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
   const denied = await contestGuard(c, t, m, clean, prevData);
   if (denied) return c.json({ error: denied }, 403);
@@ -523,6 +564,7 @@ app.put('/api/records/:module/:id', async (c) => {
     const plain = { ...prevData };
     await notifyChange(c, m, clean, plain, t.member.schoolId);
     if (m === 'events') await syncEventNotice(c, t.member.schoolId, id, clean);
+    if (m === 'meetingPlans') await syncMeetingPlan(c, t.member.schoolId, id, clean);
   }
   return c.json(await toClient(c.env, await c.env.DB.prepare('SELECT * FROM records WHERE id = ?').bind(id).first()));
 });
@@ -539,6 +581,7 @@ app.delete('/api/records/:module/:id', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
   if (m === 'activities') await c.env.DB.prepare('DELETE FROM submissions WHERE activity_id = ?').bind(id).run();
+  if (m === 'meetingPlans' && t.member) { const pd = JSON.parse(prev.data); await dropLinked(c, t.member.schoolId, 'events', pd.eventId); await dropLinked(c, t.member.schoolId, 'notices', pd.noticeId); }
   if (t.space === 'school') await audit(c, 'delete', m, id, m === 'secrets' ? null : prev.data);
   return c.json({ ok: true });
 });
