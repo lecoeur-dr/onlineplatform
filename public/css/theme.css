@@ -877,3 +877,7 @@ td.center { text-align: center; }
 .progress-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin: 6px 0; }
 .progress-text { font-size: 13px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .qr-row .tally-track { flex: none; }
+/* 내 시간표: 오늘 요일 칸 강조, 크게 */
+.tt td.tt-today { background: color-mix(in srgb, var(--primary) 12%, var(--panel)); font-weight: 700; }
+.my-tt { grid-template-columns: minmax(0, 1fr); max-width: 900px; }
+.my-tt .tt td, .my-tt .tt th { padding: 10px 8px; font-size: 15px; }

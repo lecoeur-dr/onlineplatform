@@ -39,11 +39,11 @@ async function memberOf(c) {
   if (c.get('member') !== undefined) return c.get('member');
   const user = c.get('user');
   const want = c.req.header('x-school') || '';
-  const rows = await c.env.DB.prepare(`SELECT m.school_id, m.role, m.name, m.dept, s.name AS school_name, s.status
+  const rows = await c.env.DB.prepare(`SELECT m.school_id, m.role, m.name, m.dept, m.homeroom, s.name AS school_name, s.status
     FROM members m JOIN schools s ON s.id = m.school_id WHERE m.email = ? ORDER BY m.created_at`).bind(user.email).all();
   const ok = (r) => r.status === 'active' && ACTIVE_ROLES.includes(r.role);
   const row = rows.results.find((r) => r.school_id === want && ok(r)) || (!want ? rows.results.find(ok) : null) || null;
-  const member = row ? { schoolId: row.school_id, role: row.role, name: row.name || user.name, dept: row.dept, schoolName: row.school_name } : null;
+  const member = row ? { schoolId: row.school_id, role: row.role, name: row.name || user.name, dept: row.dept, homeroom: row.homeroom || '', schoolName: row.school_name } : null;
   c.set('member', member);
   return member;
 }
@@ -879,7 +879,7 @@ async function saveLastSync(db, schoolId, neis, result) {
 
 app.get('/api/admin/users', async (c) => {
   const { schoolId } = c.get('member');
-  const rows = await c.env.DB.prepare(`SELECT m.email, m.name, m.role, m.dept, m.note, m.created_at, u.last_login, u.name AS account_name FROM members m LEFT JOIN users u ON u.email = m.email
+  const rows = await c.env.DB.prepare(`SELECT m.email, m.name, m.role, m.dept, m.homeroom, m.note, m.created_at, u.last_login, u.name AS account_name FROM members m LEFT JOIN users u ON u.email = m.email
     WHERE m.school_id = ? ORDER BY m.role = 'pending' DESC, m.role, m.name`).bind(schoolId).all();
   return c.json(rows.results);
 });
@@ -892,8 +892,8 @@ app.put('/api/admin/users/:email', async (c) => {
   if (email === c.get('user').email && b.role && b.role !== 'admin') return c.json({ error: '자기 자신의 관리자 권한은 내릴 수 없습니다.' }, 400);
   const prev = await c.env.DB.prepare('SELECT role FROM members WHERE school_id = ? AND email = ?').bind(schoolId, email).first();
   if (!prev) return c.json({ error: '구성원을 찾을 수 없습니다.' }, 404);
-  await c.env.DB.prepare('UPDATE members SET name = COALESCE(?, name), role = COALESCE(?, role), dept = COALESCE(?, dept) WHERE school_id = ? AND email = ?')
-    .bind(b.name ?? null, b.role ?? null, b.dept ?? null, schoolId, email).run();
+  await c.env.DB.prepare('UPDATE members SET name = COALESCE(?, name), role = COALESCE(?, role), dept = COALESCE(?, dept), homeroom = COALESCE(?, homeroom) WHERE school_id = ? AND email = ?')
+    .bind(b.name ?? null, b.role ?? null, b.dept ?? null, b.homeroom === undefined ? null : String(b.homeroom).trim().slice(0, 30), schoolId, email).run();
   if (prev.role === 'pending' && ACTIVE_ROLES.includes(b.role)) {
     await notify(c, [email], { title: '✅ 학교 가입 승인', body: `${c.get('member').schoolName}에 가입되었습니다.`, url: '/' }, schoolId);
   }

@@ -39,10 +39,19 @@ export function activeOn(r, date) {
 const md = (x) => { const [, m, d] = String(x).split('-').map(Number); return `${m}/${d}`; };
 export const periodLabel = (r) => { const { start, end } = periodRange(r); const n = (r.data.excludes || []).length; return `${md(start)}~${md(end)}${n ? ` · 빠지는 날 ${n}` : ''}`; };
 
+// 내 담임 학급·전담: 관리자가 사용자 관리에서 지정한 값, 없으면 업무분장의 담임 학급
+let sessionMode = null; // 이번 접속에서 다른 보기를 고르기 전까지는 '내 시간표'로 열림
+let myRoom = '';
 export async function timetableView(root) {
-  const rows = await api(`/api/records/timetables?year=${state.year}`);
+  const [rows, asg] = await Promise.all([
+    api(`/api/records/timetables?year=${state.year}`),
+    state.member?.homeroom ? Promise.resolve([]) : api(`/api/records/assignments?year=${state.year}`).catch(() => []),
+  ]);
+  const me = String(state.me?.name || '').replace(/\s/g, '');
+  myRoom = state.member?.homeroom || asg.find((a) => me && String(a.data.name || '').replace(/\s/g, '') === me && a.data.homeroom)?.data.homeroom || '';
   render(root, sortTimetables(rows));
 }
+const sameRoom = (a, b) => String(a || '').replace(/\s|학년|반/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') === String(b || '').replace(/\s|학년|반/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
 export function editTimetable(r, reload, defaults) {
   if (r && (!r.data.semester || r.data.semester === '연간')) r = { ...r, data: { ...r.data, semester: '1년' } }; // 예전 '연간' = 1년
@@ -227,27 +236,28 @@ function render(root, all) {
   const reload = () => timetableView(root);
   const edit = (r) => editTimetable(r, reload);
   const kind = remember('tt_kind') || '';
-  const mode = remember('tt_mode') || 'glance';
+  const mode = sessionMode || (myRoom ? 'mine' : remember('tt_mode') || 'glance');
   const on = remember('tt_on') || '';
   const day = on || today();
   const rows = on === 'all' ? all : all.filter((r) => activeOn(r, day));
   const clash = on === 'all' ? new Set() : conflicts(rows);
   const shown = rows.filter((r) => !kind || (r.data.kind || '기타') === kind);
-  const set = (k, v) => { remember(k, v); render(root, all); };
+  const set = (k, v) => { if (k === 'tt_mode') sessionMode = v; remember(k, v); render(root, all); };
   const body = h('div', {});
   clear(root,
     h('div', { class: 'toolbar' },
-      h('div', { class: 'seg' }, [['glance', '한눈에'], ['cards', '카드'], ['edit', '✏️ 표에서 바로 수정'], ['neis', '나이스 주간']].map(([v, l]) => h('button', { class: mode === v ? 'on' : '', onclick: () => set('tt_mode', v) }, l))),
+      h('div', { class: 'seg' }, [...(myRoom ? [['mine', `⭐ 내 시간표 (${myRoom})`]] : []), ['glance', '한눈에'], ['cards', '카드'], ['edit', '✏️ 표에서 바로 수정'], ['neis', '나이스 주간']].map(([v, l]) => h('button', { class: mode === v ? 'on' : '', onclick: () => set('tt_mode', v) }, l))),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn', onclick: () => setupModal(all, reload) }, '⚙ 학년반·전담·특별실'),
       canEdit('timetables') && mode !== 'neis' ? h('button', { class: 'btn primary', onclick: () => editTimetable(null, reload, { kind: kind || '학급', semester: '1년' }) }, '+ 시간표') : null),
-    mode === 'neis' || mode === 'edit' ? null : h('div', { class: 'toolbar' },
+    mode === 'neis' || mode === 'edit' || mode === 'mine' ? null : h('div', { class: 'toolbar' },
       h('div', { class: 'seg' }, ['', ...TIMETABLE_KINDS].map((k) => h('button', { class: kind === k ? 'on' : '', onclick: () => set('tt_kind', k) }, k || '전체',
         h('span', { class: 'cnt' }, k ? rows.filter((r) => (r.data.kind || '기타') === k).length : rows.length)))),
       h('span', { class: 'grow' }),
       h('label', { class: 'inline small' }, '기준일 ', h('input', { type: 'date', value: on === 'all' ? '' : day, onchange: (e) => set('tt_on', e.target.value || '') })),
       h('button', { class: `btn small ${on === 'all' ? 'primary' : ''}`, onclick: () => set('tt_on', on === 'all' ? '' : 'all') }, on === 'all' ? '모든 기간 보는 중' : '모든 기간 보기')),
     body);
+  if (mode === 'mine') return myTimetable(body, all, { set, edit, day });
   if (mode === 'neis') return neisWeek(body);
   if (mode === 'edit') return sheetEditor(body, all, reload);
   const hidden = all.length - rows.length;
@@ -256,7 +266,10 @@ function render(root, all) {
     on !== 'all' && hidden ? h('p', { class: 'muted small' }, `${fmtDate(day)} 기준으로 적용 기간이 아니거나 빠지는 날인 시간표 ${hidden}개는 숨겼습니다.`) : null,
     !shown.length ? h('p', { class: 'muted' }, '시간표가 없습니다. [⚙ 학년반·전담·특별실]에서 학급·전담·특별실을 정하고 빈 시간표를 한 번에 만들 수 있습니다.') :
     mode === 'glance' ? [glanceTable(shown, { onOpen: edit, clash }), h('p', { class: 'hint' }, '시간표 이름을 누르면 수정합니다. 순서: 학급(1학년부터) → 전담 → 특별실 → 외부강의')] :
-    h('div', { class: 'cards' }, shown.map((r) => {
+    h('div', { class: 'cards' }, shown.map((r) => ttCard(r, { clash, set, edit }))));
+}
+
+function ttCard(r, { clash = new Set(), set, edit, today: todayIdx = -1, big = false }) {
       const g = r.data.grid || DEFAULT_GRID();
       return h('div', { class: 'card tt-card' },
         h('div', { class: 'card-head' },
@@ -267,8 +280,24 @@ function render(root, all) {
         h('table', { class: 'tt' },
           h('thead', {}, h('tr', {}, h('th', {}, ''), g.days.map((d) => h('th', {}, d)))),
           h('tbody', {}, g.periods.map((p, pi) => h('tr', {}, h('th', {}, p),
-            g.days.map((_, di) => h('td', { class: `pre ${clash.has(`${r.id}|${pi}|${di}`) ? 'clash' : ''}` }, g.cells[pi]?.[di] || '')))))));
-    })));
+            g.days.map((_, di) => h('td', { class: `pre ${clash.has(`${r.id}|${pi}|${di}`) ? 'clash' : ''} ${di === todayIdx ? 'tt-today' : ''}` }, g.cells[pi]?.[di] || '')))))));
+}
+
+// ⭐ 내 시간표: 관리자가 지정한 담임 학급·전담 시간표를 바로 보여 줌 (오늘 요일 강조)
+function myTimetable(body, all, { set, edit, day }) {
+  const mine = all.filter((r) => sameRoom(r.data.title, myRoom));
+  const active = mine.filter((r) => activeOn(r, day));
+  const show = active.length ? active : mine;
+  const dow = ['일', '월', '화', '수', '목', '금', '토'][new Date(`${day}T00:00:00`).getDay()];
+  clear(body,
+    show.length ? h('div', { class: 'cards my-tt' }, show.map((r) => {
+      const g = r.data.grid || DEFAULT_GRID();
+      return ttCard(r, { set, edit, today: g.days.indexOf(dow), big: true });
+    })) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🗓'),
+      h('p', {}, `「${myRoom}」 시간표가 아직 없습니다.`),
+      canEdit('timetables') ? h('button', { class: 'btn primary', onclick: () => editTimetable(null, () => set('tt_mode', 'mine'), { kind: /전담/.test(myRoom) ? '전담' : '학급', title: myRoom, semester: '1년' }) }, `+ ${myRoom} 시간표 만들기`) : null),
+    !active.length && mine.length ? h('p', { class: 'muted small' }, `${fmtDate(day)}에 적용되는 기간이 아니어서 전체 기간의 시간표를 보여 줍니다.`) : null,
+    h('p', { class: 'hint' }, `관리자가 학교 관리 → 사용자에서 지정한 담임·전담(${myRoom}) 시간표입니다. 오늘 요일 칸이 강조됩니다. 위의 [한눈에]에서 전체 시간표를 볼 수 있습니다.`));
 }
 
 // 나이스 학급 시간표 (주간). 학교가 나이스에 입력한 시간표를 그대로 보여 줌

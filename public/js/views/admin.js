@@ -51,6 +51,18 @@ async function accessTab(root, refreshApp) {
     h('ul', { class: 'muted small' }, MONEY_ACCESS.map((a) => h('li', {}, h('strong', {}, a.label), ` — ${a.hint}`))));
 }
 
+// 담임 학급·전담 고르기: 시간표 탭이 이 시간표로 바로 열림 (설정의 학급·전담 목록)
+function homeroomSelect(value, onChange) {
+  const lists = state.settings.lists || {};
+  const classes = lists.classes || [];
+  const specs = lists.specialists || [];
+  return h('select', { title: '시간표 탭이 이 시간표로 바로 열립니다', onchange: (e) => onChange(e.target.value) },
+    h('option', { value: '' }, '없음'),
+    classes.length ? h('optgroup', { label: '담임 학급' }, classes.map((c) => h('option', { value: c, selected: c === value }, c))) : null,
+    specs.length ? h('optgroup', { label: '전담' }, specs.map((c) => h('option', { value: c, selected: c === value }, c))) : null,
+    value && !classes.includes(value) && !specs.includes(value) ? h('option', { value, selected: true }, value) : null);
+}
+
 async function users(root) {
   const list = await api('/api/admin/users');
   const pending = list.filter((u) => u.role === 'pending');
@@ -90,14 +102,15 @@ async function users(root) {
     pending.length ? h('section', { class: 'card warn' }, h('h3', {}, `🙋 가입 요청 ${pending.length}명`),
       h('ul', { class: 'list' }, pending.map((u) => h('li', {}, h('strong', {}, u.name || u.account_name || '(이름 없음)'), h('span', { class: 'muted' }, ` ${u.email} · ${u.created_at}`), ' ', approve(u),
         u.note ? h('div', { class: 'small req-note' }, `💬 ${u.note}`) : h('div', { class: 'muted small' }, '(신청 메모 없음)'))))) : null,
-    h('p', { class: 'hint' }, '이름은 보결·담당 배정·내 할 일에 쓰이므로 실명으로 맞춰 주세요. 이메일을 미리 등록해 두면 그 선생님은 첫 로그인부터 바로 사용합니다.'),
+    h('p', { class: 'hint' }, '이름은 보결·담당 배정·내 할 일에 쓰이므로 실명으로 맞춰 주세요. 이메일을 미리 등록해 두면 그 선생님은 첫 로그인부터 바로 사용합니다. "담임·전담"을 지정하면 그 선생님의 수업 → 시간표 탭이 자기 시간표로 바로 열립니다(학급·전담 목록은 시간표 탭의 ⚙ 학년반·전담·특별실에서).'),
     form,
     h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, ['이메일', '이름', '부서', '권한', '최근 로그인', ''].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['이메일', '이름', '부서', '담임·전담', '권한', '최근 로그인', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, list.map((u) => h('tr', { class: u.role === 'pending' ? 'hl' : '' },
         h('td', {}, u.email),
         h('td', {}, h('input', { value: u.name, onchange: (e) => update(u.email, { name: e.target.value }) })),
         h('td', {}, h('input', { value: u.dept, onchange: (e) => update(u.email, { dept: e.target.value }) })),
+        h('td', {}, homeroomSelect(u.homeroom || '', (v) => update(u.email, { homeroom: v }))),
         h('td', {}, h('select', { onchange: (e) => update(u.email, { role: e.target.value }).then(() => users(root)) },
           Object.entries(ROLES).map(([k, v]) => h('option', { value: k, selected: k === u.role }, v)))),
         h('td', { class: 'small' }, u.last_login || '-'),

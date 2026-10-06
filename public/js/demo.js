@@ -294,7 +294,7 @@ export async function demoApi(path, { method = 'GET', body } = {}) {
   if (p === '/auth/logout') { exitDemo(); return { ok: true }; }
   if (p === '/api/me' && method === 'GET') {
     return { user: { email: ME.email, name: d.name, picture: '', super: false }, schools: [{ id: 'demo', name: d.settings.schoolName, status: 'active', role: 'admin' }],
-      member: { schoolId: 'demo', role: 'admin', name: d.name, dept: ME.dept, schoolName: d.settings.schoolName },
+      member: { schoolId: 'demo', role: 'admin', name: d.name, dept: ME.dept, homeroom: d.members.find((x) => x.email === ME.email)?.homeroom ?? '5-1', schoolName: d.settings.schoolName },
       settings: { ...d.settings, neis: { name: d.settings.schoolName, demo: true }, neisKey: true }, push: null };
   }
   if (p === '/api/me' && method === 'PUT') return write(() => { d.name = body.name; return { ok: true }; });
