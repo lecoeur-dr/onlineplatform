@@ -87,6 +87,7 @@ async function loadMe() {
 }
 
 async function boot() {
+  window.__gyBooted = true; // index.html 시작 감시에 '정상 시작' 알림
   // 체험 링크(/?demo 또는 #/demo)로 들어오면 체험 모드 시작
   if (/[?&]demo\b/.test(location.search) || location.hash === '#/demo') {
     try { sessionStorage.setItem('gy_demo', '1'); } catch { /* 무시 */ }
