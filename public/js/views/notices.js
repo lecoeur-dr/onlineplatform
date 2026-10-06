@@ -75,7 +75,7 @@ export async function noticeOverview(root, date = today()) {
         month.length ? [h('h3', {}, `${monthLabel(ym)} 공지`), month.map((n) => noticeCard(n, reload, { compact: true }))] : null,
         due.length ? [h('h3', {}, '⏰ 2주 안 마감'), due.map((n) => noticeCard(n, reload, { compact: true }))] : null),
       h('div', {},
-        h('h3', {}, '📝 최근 회의'), recent.length ? recent.map((g) => meetingCard(g, reload)) : h('p', { class: 'muted' }, '회의 기록이 없습니다.'))));
+        h('h3', {}, '📝 최근 회의'), recent.length ? recent.map((g) => meetingCard(g, reload, false)) : h('p', { class: 'muted' }, '회의 기록이 없습니다.'))));
 }
 
 // 공지: 분류별 · 부서별
