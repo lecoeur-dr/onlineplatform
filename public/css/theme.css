@@ -874,3 +874,6 @@ td.center { text-align: center; }
 .tally-num { font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
 .tally-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) { .tally-row { grid-template-columns: 80px 1fr 56px; } .tally-who { grid-column: 1 / -1; white-space: normal; } }
+.progress-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin: 6px 0; }
+.progress-text { font-size: 13px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.qr-row .tally-track { flex: none; }

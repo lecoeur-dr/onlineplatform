@@ -153,7 +153,9 @@ function card(r, reload) {
       r.data.meetingId ? h('a', { class: 'tag blue', href: '#/notice/meetingPlans' }, '🗓 회의') : null,
       r.data.due ? h('span', { class: `tag ${late ? 'danger' : ''}` }, `${fmtDate(r.data.due)} · ${late ? '마감' : dday(r.data.due)}`) : null),
     r.data.content ? h('div', { class: 'pre small clamp2' }, r.data.content) : null,
-    h('div', { class: 'bar', title: `${done.length}/${targets.length}` }, h('span', { style: { width: `${pct}%` } }), h('em', {}, `응답 ${done.length} / ${targets.length}명`)),
+    h('div', { class: 'progress-row', title: `${done.length}/${targets.length}` },
+      h('div', { class: 'tally-track' }, h('span', { class: 'tally-fill', style: { width: `${pct}%` } })),
+      h('span', { class: 'progress-text' }, `응답 ${done.length} / ${targets.length}명`)),
     quick ? h('div', { class: 'quick-row' }, optsOf(q1).map((o, i) => {
       const n = r.data.tally?.q1?.[o] || 0; const cap = capOf(q1, i); const isFull = n >= cap;
       const picked = iDone && r._my === o;

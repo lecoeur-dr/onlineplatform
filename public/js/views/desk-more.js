@@ -198,7 +198,7 @@ export async function quizView(root) {
         h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '평균'), h('div', { class: 'kpi-value' }, `${avg} / ${qs.length}`))),
       qs.length ? h('section', { class: 'section' }, h('h3', {}, '문제별 정답률'), h('div', { class: 'quiz-rates' }, qs.map((q, i) => {
         const n = graded.filter((g) => g.marks[i]).length; const p = graded.length ? Math.round((n / graded.length) * 100) : 0;
-        return h('div', { class: 'qr-row' }, h('span', { class: 'qr-no' }, `${i + 1}`), h('span', { class: 'grow small' }, q.q.slice(0, 50)), h('div', { class: 'bar', style: { width: '160px' } }, h('span', { style: { width: `${p}%` } }), h('em', {}, `${p}%`)), h('span', { class: 'muted small' }, `${n}/${graded.length}`));
+        return h('div', { class: 'qr-row' }, h('span', { class: 'qr-no' }, `${i + 1}`), h('span', { class: 'grow small' }, q.q.slice(0, 50)), h('div', { class: 'tally-track', style: { width: '160px' } }, h('span', { class: 'tally-fill', style: { width: `${p}%` } })), h('strong', { class: 'small', style: { width: '42px', textAlign: 'right' } }, `${p}%`), h('span', { class: 'muted small' }, `${n}/${graded.length}`));
       }))) : null,
       graded.length ? h('section', { class: 'section' }, h('h3', {}, '학생별 결과'), h('div', { class: 'table-wrap' }, h('table', { class: 'table compact' },
         h('thead', {}, h('tr', {}, ['번호', '이름', '점수', ...qs.map((_, i) => `${i + 1}`)].map((x) => h('th', {}, x)))),
