@@ -1,10 +1,9 @@
-// 🏠 홈: 전체 공지 · 날짜별 게시판[오늘·이번 주·이번 달] · 내 할 일 · 급식 · 예산 · 재논의 · 확인필요
+// 🏠 홈: 전체 공지 · 날짜별 게시판[오늘·이번 주·이번 달] · 내 할 일 · 급식 · 재논의 (확인필요 일정은 학사일정 → 확인 필요 탭)
 import { h, api, clear, fmtDate, addDays, today, won, modal, DOW } from '../ui.js';
-import { state, remember, myName, canSeeTab } from '../state.js';
+import { state, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { eventItem, programItem, tripItem, openClassItem, substituteItem } from './calendar.js';
 import { noticeCard, isMyTask, dday } from './notices.js';
-import { buildMoney } from './money.js';
 import { seg } from './schedule.js';
 import { unseen, tabOf } from '../news.js';
 import { MODULES } from '../modules.js';
@@ -13,7 +12,7 @@ const monthEnd = (ym) => { const [y, m] = ym.split('-').map(Number); return `${y
 const weekStart = (d) => { const [y, m, dd] = d.split('-').map(Number); return addDays(d, -new Date(y, m - 1, dd).getDay()); };
 
 export async function dashboardView(root) {
-  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,purchases,budget,contests,spending,substitutes,collections,duties,reservations,briefings`);
+  const d = await api(`/api/bundle?year=${state.year}&modules=events,programs,trips,openClasses,notices,meetings,substitutes,collections,duties,reservations,briefings`);
   const t = today();
   const ym = t.slice(0, 7);
   const me = myName();
@@ -28,11 +27,6 @@ export async function dashboardView(root) {
 
   const pinned = d.notices.filter((n) => n.data.pinned && (!n.data.month || n.data.month === ym));
   const redo = d.meetings.filter((m) => m.data.status === '재논의').slice(-5);
-  const review = d.events.filter((e) => e.data.review);
-  const money = [...buildMoney(d).programs.values()];
-  const assign = money.reduce((a, p) => a + p.assigned, 0);
-  const used = money.reduce((a, p) => a + p.used, 0);
-  const waiting = d.purchases.filter((p) => !p.data.received).length;
 
   // 내 할 일: 내 보결(7일 안) · 내가 낼 수합 · 내 복무
   const mySubs = d.substitutes.filter((s) => s.data.substitute === me && s.data.date >= t && s.data.date <= addDays(t, 7)).sort((a, b) => a.data.date.localeCompare(b.data.date));
@@ -108,17 +102,9 @@ export async function dashboardView(root) {
           myLeaves.map((x) => item(tripItem(x)))) : h('p', { class: 'muted' }, '오늘 이후 내 보결·담당·제출할 수합이 없습니다.'),
         !state.me.name ? h('p', { class: 'muted small' }, '학교 관리 → 사용자에서 내 이름(실명)이 등록되어야 내 할 일이 보입니다.') : null),
       mealBox,
-      canSeeTab({ access: 'overview' }) ? h('div', { class: 'card' }, h('h3', {}, '💰 예산'),
-        h('div', { class: 'mini-kpi' }, h('span', {}, '예산'), h('strong', {}, won(assign))),
-        h('div', { class: 'mini-kpi' }, h('span', {}, '집행'), h('strong', {}, `${won(used)} (${assign ? Math.round((used / assign) * 1000) / 10 : 0}%)`)),
-
-        h('a', { href: '#/money/overview', class: 'more-link' }, '예산 대시보드 →')) : null,
       h('div', { class: 'card' }, h('h3', {}, '📝 재논의 안건'),
         redo.length ? h('ul', { class: 'list' }, redo.map((m) => h('li', { class: 'click', onclick: () => openRecordForm('meetings', m, { onSaved: reload }) }, m.data.agenda.split('\n')[0], h('span', { class: 'muted' }, ` ${fmtDate(m.data.date)}`)))) : h('p', { class: 'muted' }, '재논의 안건이 없습니다.'),
-        h('a', { href: '#/notice/meetings', class: 'more-link' }, '회의록 →')),
-      review.length ? h('div', { class: 'card warn' }, h('h3', {}, `확인필요 일정 ${review.length}건`),
-        h('p', { class: 'muted small' }, '가져올 때 담당·장소 줄이 행사와 맞지 않았던 일정입니다. 열어서 고친 뒤 "확인필요"를 해제하세요.'),
-        h('ul', { class: 'list' }, review.slice(0, 12).map((e) => item({ ...eventItem(e), label: `${fmtDate(e.data.date)} ${eventItem(e).label}` })))) : null));
+        h('a', { href: '#/notice/meetings', class: 'more-link' }, '회의록 →'))));
 
   loadMeal(mealBox, t);
 }

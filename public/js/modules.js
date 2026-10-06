@@ -648,6 +648,7 @@ export const GROUPS = [
     { id: 'overview', label: '통합 달력' },
     { id: 'events', label: '일정 목록', module: 'events' },
     { id: 'trips', label: '복무·출장', module: 'trips' },
+    { id: 'review', label: '확인 필요', module: 'events' },
   ] },
   { id: 'class', label: '수업', icon: '🕘', tabs: [
     { id: 'overview', label: '수업 전체' },

@@ -6,7 +6,7 @@ import { tableView } from './views/table.js';
 import { timetableView } from './views/timetable.js';
 import { boardView } from './views/board.js';
 import { adminView } from './views/admin.js';
-import { scheduleOverview, eventsList, tripsView } from './views/schedule.js';
+import { scheduleOverview, eventsList, tripsView, reviewView } from './views/schedule.js';
 import { classOverview, programsView, openClassesTab, substitutesView } from './views/classes.js';
 import { reservationsView } from './views/reservations.js';
 import { dutiesView } from './views/duties.js';
@@ -28,6 +28,7 @@ const VIEWS = {
   'schedule/overview': scheduleOverview,
   'schedule/events': eventsList,
   'schedule/trips': tripsView,
+  'schedule/review': reviewView,
   'class/overview': classOverview,
   'class/timetables': timetableView,
   'class/programs': programsView,
