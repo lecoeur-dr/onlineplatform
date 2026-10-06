@@ -507,6 +507,8 @@ function buildRequests(reqs, items) {
   }
   return [...map.values()].sort((a, b) => String(b.rec?.data.due || b.last || '').localeCompare(String(a.rec?.data.due || a.last || '')));
 }
+// 건별 공개 범위 표시
+const audTag = (r) => { const a = r.data.audience || '권한자만'; const n = (Array.isArray(r.data.members) ? r.data.members : String(r.data.members || '').split(',')).filter(Boolean); return h('span', { class: `tag ${a === '권한자만' ? 'ghost' : 'blue'}`, title: a === '지정한 사람' ? n.join(', ') : '' }, a === '권한자만' ? '🔒 권한자만' : a === '전체 교직원' ? '🌐 전체 공개' : `👥 지정 ${n.length}명`); };
 const md2 = (x) => { const [, m, d] = String(x).split('-').map(Number); return `${m}/${d}`; };
 
 export async function purchasesView(root) {
@@ -527,7 +529,7 @@ export async function purchasesView(root) {
     h('div', { class: 'toolbar' },
       h('div', { class: 'seg' }, [['req', '🗂 건별'], ['date', '📅 날짜별']].map(([v, l]) => h('button', { class: view === v && !g ? 'on' : '', onclick: () => setView(v) }, l))),
       h('span', { class: 'grow' }),
-      canEdit('purchaseRequests') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('purchaseRequests', null, { defaults: { open: true, manager: state.me?.name || '' }, onSaved: (r) => { if (r) remember('pc_open', `r:${r.id}`); reload(); } }) }, '+ 구매신청 건 만들기') : null),
+      hasGrant('purchases') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('purchaseRequests', null, { defaults: { open: true, audience: '권한자만', manager: state.me?.name || '' }, onSaved: (r) => { if (r) remember('pc_open', `r:${r.id}`); reload(); } }) }, '+ 구매신청 건 만들기') : null),
     box);
   if (g) return requestDetail(box, g, { d, reload, spentTag });
   if (view === 'date') return dateView(box, groups, { reload, spentTag });
@@ -538,14 +540,14 @@ export async function purchasesView(root) {
       h('tbody', {}, groups.map((x) => {
         const spent = x.items.filter((i) => d.m.spentPurchase.has(i.id)).length;
         return h('tr', { class: 'click', onclick: () => { remember('pc_open', x.key); reload(); } },
-          h('td', {}, h('strong', {}, x.title), x.legacy ? h('span', { class: 'tag ghost', title: '예전 자료: 사업 이름이 같은 품목을 한 건으로 묶음' }, ' 예전 자료') : null),
+          h('td', {}, h('strong', {}, x.title), x.rec ? audTag(x.rec) : null, x.legacy ? h('span', { class: 'tag ghost', title: '예전 자료: 사업 이름이 같은 품목을 한 건으로 묶음' }, ' 예전 자료') : null),
           h('td', { class: 'small' }, x.program && x.program !== x.title ? x.program : h('span', { class: 'muted' }, '-')),
           h('td', { class: 'small nowrap' }, x.first ? (x.first === x.last ? md2(x.first) : `${md2(x.first)}~${md2(x.last)}`) : h('span', { class: 'muted' }, '-')),
           h('td', { class: 'small nowrap' }, x.rec?.data.due ? md2(x.rec.data.due) : '-'),
           h('td', { class: 'num' }, `${x.people.size}명`), h('td', { class: 'num' }, `${x.items.length}개`), h('td', { class: 'num' }, won(x.total)),
           h('td', {}, x.rec ? h('span', { class: `tag ${x.rec.data.open ? 'ok' : 'ghost'}` }, x.rec.data.open ? '접수 중' : '마감') : null, spent ? h('span', { class: 'tag ghost' }, ` 집행 ${spent}/${x.items.length}`) : null));
-      })))) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🛒'), h('p', {}, '[+ 구매신청 건 만들기]로 신청을 열면, 선생님들이 그 건에 품목을 담습니다.')),
-    h('p', { class: 'hint' }, '한 번의 신청(건)에 여러 선생님이 품목을 담습니다. 건을 누르면 신청자별 품목이 열립니다. 신청일이 달라도 같은 건으로 묶입니다.'));
+      })))) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🛒'), h('p', {}, hasGrant('purchases') ? '[+ 구매신청 건 만들기]로 신청을 열고, 건 설정의 공개 범위로 신청할 선생님을 정하세요.' : '나에게 열린 구매신청 건이 없습니다.')),
+    h('p', { class: 'hint' }, hasGrant('purchases') ? '한 번의 신청(건)에 여러 선생님이 품목을 담습니다. 건마다 공개 범위(권한자만·전체 교직원·지정한 사람)를 정하면 그 건만 해당 선생님에게 열립니다.' : '관리자나 구매 담당자가 열어 준 건만 보입니다. 접수 중인 건에 내 품목을 담을 수 있고, 내가 담은 품목만 고칠 수 있습니다.'));
 }
 
 function requestDetail(box, g, { d, reload, spentTag }) {
@@ -570,11 +572,11 @@ function requestDetail(box, g, { d, reload, spentTag }) {
   clear(box,
     h('div', { class: 'toolbar' }, h('button', { class: 'btn', onclick: back }, '← 건 목록'), h('strong', {}, g.title),
       r ? h('span', { class: `tag ${r.data.open ? 'ok' : 'ghost'}` }, r.data.open ? '접수 중' : '마감') : h('span', { class: 'tag ghost' }, '예전 자료'), h('span', { class: 'grow' }),
-      r && canEdit('purchaseRequests') ? h('button', { class: 'btn', onclick: () => openRecordForm('purchaseRequests', r, { onSaved: (x) => { if (!x) remember('pc_open', ''); reload(); } }) }, '건 설정') : null,
-      !r && canEdit('purchaseRequests') ? h('button', { class: 'btn', onclick: promote }, '구매신청 건으로 등록') : null,
+      r && hasGrant('purchases') ? h('button', { class: 'btn', onclick: () => openRecordForm('purchaseRequests', r, { onSaved: (x) => { if (!x) remember('pc_open', ''); reload(); } }) }, '건 설정') : null,
+      !r && hasGrant('purchases') ? h('button', { class: 'btn', onclick: promote }, '구매신청 건으로 등록') : null,
       h('button', { class: 'btn', onclick: csv }, 'CSV'),
-      canEdit('purchases') && (!r || r.data.open) ? h('button', { class: 'btn primary', onclick: () => batchPurchase(reload, preset) }, '+ 내 품목 담기') : null),
-    r ? h('p', { class: 'muted small' }, [r.data.program && `사업: ${r.data.program}`, r.data.due && `마감 ${md2(r.data.due)}`, r.data.manager && `담당 ${r.data.manager}`].filter(Boolean).join(' · ')) : null,
+      canEdit('purchases') && (r ? r.data.open : hasGrant('purchases')) ? h('button', { class: 'btn primary', onclick: () => batchPurchase(reload, preset) }, '+ 내 품목 담기') : null),
+    r ? h('p', { class: 'muted small' }, audTag(r), ' ', [r.data.program && `사업: ${r.data.program}`, r.data.due && `마감 ${md2(r.data.due)}`, r.data.manager && `담당 ${r.data.manager}`].filter(Boolean).join(' · ')) : null,
     r?.data.note ? h('p', { class: 'alert info pre' }, r.data.note) : null,
     h('div', { class: 'kpis' }, kpi('신청자', `${g.people.size}명`), kpi('품목', `${g.items.length}개`, won(g.total)), kpi('내 신청', `${mine.length}개`, won(mine.reduce((a, x) => a + amountOf(x), 0))),
       kpi('미수령', `${g.items.filter((x) => !x.data.received).length}개`)),

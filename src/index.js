@@ -133,7 +133,16 @@ async function moneyAccess(c, mem) {
     const me = String(mem.name || '').replace(/\s/g, '');
     const all = new Set(rows.map((d) => d.name).filter(Boolean));
     const mine = new Set(rows.filter((d) => me && (d.managers || []).map((x) => String(x).replace(/\s/g, '')).includes(me)).map((d) => d.name));
-    acc = { admin: false, areas, mine, all, has: (a) => areas.has(a) };
+    // 구매신청 건별 공개: 공개 범위가 '전체 교직원'이거나 '지정한 사람'에 내 이름이 있으면 그 건만 보고 품목을 담음
+    const reqRows = (await c.env.DB.prepare("SELECT id, data FROM records WHERE module = 'purchaseRequests' AND school_id = ?").bind(mem.schoolId).all()).results;
+    const reqs = new Set();
+    const reqsOpen = new Set();
+    for (const r of reqRows) {
+      const d = JSON.parse(r.data);
+      const names = (Array.isArray(d.members) ? d.members : String(d.members || '').split(/[,，\n]/)).map((x) => x.replace(/\s/g, '')).filter(Boolean);
+      if (d.audience === '전체 교직원' || (d.audience === '지정한 사람' && me && names.includes(me))) { reqs.add(r.id); if (d.open) reqsOpen.add(r.id); }
+    }
+    acc = { admin: false, areas, mine, all, reqs, reqsOpen, me, has: (a) => areas.has(a) };
   }
   c.set('moneyAcc', acc);
   return acc;
@@ -144,21 +153,22 @@ async function myMoneyTabs(c, mem) {
   if (!acc) return [];
   const tabs = new Set(acc.areas);
   if (acc.mine.size) tabs.add('contests');
+  if (acc.reqs?.size) tabs.add('purchases');
   return [...tabs];
 }
 const isContestRow = (acc, m, d) => (m === 'purchases' ? acc.all.has(d.budget) : d.source === '공모사업' || acc.all.has(d.program));
-function moneyCanSee(acc, m, d) {
+function moneyCanSee(acc, m, d, id) {
   if (acc.admin) return true;
   if (m === 'contests') return acc.has('contests') || acc.mine.has(d.name);
-  if (m === 'purchaseRequests') return acc.has('purchases');
-  if (m === 'purchases') return acc.has('purchases') || (isContestRow(acc, m, d) && acc.mine.has(d.budget));
+  if (m === 'purchaseRequests') return acc.has('purchases') || acc.reqs.has(id);
+  if (m === 'purchases') return acc.has('purchases') || (isContestRow(acc, m, d) && acc.mine.has(d.budget)) || acc.reqs.has(d.requestId);
   if (isContestRow(acc, m, d)) return acc.has('contests') || acc.mine.has(d.program);
   return acc.has('overview') || acc.has('school') || (m === 'spending' && acc.has('spend'));
 }
 async function moneyFilter(c, mem) {
   const acc = await moneyAccess(c, mem);
   if (!acc || acc.admin) return null;
-  return (m, d) => moneyCanSee(acc, m, d);
+  return (m, d, id) => moneyCanSee(acc, m, d, id);
 }
 
 async function listRecords(c, m, year) {
@@ -173,7 +183,7 @@ async function listRecords(c, m, year) {
   if (m === 'boards') list = list.filter((r) => !isPrivateOther(r, c.get('user').email));
   if (MONEY_SCOPED.includes(m) && t.member) {
     const ok = await moneyFilter(c, t.member);
-    if (ok) list = list.filter((r) => ok(m, JSON.parse(r.data)));
+    if (ok) list = list.filter((r) => ok(m, JSON.parse(r.data), r.id));
   }
   return Promise.all(list.map((r) => toClient(c.env, r)));
 }
@@ -405,7 +415,13 @@ async function contestGuard(c, t, m, data, prevData) {
   for (const d of [data, prevData].filter(Boolean)) {
     if (m === 'purchases') {
       if (acc.has('purchases') || (acc.all.has(d.budget) && acc.mine.has(d.budget))) continue;
-      return '구매신청은 관리자가 권한을 준 사람만 입력할 수 있습니다.';
+      // 나에게 열린 건: 접수 중일 때 내 이름으로만 담고, 내가 담은 품목만 고치거나 지움
+      if (acc.reqs.has(d.requestId)) {
+        if (!acc.reqsOpen.has(d.requestId)) return '마감된 구매신청 건입니다.';
+        if (String(d.requester || '').replace(/\s/g, '') !== acc.me) return '내 이름으로 신청한 품목만 담거나 고칠 수 있습니다.';
+        continue;
+      }
+      return '구매신청은 관리자가 권한을 주거나 열어 준 건에만 입력할 수 있습니다.';
     }
     if (isContestRow(acc, m, d)) {
       if (!acc.all.has(d.program)) return `공모사업 「${d.program || ''}」을(를) 먼저 [공모사업] 탭에서 등록해 주세요.`;
@@ -580,7 +596,7 @@ app.get('/api/changes', async (c) => {
   const rows = await c.env.DB.prepare(`SELECT r.id, r.module, r.date, r.data, r.updated_at, r.created_at, m.name FROM records r LEFT JOIN members m ON m.email = r.updated_by AND m.school_id = r.school_id
     WHERE r.school_id = ? AND r.updated_at > ? AND r.updated_by != ? AND r.updated_by != 'neis-auto' ORDER BY r.updated_at DESC LIMIT 300`).bind(mem.schoolId, since, c.get('user').email).all();
   const ok = await moneyFilter(c, mem);
-  const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"')) && !(r.module === 'boards' && JSON.parse(r.data).visibility === '나만 보기') && (!ok || !MONEY_SCOPED.includes(r.module) || ok(r.module, JSON.parse(r.data)))).map((r) => {
+  const items = rows.results.filter((r) => MODULES[r.module] && !(r.module === 'events' && r.data.includes('"source":"나이스"')) && !(r.module === 'boards' && JSON.parse(r.data).visibility === '나만 보기') && (!ok || !MONEY_SCOPED.includes(r.module) || ok(r.module, JSON.parse(r.data), r.id))).map((r) => {
     const d = r.module === 'secrets' ? {} : JSON.parse(r.data);
     const key = LABEL_KEYS.find((k) => d[k]);
     return { id: r.id, module: r.module, date: r.date, at: r.updated_at, isNew: r.created_at === r.updated_at, by: r.name || '', label: key ? String(d[key]).split('\n')[0].slice(0, 60) : MODULES[r.module].label };

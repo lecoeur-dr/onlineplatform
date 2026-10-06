@@ -275,6 +275,8 @@ export const MODULES = {
       { key: 'due', label: '신청 마감일', type: 'date' },
       { key: 'manager', label: '담당자', type: 'select', list: 'staff', free: true },
       { key: 'open', label: '신청 받는 중', type: 'bool' },
+      { key: 'audience', label: '공개 범위', type: 'select', options: ['권한자만', '전체 교직원', '지정한 사람'], hint: '권한자만: 구매신청 권한이 있는 사람만 / 전체 교직원·지정한 사람: 이 건만 열려서 자기 품목을 담을 수 있음' },
+      { key: 'members', label: '신청할 수 있는 사람', type: 'names', hint: '공개 범위가 "지정한 사람"일 때 — 이름을 쉼표로 (예: 김민지, 이서준)' },
       { key: 'note', label: '안내', type: 'textarea', hint: '예) 1인 10만 원 이내, 쇼핑몰 링크 필수' },
     ],
   },
@@ -737,7 +739,7 @@ export const MONEY_ACCESS = [
   { id: 'school', label: '학교본예산', hint: '학교본예산 예산 입력·집행내역 입력' },
   { id: 'contests', label: '공모사업', hint: '모든 공모사업 편성·집행 입력 (사업 담당자는 권한 없이도 자기 사업만 봄)' },
   { id: 'spend', label: '집행내역', hint: '학교본예산 집행내역 입력' },
-  { id: 'purchases', label: '구매신청', hint: '구매신청 건·품목 입력·처리' },
+  { id: 'purchases', label: '구매신청', hint: '모든 구매신청 건 보기·건 만들기·처리 (권한이 없어도 건 설정에서 공개한 건은 그 사람에게 열림)' },
 ];
 
 export const SELF_TOGGLE = { openClasses: 'observers', collections: 'done', market: 'likes' };
