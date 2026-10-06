@@ -832,3 +832,15 @@ td.center { text-align: center; }
 .room-bg-night .muted, .room-bg-board .muted, .room-bg-night .scr-title, .room-bg-board .scr-title { color: #a8b3c7; }
 @media (max-width: 760px) { .room-grid { grid-template-columns: 1fr !important; } .room-grid .room-wide { grid-column: auto; } .grid-2 { grid-template-columns: 1fr; } }
 .order-list .icon-btn { width: 28px; height: 28px; min-width: 28px; padding: 0; }
+/* 교직원 체크 선택 */
+.staff-picker { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--panel-2); }
+.sp-bar { display: flex; gap: 8px; align-items: center; }
+.sp-bar input { flex: 1; }
+.staff-pick { max-height: 260px; overflow: auto; display: grid; gap: 8px; }
+.sp-dept { font-size: 12px; font-weight: 800; color: var(--muted); display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.staff-pick .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-check { cursor: pointer; background: var(--panel); font-size: 13px; }
+.chip-check.on { border-color: var(--primary); background: var(--primary-soft, var(--panel)); font-weight: 700; }
+.chip-check input { margin: 0; }
+.sp-group { display: flex; gap: 10px; align-items: flex-start; }
+.sp-group .sp-dept { min-width: 92px; margin: 6px 0 0; flex-direction: column; align-items: flex-start; gap: 0; }

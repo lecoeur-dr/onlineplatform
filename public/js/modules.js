@@ -276,7 +276,7 @@ export const MODULES = {
       { key: 'manager', label: '담당자', type: 'select', list: 'staff', free: true },
       { key: 'open', label: '신청 받는 중', type: 'bool' },
       { key: 'audience', label: '공개 범위', type: 'select', options: ['권한자만', '전체 교직원', '지정한 사람'], hint: '권한자만: 구매신청 권한이 있는 사람만 / 전체 교직원·지정한 사람: 이 건만 열려서 자기 품목을 담을 수 있음' },
-      { key: 'members', label: '신청할 수 있는 사람', type: 'names', hint: '공개 범위가 "지정한 사람"일 때 — 이름을 쉼표로 (예: 김민지, 이서준)' },
+      { key: 'members', label: '신청할 수 있는 사람', type: 'names', pick: 'staff', hint: '공개 범위가 "지정한 사람"일 때 — 체크한 선생님에게만 이 건이 열립니다' },
       { key: 'note', label: '안내', type: 'textarea', hint: '예) 1인 10만 원 이내, 쇼핑몰 링크 필수' },
     ],
   },
@@ -301,7 +301,7 @@ export const MODULES = {
     fields: [
       { key: 'name', label: '공모사업명', type: 'text', required: true },
       { key: 'applicant', label: '신청자', type: 'text' },
-      { key: 'managers', label: '담당자 (관리자가 지정)', type: 'names', hint: '이름을 쉼표로 — 관리자와 이 선생님들만 이 공모사업을 보고 예산·집행을 입력' },
+      { key: 'managers', label: '담당자 (관리자가 지정)', type: 'names', pick: 'staff', hint: '체크한 선생님과 관리자만 이 공모사업을 보고 예산·집행을 입력' },
       { key: 'grades', label: '운영 대상 학년', type: 'text' },
       { key: 'budget', label: '받은 예산', type: 'money', sum: true },
       { key: 'period', label: '운영 기간', type: 'text', hint: '예) 2026.4.~2027.2.' },

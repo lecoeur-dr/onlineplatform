@@ -22,6 +22,7 @@ export function fieldInput(f, value) {
     case 'secret':
       return h('input', { ...common, type: 'text', autocomplete: 'off', placeholder: value ? '바꿀 때만 입력 (비워 두면 유지)' : '', value: '' });
     case 'names':
+      if (f.pick === 'staff' && state.staff?.length) return staffPicker(common, value);
       return h('textarea', { ...common, rows: 2, placeholder: '쉼표로 구분', value: (value || []).join(', ') });
     case 'select': {
       const opts = listOf(f);
@@ -32,6 +33,36 @@ export function fieldInput(f, value) {
     default:
       return h('input', { ...common, type: 'text', value: value ?? '' });
   }
+}
+
+// 교직원 이름 체크로 고르기 (부서별 묶음 + 찾기 + 명단에 없는 이름 직접 추가). 값은 숨은 칸에 쉼표로
+function staffPicker(common, value) {
+  const picked = new Set((Array.isArray(value) ? value : String(value || '').split(',')).map((x) => String(x).trim()).filter(Boolean));
+  const hidden = h('input', { ...common, type: 'hidden' });
+  const staff = state.staff.filter((x) => x.name);
+  const known = new Set(staff.map((x) => x.name));
+  const sync = () => { hidden.value = [...picked].join(', '); count.textContent = picked.size ? `${picked.size}명 선택: ${[...picked].join(', ')}` : '선택한 사람 없음'; };
+  const count = h('div', { class: 'muted small' });
+  let q = '';
+  const box = h('div', { class: 'staff-pick' });
+  const draw = () => {
+    const depts = new Map();
+    for (const x of staff.filter((x) => !q || `${x.name} ${x.dept || ''}`.includes(q))) { const k = x.dept || '기타'; if (!depts.has(k)) depts.set(k, []); depts.get(k).push(x.name); }
+    const extra = [...picked].filter((n) => !known.has(n));
+    clear(box, [...depts].map(([dept, names]) => h('div', { class: 'sp-group' },
+      h('div', { class: 'sp-dept' }, dept, h('button', { type: 'button', class: 'link-btn small', onclick: () => { const all = names.every((n) => picked.has(n)); for (const n of names) { if (all) picked.delete(n); else picked.add(n); } sync(); draw(); } }, '모두')),
+      h('div', { class: 'chips' }, names.map((n) => h('label', { class: `chip-check ${picked.has(n) ? 'on' : ''}` },
+        h('input', { type: 'checkbox', checked: picked.has(n), onchange: (e) => { if (e.target.checked) picked.add(n); else picked.delete(n); e.target.parentNode.classList.toggle('on', e.target.checked); sync(); } }), ` ${n}`))))),
+      extra.length ? h('div', { class: 'sp-group' }, h('div', { class: 'sp-dept' }, '명단에 없는 이름'), h('div', { class: 'chips' }, extra.map((n) => h('label', { class: 'chip-check on' },
+        h('input', { type: 'checkbox', checked: true, onchange: () => { picked.delete(n); sync(); draw(); } }), ` ${n}`)))) : null,
+      depts.size || extra.length ? null : h('p', { class: 'muted small' }, '찾는 이름이 없습니다.'));
+  };
+  const add = h('input', { placeholder: '명단에 없으면 이름 입력 후 Enter', onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); const n = add.value.trim(); if (n) { picked.add(n); add.value = ''; sync(); draw(); } } } });
+  sync(); draw();
+  return h('div', { class: 'staff-picker' },
+    h('div', { class: 'sp-bar' }, h('input', { type: 'search', placeholder: '이름·부서 찾기', oninput: (e) => { q = e.target.value.trim(); draw(); } }),
+      h('button', { type: 'button', class: 'link-btn small', onclick: () => { picked.clear(); sync(); draw(); } }, '모두 해제')),
+    box, count, add, hidden);
 }
 
 // 목록에서 고르기 + 맨 아래 '직접 입력' (설정의 목록·교직원 명단을 바로 드롭다운으로)
