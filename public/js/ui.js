@@ -43,7 +43,45 @@ export function clear(el, ...children) {
 // 지금 보고 있는 학교 (여러 학교에 속한 선생님) — 모든 요청에 실어 보냄
 export const apiCtx = { school: '', mock: null };
 
-export async function api(path, { method = 'GET', body } = {}) {
+// ⚡ 탭 이동을 빠르게: 방금 불러온 GET 결과를 잠깐 기억
+//   30초 안: 기억한 값을 바로 씀 / 3분 안: 기억한 값을 바로 보여 주고 뒤에서 새로 받아, 달라졌으면 화면을 조용히 다시 그림
+//   저장·삭제(POST·PUT·DELETE)를 하면 기억을 모두 비움 → 내가 고친 내용은 항상 바로 보임
+const FRESH = 30000;
+const STALE = 180000;
+const NO_CACHE = /^\/api\/(me|changes|auth|session|login|logout|push|inbox|platform|schools)/;
+const cache = new Map();
+const copy = (x) => (x === null || typeof x !== 'object' ? x : structuredClone(x));
+export const clearApiCache = () => cache.clear();
+const idle = () => !document.querySelector('.modal-wrap') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) && window.scrollY < 80;
+export async function api(path, opts = {}) {
+  const method = opts.method || 'GET';
+  if (apiCtx.mock || method !== 'GET' || NO_CACHE.test(path)) {
+    const out = await rawApi(path, opts);
+    if (method !== 'GET') cache.clear();
+    return out;
+  }
+  const key = `${apiCtx.school || ''}|${path}`;
+  const hit = cache.get(key);
+  const age = hit ? Date.now() - hit.at : Infinity;
+  const load = () => {
+    const pr = rawApi(path).then((data) => { cache.set(key, { at: Date.now(), data, json: JSON.stringify(data) }); return data; });
+    pr.catch(() => cache.delete(key));
+    return pr;
+  };
+  if (hit?.pending) return copy(await hit.pending);
+  if (hit && age < FRESH) return copy(hit.data);
+  if (hit && age < STALE) {
+    const hash = location.hash;
+    hit.pending = load();
+    hit.pending.then(() => { const now = cache.get(key); if (now && now.json !== hit.json && location.hash === hash && idle()) apiCtx.onStale?.(); }).catch(() => {});
+    return copy(hit.data);
+  }
+  const entry = { at: 0, pending: load() };
+  cache.set(key, entry);
+  return copy(await entry.pending);
+}
+
+async function rawApi(path, { method = 'GET', body } = {}) {
   // 체험 모드: 서버 대신 브라우저 안의 가짜 서버
   if (apiCtx.mock) return apiCtx.mock(path, { method, body: body === undefined ? undefined : JSON.parse(JSON.stringify(body)) });
   const res = await fetch(path, {

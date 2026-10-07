@@ -591,7 +591,8 @@ function parseSecretsAndContacts(s, out) {
       if (site === '업체명') continue;
       if (!site && !account && !password && !note) continue;
       const links = [s.link(r, c0 + 1), s.link(r, c0 + 4)].filter(Boolean);
-      out.push({ module: 'secrets', data: { category: cat, site: site || cat, account, password, note: [note, ...links.filter((l) => !note.includes(l) && !site.includes(l))].filter(Boolean).join(' ') } });
+      const url = [...links, ...`${site} ${note}`.match(/https?:\/\/\S+/g) || []].find((l) => /^https?:\/\//i.test(l)) || '';
+      out.push({ module: 'secrets', data: { category: cat, site: site || cat, ...(url ? { url } : {}), account, password, note: [note, ...links.filter((l) => l !== url && !note.includes(l) && !site.includes(l))].filter(Boolean).join(' ') } });
       n++;
     }
   }

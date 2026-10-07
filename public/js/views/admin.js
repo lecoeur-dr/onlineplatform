@@ -159,7 +159,7 @@ async function settings(root, refreshApp) {
   } },
   h('div', { class: 'row' }, h('label', {}, '학교 이름'), h('input', { name: 'schoolName', value: s.schoolName })),
   h('div', { class: 'row' }, h('label', {}, '기본 학년도'), h('input', { name: 'currentYear', type: 'number', value: s.currentYear }),
-    h('small', { class: 'hint' }, `학년도 ${s.currentYear} = ${s.currentYear}년 1월 ~ ${s.currentYear + 1}년 2월. 선생님들이 처음 들어왔을 때 보이는 연도입니다.`)),
+    h('small', { class: 'hint' }, `학년도 ${s.currentYear} = ${s.currentYear}년 3월 1일 ~ ${s.currentYear + 1}년 2월 말. 선생님들이 처음 들어왔을 때 보이는 학년도이며, 3월 1일이 되면 자동으로 새 학년도로 바뀝니다(2월에 미리 다음 학년도로 바꿔 둘 수도 있음).`)),
   h('div', { class: 'lists' }, Object.keys(DEFAULT_LISTS).map((k) => h('div', { class: 'row' },
     h('label', {}, `${LABELS[k] || k} 목록 (한 줄에 하나)`),
     h('textarea', { name: k, rows: 8, value: (s.lists[k] || []).join('\n') })))),
@@ -171,7 +171,35 @@ async function settings(root, refreshApp) {
       try { await api('/api/admin/settings', { method: 'PUT', body: { theme: { accent: id } } }); s.theme = { accent: id }; applyTheme(); drawTheme(); toast('학교 기본 색을 바꿨습니다.'); } catch (err) { toast(err.message, 'error'); }
     }));
   drawTheme();
-  clear(root, themeBox, neisSection(refreshApp), h('h3', {}, '기본 설정'), form);
+  clear(root, themeBox, yearPrepSection(), neisSection(refreshApp), h('h3', {}, '기본 설정'), form);
+}
+
+// 🌱 다음 학년도 준비: 해마다 이어 쓰는 자료 복사 + 새 학기 자료 가져오기 안내
+function yearPrepSection() {
+  const cur = state.settings.currentYear;
+  const pick = { from: cur, to: cur + 1 };
+  const MODS = [['assignments', '업무분장'], ['timetables', '시간표(틀)'], ['boards', '자유 표'], ['contestInfo', '공모 안내']];
+  const on = new Set(['assignments', 'timetables']);
+  const yearSel = (k) => h('select', { onchange: (e) => { pick[k] = Number(e.target.value); } }, [cur - 1, cur, cur + 1].map((y) => h('option', { value: y, selected: y === pick[k] }, `${y}학년도`)));
+  return h('section', { class: 'card' }, h('h3', {}, '🌱 학년도 관리'),
+    h('p', { class: 'muted small' }, `지금 기본 학년도: ${cur}학년도 (${cur}.3.1 ~ ${cur + 1}.2월 말). 학사일정·회의·출장 같은 날짜 자료는 날짜로, 공지·업무분장·예산 같은 자료는 학년도로 자동 구분됩니다. 3월 1일에 기본 학년도가 자동으로 넘어갑니다.`),
+    h('ol', { class: 'small' },
+      h('li', {}, '2월: 위쪽 [학년도]에서 다음 학년도를 고르고 업무분장·시간표·학사일정을 미리 넣기 (새 학기 자료 가져오기·나이스 학사일정 가져오기)'),
+      h('li', {}, '해마다 비슷한 자료는 아래에서 복사한 뒤 고치기'),
+      h('li', {}, '3월 1일: 모두의 화면이 새 학년도로 자동 전환 (지난 학년도는 [학년도]에서 언제든 다시 볼 수 있음)')),
+    h('div', { class: 'row-flex', style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' } }, yearSel('from'), '→', yearSel('to'),
+      MODS.map(([k, l]) => h('label', { class: 'inline chip-check' }, h('input', { type: 'checkbox', checked: on.has(k), onchange: (e) => (e.target.checked ? on.add(k) : on.delete(k)) }), ` ${l}`)),
+      h('button', { class: 'btn primary small', onclick: async (e) => {
+        if (!on.size) { toast('복사할 자료를 골라 주세요.', 'error'); return; }
+        if (!(await confirmBox(`${pick.from}학년도 → ${pick.to}학년도로 ${[...on].map((k) => MODS.find((x) => x[0] === k)[1]).join(', ')}을(를) 복사할까요? 받는 학년도에 이미 자료가 있는 메뉴는 건너뜁니다.`))) return;
+        e.target.disabled = true;
+        try {
+          const r = await api('/api/admin/copy-year', { method: 'POST', body: { from: pick.from, to: pick.to, modules: [...on] } });
+          toast(Object.entries(r.result).map(([k, v]) => `${MODS.find((x) => x[0] === k)[1]} ${v.copied !== undefined ? `${v.copied}건 복사` : `이미 ${v.skipped}건 있어 건너뜀`}`).join(' · ') || '복사할 자료가 없습니다.');
+        } catch (err) { toast(err.message, 'error'); }
+        e.target.disabled = false;
+      } }, '복사')),
+    h('p', { class: 'hint' }, h('a', { href: '#/admin?tab=smart' }, '🪄 새 학기 자료 가져오기(한글·엑셀) →'), ' 화면 위쪽 [학년도]에서 고른 학년도로 들어갑니다.'));
 }
 
 // 나이스 연동: 학교 검색 → 선택 → 학사일정 가져오기 (급식은 홈에 자동 표시)

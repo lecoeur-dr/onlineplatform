@@ -228,3 +228,9 @@ test('예산 묶음: 세부사업 이름 → 정책사업', async () => {
   assert.ok(isSubtotalRow({ program: '[ 세 부 항 목 소 계 ]' }));
   assert.ok(!isSubtotalRow({ program: '교과운영', item: '소모품' }));
 });
+
+test('CSV 읽기: 쉼표·따옴표·빈 칸', async () => {
+  const { readCsv } = await import('../public/js/smart-import.js');
+  const r = readCsv('﻿부서,사용자,"비고, 메모"\r\n교무실,김가,"야간, ""당직"""\n,,\n행정실,박다,\n');
+  assert.deepEqual(r.tables[0], [['부서', '사용자', '비고, 메모'], ['교무실', '김가', '야간, "당직"'], ['행정실', '박다', '']]);
+});

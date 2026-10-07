@@ -930,3 +930,15 @@ td.center { text-align: center; }
 .bg-bar { min-width: 140px; flex: 0 1 180px; }
 .bg-group .table-wrap { margin: 0; border: 0; }
 @media (max-width: 640px) { .bg-bar { flex-basis: 100%; } }
+
+/* 🔎 전체 검색 */
+.search-btn { font-size: 1.05rem; }
+.search-input { font-size: 1.05rem; padding: 10px 12px; }
+.search-results { max-height: 60vh; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.search-mod { font-weight: 700; margin: 4px 0; }
+.search-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); margin-bottom: 6px; cursor: pointer; color: inherit; font: inherit; }
+.search-item:hover { border-color: var(--primary); background: var(--primary-soft); }
+.search-item:disabled { opacity: .6; cursor: default; }
+.search-item mark { background: color-mix(in srgb, var(--warn) 35%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.search-box .row-flex { display: flex; gap: 8px; }
+.year-banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; margin-bottom: 10px; }

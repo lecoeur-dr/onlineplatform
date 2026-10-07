@@ -9,8 +9,26 @@ export async function readSource(file) {
   if (name.endsWith('.hwp')) throw new Error('예전 한글 파일(.hwp)은 브라우저에서 읽을 수 없습니다. 한글에서 [파일 → 다른 이름으로 저장 → 파일 형식: HWPX]로 저장해 올리거나, 표를 복사해 아래 붙여넣기 칸에 넣어 주세요.');
   if (name.endsWith('.hwpx')) return readHwpx(await file.arrayBuffer());
   if (/\.(xlsx|xls|xlsm)$/.test(name)) return readXlsx(await file.arrayBuffer());
-  if (/\.(csv|tsv|txt)$/.test(name)) return readText(await file.text());
+  if (name.endsWith('.csv')) return readCsv(await file.text());
+  if (/\.(tsv|txt)$/.test(name)) return readText(await file.text());
   throw new Error('HWPX, XLSX, CSV, TXT 파일만 읽을 수 있습니다.');
+}
+
+// CSV(쉼표로 나뉜 표, 따옴표 안의 쉼표·줄바꿈 허용). 탭으로 나뉜 글이면 그대로 readText
+export function readCsv(text) {
+  const src = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  if (src.includes('\t') && !src.includes(',')) return readText(src);
+  const rows = []; let row = []; let cell = ''; let q = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (q) { if (ch === '"' && src[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; continue; }
+    if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell.trim()); cell = ''; }
+    else if (ch === '\n') { row.push(cell.trim()); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell.trim()); rows.push(row); }
+  return { tables: [rows.filter((r) => r.some(Boolean))], lines: [] };
 }
 
 // 붙여넣은 글: 탭으로 나뉜 표(한글·엑셀에서 표 복사) 또는 줄글

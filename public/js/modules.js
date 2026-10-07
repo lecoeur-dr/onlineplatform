@@ -409,6 +409,7 @@ export const MODULES = {
     fields: [
       { key: 'category', label: '구분', type: 'text' },
       { key: 'site', label: '사이트·장소', type: 'text', required: true },
+      { key: 'url', label: '사이트 주소(링크)', type: 'url' },
       { key: 'account', label: '아이디', type: 'text' },
       { key: 'password', label: '비밀번호', type: 'secret' },
       { key: 'note', label: '비고', type: 'text' },

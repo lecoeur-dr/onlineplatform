@@ -3,6 +3,7 @@ import { h, api, clear } from '../ui.js';
 import { state, canEdit } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { tableView } from './table.js';
+import { openFileImport } from './file-import.js';
 
 // 계정·바로가기: 바로가기 카드(분류별) + 계정·비밀번호(구분별)
 export async function infoOverview(root) {
@@ -14,12 +15,14 @@ export async function infoOverview(root) {
   clear(root,
     h('section', { class: 'section' },
       h('div', { class: 'section-head' }, h('h3', {}, '🔗 바로가기'),
-        canEdit('links') ? h('button', { class: 'btn primary small', onclick: () => openRecordForm('links', null, { onSaved: reload }) }, '+ 바로가기') : null),
+        canEdit('links') ? h('span', { class: 'row-actions' }, h('button', { class: 'btn small', onclick: () => openFileImport('links', { reload }) }, '📥 한글·엑셀 가져오기'),
+          h('button', { class: 'btn primary small', onclick: () => openRecordForm('links', null, { onSaved: reload }) }, '+ 바로가기')) : null),
       groups.size ? [...groups].map(([k, list]) => h('div', { class: 'link-group' },
         h('div', { class: 'muted small strong' }, k),
         h('div', { class: 'link-cards' }, list.map((l) => h('div', { class: 'link-card' },
           /^https?:/.test(l.data.url || '') ? h('a', { href: l.data.url, target: '_blank', rel: 'noopener' }, l.data.title) : h('span', {}, l.data.title),
           l.data.note ? h('div', { class: 'muted small' }, l.data.note) : null,
+          /^https?:/.test(l.data.url || '') ? h('div', { class: 'muted small link-url' }, l.data.url.replace(/^https?:\/\//, '').replace(/\/$/, '').slice(0, 40)) : null,
           canEdit('links') ? h('button', { class: 'link-btn', onclick: () => openRecordForm('links', l, { onSaved: reload }) }, '수정') : null))))) : h('p', { class: 'muted' }, '바로가기가 없습니다.')),
     h('section', { class: 'section' }, h('h3', {}, '🔐 계정·비밀번호'),
       h('p', { class: 'hint' }, '비밀번호는 [보기]를 눌러야 나타나며, 누가 봤는지 변경 기록에 남습니다.'), secretsBox));

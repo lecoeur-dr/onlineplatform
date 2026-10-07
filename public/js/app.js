@@ -18,6 +18,7 @@ import { collectionsView } from './views/collections.js';
 import { DESK_VIEWS } from './views/desk.js';
 import { joinView, platformView, meView } from './views/account.js';
 import { bellButton, refreshBell } from './views/inbox.js';
+import { searchButton } from './search.js';
 import { openRecordForm } from './form.js';
 import { loadNews, markSeen, paintBadges } from './news.js';
 import { isDemo, startDemo, exitDemo, resetDemo, demoApi } from './demo.js';
@@ -96,11 +97,12 @@ async function boot() {
     history.replaceState(null, '', '/#/home/');
   }
   if (isDemo()) apiCtx.mock = demoApi;
+  apiCtx.onStale = () => state.rerender?.(); // 뒤에서 받아 온 새 자료가 달라졌으면 지금 화면을 다시 그림
   apiCtx.school = isDemo() ? 'demo' : remember('school') || '';
   try {
     await loadMe();
     let saved = null;
-    try { saved = Number(localStorage.getItem('gy_year')); } catch { /* 무시 */ }
+    try { if (Number(localStorage.getItem('gy_year_base')) === state.settings.currentYear) saved = Number(localStorage.getItem('gy_year')); } catch { /* 무시 */ }
     state.year = saved || state.settings.currentYear;
     state.staff = state.member ? await api('/api/staff').catch(() => []) : [];
   } catch (e) {
@@ -166,7 +168,8 @@ function layout() {
         schoolPick.map((s) => h('option', { value: s.id, selected: s.id === state.member?.schoolId }, s.name))) : null,
       h('label', { class: 'year' }, h('span', { class: 'year-label' }, '학년도 '),
         h('select', { id: 'year-select', onchange: (e) => { setYear(e.target.value); route(); } },
-          years.sort().map((y) => h('option', { value: y, selected: y === state.year }, `${y}`)))),
+          years.sort().map((y) => h('option', { value: y, selected: y === state.year }, `${y}${y === state.settings.currentYear ? ' (올해)' : y > state.settings.currentYear ? ' (준비)' : ''}`)))),
+      searchButton(),
       bellButton(),
       h('a', { class: 'who', href: '#/me', title: state.me.email }, state.me.name || state.me.email, state.me.role ? h('span', { class: 'tag ghost' }, ROLES[state.me.role]) : null),
       h('button', { class: 'btn small logout', onclick: logout }, '로그아웃')),
@@ -351,6 +354,7 @@ async function route() {
   const scopeNote = mod?.scope === 'global' ? '' : `  ${state.year}학년도`;
   const prefix = space === 'desk' ? '#/desk/' : '#/';
   clear(main,
+    yearBanner(space, mod),
     h('h2', { class: 'page-title' }, backButton(), title, h('span', { class: 'muted small' }, scopeNote)),
     group?.tabs.length > 1 ? h('div', { class: 'tabs-bar' }, group.tabs.map((t) => h('a', { href: `${prefix}${gid}/${t.id}`, class: t.id === tid ? 'on' : '' }, t.label))) : null,
     content);
@@ -364,7 +368,21 @@ async function route() {
     const view = space === 'desk' ? DESK_VIEWS[key] : VIEWS[key];
     if (!view) { location.replace(space === 'desk' ? '#/desk/home' : '#/home/'); return; }
     await view(content);
+    // 검색 결과에서 고른 기록 열기
+    const po = state.pendingOpen;
+    state.pendingOpen = null;
+    if (po) openRecordForm(po.module, po.record, { onSaved: () => route() });
   } catch (e) { showError(content, e); }
+}
+
+// 올해가 아닌 학년도를 보고 있을 때 알림 (학년도는 3월 1일 ~ 다음 해 2월 말, 3월 1일에 자동으로 바뀜)
+function yearBanner(space, mod) {
+  const cur = state.settings?.currentYear;
+  if (space !== 'school' || !cur || state.year === cur || mod?.scope === 'global') return null;
+  const back = h('button', { class: 'btn small', onclick: () => { setYear(cur); route(); } }, `${cur}학년도(올해)로`);
+  return state.year < cur
+    ? h('div', { class: 'alert warn year-banner' }, h('span', {}, `📦 지난 ${state.year}학년도(${state.year}.3 ~ ${state.year + 1}.2) 자료를 보고 있습니다.`), back)
+    : h('div', { class: 'alert year-banner' }, h('span', {}, `🌱 다음 ${state.year}학년도 준비 중입니다. 여기 넣은 자료는 ${state.year}년 3월 1일부터 모두에게 기본으로 보입니다.`), back);
 }
 
 function showError(content, e) {

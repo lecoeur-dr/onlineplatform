@@ -48,7 +48,8 @@ export function listOf(field) {
 
 export function setYear(y) {
   state.year = Number(y);
-  try { localStorage.setItem('gy_year', String(y)); } catch { /* 저장 불가 환경 */ }
+  // 고른 때의 '올해 학년도'도 같이 기억 → 3월에 학년도가 바뀌면 다시 올해 학년도로 시작
+  try { localStorage.setItem('gy_year', String(y)); localStorage.setItem('gy_year_base', String(state.settings?.currentYear || '')); } catch { /* 저장 불가 환경 */ }
 }
 
 // 브라우저에 기억하는 화면 선택값 (탭, 보기 방식 등). 저장 불가 환경에서는 기본값

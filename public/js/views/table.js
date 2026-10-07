@@ -4,6 +4,9 @@ import { h, api, clear, toast, won, fmtDate } from '../ui.js';
 import { state, canEdit } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { isNew } from '../news.js';
+import { openFileImport } from './file-import.js';
+
+const IMPORTABLE = ['assignments', 'resources', 'contacts', 'rules', 'links', 'secrets'];
 
 const queries = {};
 
@@ -95,6 +98,7 @@ function render(root, moduleId, rows, opts = {}) {
       h('input', { type: 'search', placeholder: `${def.label} 검색`, value: queries[moduleId] || '', oninput: (e) => { queries[moduleId] = e.target.value; render(root, moduleId, rows, opts); const s = root.querySelector('input[type=search]'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }),
       h('span', { class: 'muted' }, `${shown.length}건`),
       h('span', { class: 'grow' }),
+      editable && IMPORTABLE.includes(moduleId) ? h('button', { class: 'btn', onclick: () => openFileImport(moduleId, { reload }) }, '📥 한글·엑셀 가져오기') : null,
       opts.embed ? null : h('button', { class: 'btn', onclick: () => exportCsv(def, shown) }, 'CSV 저장'),
       editable ? h('button', { class: 'btn primary', onclick: () => openRecordForm(moduleId, null, { defaults: opts.defaults, onSaved: reload }) }, `+ ${def.label}`) : null),
     opts.embed ? null : scopeNote(def),
@@ -105,8 +109,8 @@ function render(root, moduleId, rows, opts = {}) {
 }
 
 function scopeNote(def) {
-  if (def.scope === 'year') return h('p', { class: 'hint' }, `${state.year}년 기록입니다. 위쪽에서 연도를 바꾸면 다른 해의 기록을 볼 수 있습니다.`);
-  if (def.scope === 'date') return h('p', { class: 'hint' }, `${state.year}년 1월 ~ ${state.year + 1}년 2월 기록입니다.`);
+  if (def.scope === 'year') return h('p', { class: 'hint' }, `${state.year}학년도(${state.year}.3 ~ ${state.year + 1}.2) 기록입니다. 위쪽 [학년도]를 바꾸면 다른 학년도의 기록을 볼 수 있습니다.`);
+  if (def.scope === 'date') return h('p', { class: 'hint' }, `${state.year}학년도(${state.year}.3 ~ ${state.year + 1}.2) 기록입니다. 학년 초 준비 기간인 ${state.year}년 1~2월 기록도 함께 보입니다.`);
   return null;
 }
 
