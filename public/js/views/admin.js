@@ -1,7 +1,7 @@
 // 관리자: 사용자 승인 · 설정 · 엑셀 가져오기 · 연도 복사 · 변경 기록 · 백업
 import { MODULES, ROLES, DEFAULT_LISTS, MONEY_ACCESS } from '../modules.js';
 import { h, api, clear, toast, confirmBox, loadScript, download, modal } from '../ui.js';
-import { state } from '../state.js';
+import { state, remember } from '../state.js';
 import { parseWorkbook, guessYear } from '../importer.js';
 import { swatches, applyTheme } from '../theme.js';
 import { smartTab } from './smart-tab.js';
@@ -107,6 +107,38 @@ async function users(root) {
   const approve = (u) => h('span', { class: 'nowrap' },
     h('button', { class: 'btn small primary', onclick: async () => { await update(u.email, { role: 'staff' }); users(root); } }, '승인'),
     h('button', { class: 'btn small danger ghost', onclick: async () => { if (await confirmBox(`${u.name || u.email}의 가입 요청을 거절할까요?`)) { await api(`/api/admin/users/${encodeURIComponent(u.email)}`, { method: 'DELETE' }); users(root); } } }, '거절'));
+  // 정렬 (기본: 담임·전담순 — 1-1부터, 담임·전담 없는 사람은 맨 뒤). 고른 정렬은 이 기기에 기억
+  let sortKey = remember('adm_user_sort') || 'homeroom';
+  let desc = false;
+  const tableBox = h('div', {});
+  const sortSel = h('select', { 'aria-label': '정렬', onchange: (e) => { sortKey = e.target.value; desc = false; remember('adm_user_sort', sortKey); drawTable(); } },
+    SORTS.map(([k, l]) => h('option', { value: k, selected: k === sortKey }, l)));
+  const dirBtn = h('button', { type: 'button', class: 'btn small', title: '순서 뒤집기', onclick: () => { desc = !desc; drawTable(); } });
+  const sortBar = h('div', { class: 'toolbar slim' }, h('strong', {}, `교직원 ${list.length}명`), h('span', { class: 'grow' }), h('span', { class: 'muted small' }, '정렬'), sortSel, dirBtn);
+  const COLS = [['email', '이메일'], ['name', '이름'], ['dept', '부서'], ['homeroom', '담임·전담'], ['role', '권한'], ['last_login', '최근 로그인'], ['', '']];
+  const drawTable = () => {
+    let rows = list.slice().sort(compareUsers(sortKey));
+    if (desc) {
+      // 거꾸로 해도 담임·전담·부서가 '없음'인 사람은 맨 뒤
+      const blank = (u) => (sortKey === 'homeroom' ? !u.homeroom : sortKey === 'dept' ? !u.dept : false);
+      rows = [...rows.filter((u) => !blank(u)).reverse(), ...rows.filter(blank)];
+    }
+    dirBtn.textContent = desc ? '↑ 거꾸로' : '↓ 차례로';
+    sortSel.value = sortKey;
+    clear(tableBox, h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {}, COLS.map(([k, t]) => h('th', k && k !== 'email' ? { class: 'sortable', title: `${t} 기준으로 정렬`, onclick: () => { if (sortKey === k) desc = !desc; else { sortKey = k; desc = false; remember('adm_user_sort', k); } drawTable(); } } : {}, t, sortKey === k ? (desc ? ' ▼' : ' ▲') : '')))),
+      h('tbody', {}, rows.map((u) => h('tr', { class: u.role === 'pending' ? 'hl' : '' },
+        h('td', {}, u.email),
+        h('td', {}, h('input', { value: u.name, onchange: (e) => { u.name = e.target.value; update(u.email, { name: u.name }); } })),
+        h('td', {}, h('input', { value: u.dept, onchange: (e) => { u.dept = e.target.value; update(u.email, { dept: u.dept }); } })),
+        h('td', {}, homeroomSelect(u.homeroom || '', (v) => { u.homeroom = v; update(u.email, { homeroom: v }); })),
+        h('td', {}, h('select', { onchange: (e) => update(u.email, { role: e.target.value }).then(() => users(root)) },
+          Object.entries(ROLES).map(([k, v]) => h('option', { value: k, selected: k === u.role }, v)))),
+        h('td', { class: 'small' }, u.last_login || '-'),
+        h('td', {}, u.email === state.me.email ? null : h('button', { class: 'link-btn danger', onclick: async () => {
+          if (await confirmBox(`${u.email} 사용자를 삭제할까요?`)) { await api(`/api/admin/users/${encodeURIComponent(u.email)}`, { method: 'DELETE' }); users(root); }
+        } }, '삭제'))))))));
+  };
   clear(root,
     h('section', { class: 'card' },
       h('h3', {}, '🔑 초대 링크'),
@@ -121,19 +153,32 @@ async function users(root) {
         u.note ? h('div', { class: 'small req-note' }, `💬 ${u.note}`) : h('div', { class: 'muted small' }, '(신청 메모 없음)'))))) : null,
     h('p', { class: 'hint' }, '이름은 보결·담당 배정·내 할 일에 쓰이므로 실명으로 맞춰 주세요. 이메일을 미리 등록해 두면 그 선생님은 첫 로그인부터 바로 사용합니다. "담임·전담"을 지정하면 그 선생님의 수업 → 시간표 탭이 자기 시간표로 바로 열립니다(학급·전담 목록은 시간표 탭의 ⚙ 학년반·전담·특별실에서).'),
     form,
-    h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, ['이메일', '이름', '부서', '담임·전담', '권한', '최근 로그인', ''].map((t) => h('th', {}, t)))),
-      h('tbody', {}, list.map((u) => h('tr', { class: u.role === 'pending' ? 'hl' : '' },
-        h('td', {}, u.email),
-        h('td', {}, h('input', { value: u.name, onchange: (e) => update(u.email, { name: e.target.value }) })),
-        h('td', {}, h('input', { value: u.dept, onchange: (e) => update(u.email, { dept: e.target.value }) })),
-        h('td', {}, homeroomSelect(u.homeroom || '', (v) => update(u.email, { homeroom: v }))),
-        h('td', {}, h('select', { onchange: (e) => update(u.email, { role: e.target.value }).then(() => users(root)) },
-          Object.entries(ROLES).map(([k, v]) => h('option', { value: k, selected: k === u.role }, v)))),
-        h('td', { class: 'small' }, u.last_login || '-'),
-        h('td', {}, u.email === state.me.email ? null : h('button', { class: 'link-btn danger', onclick: async () => {
-          if (await confirmBox(`${u.email} 사용자를 삭제할까요?`)) { await api(`/api/admin/users/${encodeURIComponent(u.email)}`, { method: 'DELETE' }); users(root); }
-        } }, '삭제'))))))));
+    sortBar, tableBox);
+  drawTable();
+}
+
+// 사용자 표 정렬: 담임·전담(1-1, 1-2 … 6-n → 그 밖의 학급 → 전담 → 없음) · 이름 · 부서 · 권한 · 최근 로그인
+const SORTS = [['homeroom', '담임·전담순'], ['name', '이름순'], ['dept', '부서순'], ['role', '권한순'], ['last_login', '최근 로그인순']];
+const ROLE_ORDER = ['pending', 'admin', 'staff', 'viewer'];
+const ko = (a, b) => String(a || '').localeCompare(String(b || ''), 'ko', { numeric: true });
+function homeroomKey(v) {
+  const lists = state.settings.lists || {};
+  const t = String(v || '').trim();
+  if (!t) return [9, 0, 0, ''];
+  const m = t.match(/^(\d+)\s*[-–학년\s]+\s*(\d+)/);
+  if (m) return [0, Number(m[1]), Number(m[2]), t];
+  const ci = (lists.classes || []).indexOf(t);
+  if (ci >= 0) return [1, ci, 0, t];
+  const si = (lists.specialists || []).indexOf(t);
+  return [2, si < 0 ? 999 : si, 0, t];
+}
+function compareUsers(key) {
+  const byName = (a, b) => ko(a.name || a.email, b.name || b.email);
+  if (key === 'homeroom') return (a, b) => { const x = homeroomKey(a.homeroom); const y = homeroomKey(b.homeroom); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return ko(x[3], y[3]) || byName(a, b); };
+  if (key === 'role') return (a, b) => (ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role)) || byName(a, b);
+  if (key === 'last_login') return (a, b) => String(b.last_login || '').localeCompare(String(a.last_login || '')) || byName(a, b);
+  if (key === 'dept') return (a, b) => { if (!a.dept !== !b.dept) return a.dept ? -1 : 1; return ko(a.dept, b.dept) || byName(a, b); };
+  return byName;
 }
 
 // 접속 QR: 교무실 화면·연수 자료에 띄워 두면 폰 카메라로 바로 접속
