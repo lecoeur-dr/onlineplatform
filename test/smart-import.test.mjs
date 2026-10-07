@@ -202,3 +202,29 @@ test('취합: 참석 조사 기본 문항·집계·정원·필수 검사', async
   assert.match(checkAnswers(sub, { q1: 'abc' }).error, /http/);
   assert.deepEqual(checkAnswers(sub, {}, { linkGiven: true }).clean, {});
 });
+
+test('예산 엑셀: 정책사업·집행액 칸 읽기, 띄어 쓴 소계 줄 빼기', async () => {
+  const { parseBudgetSheet } = await import('../public/js/smart-import.js');
+  const src = { lines: [], tables: [[
+    ['정책사업', '단위사업', '세부사업', '비목', '산출내역', '예산액', '집행액'],
+    ['기본적 교육활동', '교과활동', '교과운영', '일반수용비', '5,000×20', '100000', '40,000'],
+    ['', '', '교과운영', '운영수당', '', '50000', ''],
+    ['', '', '[ 세 부 항 목 소 계 ]', '', '', '150000', '40000'],
+  ]] };
+  const rows = parseBudgetSheet(src, (f) => (f === '5,000×20' ? 100000 : null));
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].program, '교과운영');
+  assert.equal(rows[0].spent, 40000);
+  assert.equal(rows[0].group, '기본적 교육활동');
+  assert.equal(rows[1].group, '기본적 교육활동');
+  assert.equal(rows[1].spent, undefined);
+});
+
+test('예산 묶음: 세부사업 이름 → 정책사업', async () => {
+  const { groupOfProgram, isSubtotalRow } = await import('../public/js/budget-groups.js');
+  assert.equal(groupOfProgram('학생및교직원보건'), '학생복지·교육격차해소');
+  assert.equal(groupOfProgram('방과후학교운영'), '선택적 교육활동');
+  assert.equal(groupOfProgram('교과운영', '직접 넣은 묶음'), '직접 넣은 묶음');
+  assert.ok(isSubtotalRow({ program: '[ 세 부 항 목 소 계 ]' }));
+  assert.ok(!isSubtotalRow({ program: '교과운영', item: '소모품' }));
+});

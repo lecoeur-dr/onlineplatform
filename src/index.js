@@ -5,6 +5,7 @@ import { mountAuth, loadUser, adminEmails } from './auth.js';
 import { randomToken, encryptText, decryptText } from './crypto.js';
 import { evalFormula } from '../public/js/calc.js';
 import { presetQuestions, tallyOf, checkAnswers } from '../public/js/collect.js';
+import { isSubtotalRow } from '../public/js/budget-groups.js';
 import { notify, pushReady, sendPush } from './push.js';
 
 const app = new Hono();
@@ -660,6 +661,66 @@ async function toggleSelf(c, m) {
 }
 app.post('/api/records/openClasses/:id/observe', (c) => toggleSelf(c, 'openClasses'));
 app.post('/api/records/:module/:id/self', (c) => toggleSelf(c, requireModule(c)));
+
+// ---------- 💰 예산 엑셀 한 번에 올리기 · 정리 ----------
+//   예전에는 줄마다 저장(수백 번 요청)해서 오래 걸렸고, 기다리다 다시 올리면 같은 줄이 여러 번 들어감 → 한 번에 저장 + 같은 줄 건너뛰기
+const budgetKey = (d) => JSON.stringify([d.source || '학교본예산', d.program || '', d.item || '', d.category || '', d.detail || '', d.formula || '', Number(d.amount) || 0]);
+app.post('/api/budget/bulk', async (c) => {
+  const m = 'budget';
+  const t = await tenant(c, m);
+  if (!t.member || !canWrite(c, t)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  const { year, mode, source, items } = await c.req.json();
+  if (!Array.isArray(items) || !items.length || items.length > 5000) return c.json({ error: '넣을 줄이 없습니다.' }, 400);
+  const db = c.env.DB;
+  const yr = Number(year) || (await getSettings(db, t.member.schoolId)).currentYear;
+  const clean = items.map((it) => { const d = normalizeData(m, { ...it, source: source || it.source || '학교본예산' }); if (evalFormula(d.formula) !== null) d.amount = evalFormula(d.formula); return d; }).filter((d) => !isSubtotalRow(d));
+  for (const d of clean) { const denied = await contestGuard(c, t, m, d, null); if (denied) return c.json({ error: denied }, 403); }
+  const existing = (await db.prepare("SELECT id, data FROM records WHERE module = 'budget' AND school_id = ? AND year = ?").bind(t.member.schoolId, yr).all()).results.map((r) => ({ id: r.id, d: JSON.parse(r.data) }));
+  const progs = new Set(clean.map((d) => d.program || ''));
+  const stmts = [];
+  let removed = 0;
+  if (mode === 'replace') {
+    for (const r of existing) if ((r.d.source || '학교본예산') === (source || '학교본예산') && progs.has(r.d.program || '')) {
+      const denied = await contestGuard(c, t, m, null, r.d); if (denied) return c.json({ error: denied }, 403);
+      stmts.push(db.prepare('DELETE FROM records WHERE id = ?').bind(r.id)); removed++;
+    }
+  }
+  const have = new Set(mode === 'replace' ? existing.filter((r) => !((r.d.source || '학교본예산') === (source || '학교본예산') && progs.has(r.d.program || ''))).map((r) => budgetKey(r.d)) : existing.map((r) => budgetKey(r.d)));
+  let n = 0; let dup = 0;
+  const email = c.get('user').email;
+  for (const d of clean) {
+    const k = budgetKey(d);
+    if (have.has(k)) { dup++; continue; }
+    have.add(k);
+    stmts.push(db.prepare('INSERT INTO records (id, module, year, date, sort, data, created_by, updated_by, school_id) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)').bind(randomToken(8), m, yr, n, JSON.stringify(d), email, email, t.member.schoolId));
+    n++;
+  }
+  for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80));
+  await audit(c, 'import', 'budget', null, `엑셀 ${n}줄 추가${removed ? `, ${removed}줄 삭제` : ''}${dup ? `, 같은 줄 ${dup}개 건너뜀` : ''}`);
+  return c.json({ ok: true, inserted: n, removed, skipped: dup, subtotals: items.length - clean.length });
+});
+// 이미 들어간 합계·소계 줄과 똑같은 줄(중복 업로드) 정리
+app.post('/api/budget/cleanup', async (c) => {
+  const t = await tenant(c, 'budget');
+  if (!t.member || !canWrite(c, t)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
+  const { year, dryRun } = await c.req.json();
+  const db = c.env.DB;
+  const rows = (await db.prepare("SELECT id, data FROM records WHERE module = 'budget' AND school_id = ? AND year = ? ORDER BY created_at, sort").bind(t.member.schoolId, Number(year)).all()).results;
+  const seen = new Set(); const subs = []; const dups = [];
+  for (const r of rows) {
+    const d = JSON.parse(r.data);
+    if (await contestGuard(c, t, 'budget', null, d)) continue; // 권한 없는 공모사업 줄은 건드리지 않음
+    if (isSubtotalRow(d)) { subs.push(r.id); continue; }
+    const k = budgetKey(d);
+    if (seen.has(k)) dups.push(r.id); else seen.add(k);
+  }
+  if (!dryRun) {
+    const ids = [...subs, ...dups];
+    for (let i = 0; i < ids.length; i += 80) await db.batch(ids.slice(i, i + 80).map((id) => db.prepare('DELETE FROM records WHERE id = ?').bind(id)));
+    if (ids.length) await audit(c, 'delete', 'budget', null, `정리: 소계 ${subs.length}줄, 중복 ${dups.length}줄`);
+  }
+  return c.json({ subtotals: subs.length, duplicates: dups.length });
+});
 
 // ---------- 📥 취합 응답 ----------
 const kstToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);

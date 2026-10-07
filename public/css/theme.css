@@ -915,3 +915,18 @@ td.center { text-align: center; }
 .prog-banner.folded .pb-mini { display: flex; }
 .pb-chip { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--c); background: var(--panel); }
 .pc-month { scroll-margin-top: calc(var(--pb-h, 0px) + 60px); }
+
+/* 💰 학교본예산: 정책사업(묶음)별 접이식 현황 */
+.alert.row-flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.bg-list { display: flex; flex-direction: column; gap: 8px; }
+.bg-group { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); }
+.bg-group > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; cursor: pointer; list-style: none; }
+.bg-group > summary::-webkit-details-marker { display: none; }
+.bg-group > summary::before { content: '▸'; color: var(--muted); transition: transform .15s; }
+.bg-group[open] > summary::before { transform: rotate(90deg); }
+.bg-group[open] > summary { border-bottom: 1px solid var(--line); }
+.bg-name { font-weight: 700; }
+.bg-nums { display: flex; gap: 12px; flex-wrap: wrap; font-size: .9em; }
+.bg-bar { min-width: 140px; flex: 0 1 180px; }
+.bg-group .table-wrap { margin: 0; border: 0; }
+@media (max-width: 640px) { .bg-bar { flex-basis: 100%; } }

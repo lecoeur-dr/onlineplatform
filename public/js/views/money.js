@@ -9,6 +9,7 @@ import { tableView } from './table.js';
 import { openRecordForm } from '../form.js';
 import { evalFormula, amountFrom } from '../calc.js';
 import { readSource, readText, parseBudgetSheet } from '../smart-import.js';
+import { groupOfProgram, groupIcon, groupOrder, isSubtotalRow } from '../budget-groups.js';
 
 
 export const KINDS = ['학교본예산', '공모사업'];
@@ -50,14 +51,18 @@ export function buildMoney(d) {
   const programs = new Map();
   const prog = (kind, name) => {
     const k = `${kind}|${name}`;
-    if (!programs.has(k)) programs.set(k, { kind, name, assigned: 0, used: 0, pending: 0, cats: new Map(), contest: null, spends: [] });
+    if (!programs.has(k)) programs.set(k, { kind, name, group: '', assigned: 0, used: 0, pending: 0, cats: new Map(), contest: null, spends: [] });
     return programs.get(k);
   };
   const cat = (p, c) => { const k = c || UNSET; if (!p.cats.has(k)) p.cats.set(k, { name: k, assigned: 0, used: 0 }); return p.cats.get(k); };
-  for (const b of d.budget) {
+  const budget = d.budget.filter((b) => !isSubtotalRow(b.data)); // 예전에 올라간 합계·소계 줄은 세지 않음
+  for (const b of budget) {
     const p = prog(kindOfBudget(b), programOfBudget(b));
     const a = Number(b.data.amount) || 0;
+    const sp = Number(b.data.spent) || 0; // 엑셀의 '집행액' 칸 (집행내역과 별도로 반영)
     p.assigned += a; cat(p, b.data.category).assigned += a;
+    if (sp) { p.used += sp; cat(p, b.data.category).used += sp; }
+    if (!p.group && b.data.group) p.group = b.data.group;
   }
   for (const c of d.contests) {
     if (!c.data.name) continue;
@@ -68,7 +73,7 @@ export function buildMoney(d) {
   }
   // 예전 물품 신청의 '예산 구분'(세부항목 이름 등) → 사업
   const alias = new Map();
-  for (const b of d.budget) for (const n of [b.data.label, b.data.item]) if (n) alias.set(norm(n), `${kindOfBudget(b)}|${programOfBudget(b)}`);
+  for (const b of budget) for (const n of [b.data.label, b.data.item]) if (n) alias.set(norm(n), `${kindOfBudget(b)}|${programOfBudget(b)}`);
   const findProgram = (label, kind) => {
     const n = norm(label);
     if (!n) return null;
@@ -88,6 +93,7 @@ export function buildMoney(d) {
     purchaseProgram.set(x.id, p);
     if (!spentPurchase.has(x.id)) { if (p) p.pending += amountOf(x); else unlinked.push(x); }
   }
+  for (const p of programs.values()) p.group = p.kind === '학교본예산' ? groupOfProgram(p.name, p.group) : '';
   const byKind = (kind) => [...programs.values()].filter((p) => p.kind === kind);
   const catsOf = (list) => {
     const m = new Map();
@@ -132,9 +138,9 @@ function catTable(cats, title = '비목별 사용 현황') {
     cats.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
       h('thead', {}, h('tr', {}, ['비목', '예산액', '집행액', '잔액', '사용률'].map((t) => h('th', {}, t)))),
       h('tbody', {}, cats.map((c) => h('tr', { class: c.used || c.assigned ? '' : 'dim' },
-        h('td', {}, c.name), h('td', { class: 'num' }, won(c.assigned)), h('td', { class: 'num' }, c.used ? won(c.used) : '-'),
+        h('td', { class: 'nowrap' }, c.name), h('td', { class: 'num' }, won(c.assigned)), h('td', { class: 'num' }, c.used ? won(c.used) : '-'),
         h('td', { class: `num ${c.assigned - c.used < 0 ? 'neg' : ''}` }, won(c.assigned - c.used)), h('td', { style: { minWidth: '140px' } }, bar(c.used, c.assigned))))),
-      h('tfoot', {}, h('tr', {}, h('td', { class: 'strong' }, '합계'), h('td', { class: 'num strong' }, won(sumOf(cats, 'assigned'))), h('td', { class: 'num strong' }, won(sumOf(cats, 'used'))),
+      h('tfoot', {}, h('tr', {}, h('td', { class: 'strong nowrap' }, '합계'), h('td', { class: 'num strong' }, won(sumOf(cats, 'assigned'))), h('td', { class: 'num strong' }, won(sumOf(cats, 'used'))),
         h('td', { class: 'num strong' }, won(sumOf(cats, 'assigned') - sumOf(cats, 'used'))), h('td', {}, bar(sumOf(cats, 'used'), sumOf(cats, 'assigned'))))))) : h('p', { class: 'muted' }, '예산·집행 내역이 없습니다.'));
 }
 
@@ -207,12 +213,6 @@ function ring(pct, color) {
   const t = svgEl('text', { x: 50, y: 56, 'text-anchor': 'middle', class: 'ring-text' }); t.textContent = `${pct}%`; svg.append(t);
   return svg;
 }
-function donutRow(cats, progs) {
-  return h('div', { class: 'donut-grid' },
-    donut('비목별 예산 구성', cats.map((c) => ({ name: c.name, value: c.assigned }))),
-    donut('비목별 집행 구성', cats.map((c) => ({ name: c.name, value: c.used })), { empty: '집행내역이 없습니다.' }),
-    progs ? donut('사업별 집행 구성', progs.map((p) => ({ name: p.name, value: p.used })), { empty: '집행내역이 없습니다.' }) : null);
-}
 
 // ---------- 전체 대시보드 ----------
 
@@ -231,11 +231,15 @@ export async function moneyOverview(root) {
   clear(root,
     kpiRow(all),
     h('div', { class: 'kind-grid' }, KINDS.map(kindCard)),
-    donutRow(d.m.catsOf(all), all),
+    h('div', { class: 'donut-grid' },
+      donut('비목별 예산 구성', d.m.catsOf(all).map((c) => ({ name: c.name, value: c.assigned }))),
+      donut('정책사업별 예산 구성 (학교본예산)', groupsOf(d.m.byKind('학교본예산')).map((g) => ({ name: g.name, value: g.assigned }))),
+      donut('정책사업별 집행 구성 (학교본예산)', groupsOf(d.m.byKind('학교본예산')).map((g) => ({ name: g.name, value: g.used })), { empty: '집행액이 없습니다.' })),
     h('div', { class: 'two-col' }, catTable(d.m.catsOf(all), '비목별 사용 현황 (전체)'), monthChart(d.spending)),
-    programTable(all, (p) => { remember('mn_prog', p.name); location.hash = p.kind === '공모사업' ? '#/money/contests' : '#/money/school'; }),
+    groupOverview(groupsOf(d.m.byKind('학교본예산')), (p) => { remember('mn_prog', p.name); location.hash = '#/money/school'; }),
+    d.m.byKind('공모사업').length ? programTable(d.m.byKind('공모사업'), (p) => { remember('mn_prog', p.name); location.hash = '#/money/contests'; }, '🏆 공모사업별 사용 현황') : null,
     recentSpends(d.spending, reload),
-    h('p', { class: 'hint' }, '사용률 = 집행액 ÷ 예산액. 집행액은 [집행내역]에 날짜별로 넣은 금액만 셉니다(구매신청은 [집행 등록]을 눌러야 반영). 비목 목록은 학교 관리 → 설정의 "예산 비목"에서 바꿀 수 있습니다.'));
+    h('p', { class: 'hint' }, '사용률 = 집행액 ÷ 예산액. 집행액 = 예산 줄의 「집행액」(엑셀에서 읽은 값) + [집행내역]에 날짜별로 넣은 금액(구매신청은 [집행 등록]을 눌러야 반영). 비목 목록은 학교 관리 → 설정의 "예산 비목"에서 바꿀 수 있습니다.'));
 }
 
 // ---------- 재원별 화면 (학교본예산 · 공모사업 공통) ----------
@@ -257,12 +261,13 @@ function budgetGrid(box, rows, o) {
     const total = [...by.values()].reduce((a, b) => a + b, 0);
     clear(foot, h('strong', {}, `합계 ${won(total)}`), [...by].map(([k, v]) => h('span', { class: 'tag' }, `${k} ${won(v)}`)));
   };
-  const COLS = [...(showProg ? [['program', '사업', 'list-progs']] : []), ['item', '세부항목'], ['category', '비목', 'list-cats'], ['detail', '산출내역'], ['formula', '산출식 (예: 5,000×20×3)'], ['amount', '금액'], ['note', '비고']];
+  const COLS = [...(showProg ? [['program', '사업', 'list-progs']] : []), ['item', '세부항목'], ['category', '비목', 'list-cats'], ['detail', '산출내역'], ['formula', '산출식 (예: 5,000×20×3)'], ['amount', '금액'], ['spent', '집행액'], ['note', '비고']];
   const save = (ln, st) => {
     clearTimeout(ln.t);
     st.textContent = '…';
     ln.t = setTimeout(async () => {
       const data = { ...ln.d, source: o.kind, program: ln.d.program || o.program, amount: amountFrom(ln.d.formula, ln.d.amount) };
+      const sp = Number(String(ln.d.spent ?? '').replace(/[^\d.-]/g, '')); if (sp) data.spent = sp; else delete data.spent;
       if (!data.program && !data.item && !data.amount) { st.textContent = ''; return; }
       try {
         const saved = ln.r ? await api(`/api/records/budget/${ln.r.id}`, { method: 'PUT', body: { data, version: ln.r.version } }) : await api('/api/records/budget', { method: 'POST', body: { data, year: state.year } });
@@ -286,6 +291,7 @@ function budgetGrid(box, rows, o) {
         paintAmt();
         return h('td', {}, amt);
       }
+      if (k === 'spent') return h('td', {}, h('input', { class: 'num', inputmode: 'numeric', readOnly: !editable, title: '이 줄에서 이미 쓴 금액 (집행내역을 따로 넣으면 그것과 더해짐)', value: Number(ln.d.spent) ? Number(ln.d.spent).toLocaleString() : '', oninput: (e) => { ln.d.spent = e.target.value.replace(/[^\d]/g, ''); save(ln, st); } }));
       const inp = h('input', { value: ln.d[k] || '', readOnly: !editable, list: list || null, oninput: (e) => { ln.d[k] = e.target.value; if (k === 'formula') paintAmt(); paintFoot(); save(ln, st); } });
       if (k === 'formula') inp.classList.add('formula');
       return h('td', {}, inp);
@@ -320,40 +326,106 @@ function budgetGrid(box, rows, o) {
     h('p', { class: 'hint' }, '칸을 바로 고치면 자동 저장됩니다(✓). 산출식에 "5,000원 × 20명 × 3회", "=12000*4+3000"처럼 쓰면 금액이 계산됩니다. Enter 는 아래 줄로, 마지막 줄에서 Enter 는 새 줄.'));
 }
 
+// 정책사업(상위 묶음)별로 사업 묶기
+function groupsOf(list) {
+  const m = new Map();
+  for (const p of list) {
+    const g = p.group || '기타';
+    if (!m.has(g)) m.set(g, { name: g, programs: [], assigned: 0, used: 0 });
+    const x = m.get(g); x.programs.push(p); x.assigned += p.assigned; x.used += p.used;
+  }
+  return [...m.values()].sort((a, b) => groupOrder(a.name) - groupOrder(b.name) || b.assigned - a.assigned);
+}
+// 묶음별 접이식 표: 묶음 머리줄(합계) → 세부사업 줄
+function groupOverview(groups, onPick, open) {
+  return h('section', { class: 'section' }, h('h3', {}, '📂 정책사업(묶음)별 사용 현황'),
+    groups.length ? h('div', { class: 'bg-list' }, groups.map((g) => h('details', { class: 'bg-group', open: open === g.name || groups.length === 1 },
+      h('summary', {}, h('span', { class: 'bg-name' }, `${groupIcon(g.name)} ${g.name}`), h('span', { class: 'muted small' }, ` ${g.programs.length}개 사업`), h('span', { class: 'grow' }),
+        h('span', { class: 'bg-nums' }, h('span', {}, '예산 ', h('strong', {}, won(g.assigned))), h('span', {}, '집행 ', h('strong', {}, won(g.used))), h('span', {}, '잔액 ', h('strong', { class: g.assigned - g.used < 0 ? 'neg' : '' }, won(g.assigned - g.used)))),
+        h('span', { class: 'bg-bar' }, bar(g.used, g.assigned))),
+      h('div', { class: 'table-wrap' }, h('table', { class: 'table compact' },
+        h('thead', {}, h('tr', {}, ['세부사업', '예산액', '집행액', '잔액', '사용률'].map((t) => h('th', {}, t)))),
+        h('tbody', {}, g.programs.slice().sort((a, b) => b.assigned - a.assigned).map((p) => h('tr', { class: 'click', onclick: () => onPick(p) },
+          h('td', {}, p.name), h('td', { class: 'num' }, won(p.assigned)), h('td', { class: 'num' }, p.used ? won(p.used) : '-'),
+          h('td', { class: `num ${p.assigned - p.used < 0 ? 'neg' : ''}` }, won(p.assigned - p.used)), h('td', { style: { minWidth: '120px' } }, bar(p.used, p.assigned)))))))))) : h('p', { class: 'muted' }, '사업이 없습니다.'));
+}
+const budgetKey = (d) => JSON.stringify([d.source || '학교본예산', d.program || '', d.item || '', d.category || '', d.detail || '', d.formula || '', Number(d.amount) || 0]);
+// 합계·소계 줄, 똑같은 줄(같은 파일을 여러 번 올린 경우) 개수
+function dirtyCount(budget) {
+  const seen = new Set(); let subtotals = 0; let duplicates = 0;
+  for (const b of budget) {
+    if (isSubtotalRow(b.data)) { subtotals++; continue; }
+    const k = budgetKey(b.data);
+    if (seen.has(k)) duplicates++; else seen.add(k);
+  }
+  return { subtotals, duplicates };
+}
+
 async function kindView(root, kind) {
   const d = await loadMoney();
   const reload = () => kindView(root, kind);
   const list = d.m.byKind(kind);
+  const grouped = kind === '학교본예산';
+  const groups = grouped ? groupsOf(list) : [];
+  let gpick = grouped ? remember('mn_group') || '' : '';
+  if (gpick && !groups.some((g) => g.name === gpick)) gpick = '';
   let pick = remember('mn_prog') || '';
   if (pick && !list.some((p) => p.name === pick)) pick = '';
-  const focus = list.filter((p) => !pick || p.name === pick);
-  const budgetRows = d.budget.filter((b) => (b.data.source || (d.contests.some((c) => c.data.name === b.data.program) ? '공모사업' : '학교본예산')) === kind && (!pick || (b.data.program || b.data.label || b.data.item) === pick));
+  if (pick && grouped) gpick = list.find((p) => p.name === pick).group;
+  const inGroup = list.filter((p) => !gpick || p.group === gpick);
+  const focus = inGroup.filter((p) => !pick || p.name === pick);
+  const focusNames = new Set(focus.map((p) => p.name));
+  const sourceOf = (b) => b.data.source || (d.contests.some((c) => c.data.name === b.data.program) ? '공모사업' : '학교본예산');
+  const budgetRows = d.budget.filter((b) => !isSubtotalRow(b.data) && sourceOf(b) === kind && (!(pick || gpick) || focusNames.has(b.data.program || b.data.label || b.data.item)));
   const spendRows = focus.flatMap((p) => p.spends);
   const choose = (name) => { remember('mn_prog', name); reload(); };
+  const chooseGroup = (g) => { remember('mn_group', g); remember('mn_prog', ''); reload(); };
   const progOf = (name) => list.find((p) => p.name === name) || (kind === '공모사업' ? { kind, name, contest: d.contests.find((c) => c.data.name === name) } : { kind, name });
   const editHere = pick ? canEditProgram(progOf(pick)) : kind === '학교본예산' ? canEditProgram(null) : list.some(canEditProgram);
   const pc = pick && kind === '공모사업' ? progOf(pick).contest : null;
+  const dirty = dirtyCount(d.budget.filter((b) => sourceOf(b) === kind));
   const budgetBox = h('div', {});
   const spendBox = h('div', {});
   const contestBox = h('div', {});
+  const cleanup = async () => {
+    if (!(await confirmBox(`합계·소계 줄 ${dirty.subtotals}개와 똑같이 두 번 이상 들어간 줄 ${dirty.duplicates}개를 지웁니다(같은 줄은 처음 것 하나만 남김). 계속할까요?`))) return;
+    try { const r = await api('/api/budget/cleanup', { method: 'POST', body: { year: state.year } }); toast(`정리했습니다: 소계 ${r.subtotals}줄 · 중복 ${r.duplicates}줄 삭제`); reload(); } catch (e) { toast(e.message, 'error'); }
+  };
+  const progChips = (items) => h('div', { class: 'seg wrap' }, ['', ...items.map((p) => p.name)].map((n) => h('button', { class: pick === n ? 'on' : '', onclick: () => choose(n) }, n || (gpick ? `${gpick} 전체` : `전체 ${kind}`))));
   clear(root,
     h('div', { class: 'toolbar' },
-      h('div', { class: 'seg wrap' }, ['', ...list.map((p) => p.name)].map((n) => h('button', { class: pick === n ? 'on' : '', onclick: () => choose(n) }, n || `전체 ${kind}`))),
+      grouped
+        ? h('div', { class: 'seg wrap' }, h('button', { class: !gpick ? 'on' : '', onclick: () => chooseGroup('') }, `전체 ${kind}`),
+          groups.map((g) => h('button', { class: gpick === g.name ? 'on' : '', title: `${g.programs.length}개 사업 · ${won(g.assigned)}`, onclick: () => chooseGroup(g.name) }, `${groupIcon(g.name)} ${g.name}`, h('small', { class: 'muted' }, ` ${g.programs.length}`))))
+        : progChips(list),
       h('span', { class: 'grow' }),
       kind === '공모사업' && canEdit('contests') ? h('button', { class: 'btn', onclick: () => openRecordForm('contests', null, { onSaved: reload }) }, '+ 공모사업 등록') : null,
       (kind === '학교본예산' ? canEditProgram(null) : list.some(canEditProgram)) ? h('button', { class: 'btn', onclick: () => budgetUpload({ kind, d, list, pick, reload }) }, '📥 엑셀 올리기') : null,
       editHere ? h('button', { class: 'btn primary', onclick: () => openRecordForm('spending', null, { defaults: { date: today(), source: kind, program: pick }, onSaved: reload }) }, '+ 집행내역') : null),
+    grouped && gpick ? h('div', { class: 'toolbar slim' }, progChips(inGroup)) : null,
+    (dirty.subtotals || dirty.duplicates) && editHere ? h('div', { class: 'alert warn row-flex' },
+      h('span', {}, `🧹 예산 입력에 합계·소계 줄 ${dirty.subtotals}개, 똑같은 줄 ${dirty.duplicates}개가 있습니다. 같은 파일을 여러 번 올리면 생기며, 예산액이 부풀려 보입니다.`),
+      h('span', { class: 'grow' }), h('button', { class: 'btn small', onclick: cleanup }, '정리하기')) : null,
     pc ? h('div', { class: 'contest-info' }, h('span', {}, '🏆 담당 공모사업'),
       h('span', { class: 'muted small' }, [pc.data.agency, pc.data.period, pc.data.grades, `담당자: ${contestManagers(pc).join(', ') || '(미지정 — 관리자만)'}`].filter(Boolean).join(' · '))) : null,
     kind === '공모사업' && !list.length ? h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🔒'), h('p', {}, state.me?.role === 'admin' ? '등록된 공모사업이 없습니다. [+ 공모사업 등록]에서 사업과 담당자를 정하세요.' : '담당으로 지정된 공모사업이 없습니다. 공모사업은 학교 관리자가 담당자로 지정한 선생님만 볼 수 있습니다.')) : null,
     kind === '공모사업' && state.me?.role === 'admin' ? h('p', { class: 'hint' }, '🔒 공모사업은 관리자와, 관리자가 [공모사업 목록]에서 담당자로 지정한 선생님에게만 보입니다(다른 교직원 화면·대시보드에서는 숨김).') : null,
     kpiRow(focus),
-    focus.length ? donutRow(d.m.catsOf(focus), pick ? null : focus) : null,
-    h('div', { class: 'two-col' }, catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : '비목별 사용 현황'), monthChart(spendRows)),
-    pick ? null : programTable(list, (p) => choose(p.name)),
-    h('section', { class: 'section' }, h('h3', {}, '📒 예산 입력 (항목 · 비목 · 산출식 · 금액)'), budgetBox),
+    focus.length ? h('div', { class: 'donut-grid' },
+      grouped && !gpick
+        ? donut('정책사업별 예산 구성', groups.map((g) => ({ name: g.name, value: g.assigned })))
+        : donut('비목별 예산 구성', d.m.catsOf(focus).map((c) => ({ name: c.name, value: c.assigned }))),
+      grouped && !gpick
+        ? donut('정책사업별 집행 구성', groups.map((g) => ({ name: g.name, value: g.used })), { empty: '집행액이 없습니다.' })
+        : donut('비목별 집행 구성', d.m.catsOf(focus).map((c) => ({ name: c.name, value: c.used })), { empty: '집행액이 없습니다.' }),
+      pick ? null : donut('세부사업별 예산 구성', focus.map((p) => ({ name: p.name, value: p.assigned })))) : null,
+    !pick && grouped ? groupOverview(gpick ? groups.filter((g) => g.name === gpick) : groups, (p) => choose(p.name), gpick) : null,
+    h('div', { class: 'two-col' }, catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : gpick ? `${gpick} · 비목별 사용 현황` : '비목별 사용 현황'), monthChart(spendRows)),
+    pick || grouped ? null : programTable(list, (p) => choose(p.name)),
+    h('section', { class: 'section' }, h('h3', {}, '📒 예산 입력 (항목 · 비목 · 산출식 · 금액 · 집행액)'), budgetBox),
     h('section', { class: 'section' }, h('h3', {}, '🧾 집행내역'), spendBox),
-    kind === '공모사업' ? h('section', { class: 'section' }, h('h3', {}, '🏆 공모사업 목록'), contestBox) : null);
+    kind === '공모사업' ? h('section', { class: 'section' }, h('h3', {}, '🏆 공모사업 목록'), contestBox) : null,
+    grouped ? h('p', { class: 'hint' }, '정책사업(묶음)은 엑셀에 「정책사업」 칸이 있으면 그 값을, 없으면 세부사업 이름으로 자동 분류합니다(인적자원운용·학생복지·기본적/선택적 교육활동·교육활동 지원·학교 일반운영·시설 확충·예비비). 교육청 분류와 다를 수 있습니다. 집행액 = 예산 줄의 「집행액」(엑셀에서 읽은 값) + [집행내역]에 날짜별로 넣은 금액.') : null);
   budgetGrid(budgetBox, budgetRows, { kind, program: pick, reload, canEdit: (name) => (name ? canEditProgram(progOf(name)) : kind === '학교본예산' && canEdit('budget')) });
   await tableView(spendBox, 'spending', { rows: spendRows.slice().sort((a, b) => String(b.data.date).localeCompare(String(a.data.date))), embed: true, hide: ['source'], defaults: { date: today(), source: kind, program: pick }, reload });
   if (kind === '공모사업') await tableView(contestBox, 'contests', { rows: d.contests.filter((c) => !pick || c.data.name === pick), embed: true, reload, rowClass: (c) => (canEditProgram({ kind: '공모사업', contest: c }) ? '' : 'locked') });
@@ -373,12 +445,12 @@ function budgetUpload({ kind, d, list, pick, reload }) {
     const on = rows.filter((r) => r.on);
     info.textContent = rows.length ? `인식 ${rows.length}줄 · 선택 ${on.length}줄 · 합계 ${won(on.reduce((t, r) => t + r.amount, 0))}` : '';
     clear(preview, rows.length ? h('div', { class: 'table-wrap', style: { maxHeight: '46vh' } }, h('table', { class: 'table compact' },
-      h('thead', {}, h('tr', {}, h('th', {}, h('input', { type: 'checkbox', checked: rows.every((r) => r.on), onchange: (e) => { rows.forEach((r) => { r.on = e.target.checked; }); draw(); } })), ['사업', '세부항목', '비목', '산출내역·식', '금액', '비고'].map((x) => h('th', {}, x)))),
+      h('thead', {}, h('tr', {}, h('th', {}, h('input', { type: 'checkbox', checked: rows.every((r) => r.on), onchange: (e) => { rows.forEach((r) => { r.on = e.target.checked; }); draw(); } })), ['사업', '세부항목', '비목', '산출내역·식', '금액', '집행액', '비고'].map((x) => h('th', {}, x)))),
       h('tbody', {}, rows.map((r) => {
         const bad = kind === '공모사업' && !allowed.includes(progOfRow(r));
         return h('tr', { class: bad ? 'locked' : '' }, h('td', {}, h('input', { type: 'checkbox', checked: r.on, disabled: bad, onchange: (e) => { r.on = e.target.checked; draw(); } })),
-          h('td', { class: 'small' }, progOfRow(r) || h('span', { class: 'muted' }, '(없음)'), bad ? h('div', { class: 'muted small' }, '담당 아님') : null), h('td', {}, r.item), h('td', { class: 'small' }, r.category),
-          h('td', { class: 'small' }, r.formula || r.detail), h('td', { class: 'num' }, won(r.amount)), h('td', { class: 'small' }, r.note));
+          h('td', { class: 'small' }, progOfRow(r) || h('span', { class: 'muted' }, '(없음)'), r.group ? h('div', { class: 'muted small' }, r.group) : null, bad ? h('div', { class: 'muted small' }, '담당 아님') : null), h('td', {}, r.item), h('td', { class: 'small' }, r.category),
+          h('td', { class: 'small' }, r.formula || r.detail), h('td', { class: 'num' }, won(r.amount)), h('td', { class: 'num' }, r.spent ? won(r.spent) : '-'), h('td', { class: 'small' }, r.note));
       })))) : h('p', { class: 'muted small' }, '파일을 고르거나 표를 붙여넣으면 여기에 미리보기가 나옵니다.'));
   };
   const take = (src) => {
@@ -395,7 +467,7 @@ function budgetUpload({ kind, d, list, pick, reload }) {
       h('option', { value: '__file', selected: useFile }, '파일에 적힌 사업명 그대로'),
       [...new Set([pick, ...list.map((p) => p.name)].filter(Boolean))].map((n) => h('option', { value: n, selected: !useFile && n === target }, `모두 「${n}」(으)로`))));
   modal(`📥 ${kind} 엑셀 올리기`, h('div', { class: 'form' },
-    h('p', { class: 'muted small' }, '학교 예산 편성표·세부산출내역(엑셀·CSV)을 올리면 머리글(세부사업·세부항목·비목·산출내역·산출식·금액·비고)을 찾아 줄마다 읽습니다. 합계·소계 줄은 빼고, 「단위: 천원」이면 원 단위로 바꿉니다. 파일은 서버로 보내지 않고 이 브라우저에서만 읽습니다.'),
+    h('p', { class: 'muted small' }, '학교 예산 편성표·세부산출내역(엑셀·CSV)을 올리면 머리글(정책사업·세부사업·세부항목·비목·산출내역·산출식·금액·집행액·비고)을 찾아 줄마다 읽습니다. 합계·소계 줄과 이미 들어간 똑같은 줄은 빼고, 「단위: 천원」이면 원 단위로 바꿉니다. 파일은 서버로 보내지 않고 이 브라우저에서만 읽습니다.'),
     h('input', { type: 'file', accept: '.xlsx,.xls,.xlsm,.csv,.tsv,.txt', onchange: async (e) => { const f = e.target.files[0]; if (!f) return; try { take(await readSource(f)); } catch (err) { toast(err.message, 'error'); } } }),
     paste, h('button', { type: 'button', class: 'btn small', onclick: () => take(readText(paste.value)) }, '붙여넣은 표 읽기'),
     h('div', { class: 'grid-2' }, progPick,
@@ -410,16 +482,13 @@ function budgetUpload({ kind, d, list, pick, reload }) {
       const sourceOf = (b) => b.data.source || (d.contests.some((c) => c.data.name === b.data.program) ? '공모사업' : '학교본예산');
       const olds = mode === 'replace' ? d.budget.filter((b) => sourceOf(b) === kind && progs.has(b.data.program || '')) : [];
       if (olds.length && !(await confirmBox(`${[...progs].map((x) => x || '(사업명 없음)').join(', ')}의 기존 예산 입력 ${olds.length}줄을 지우고 ${pickRows.length}줄로 바꿉니다. 계속할까요?`))) return;
-      e.target.disabled = true;
-      let n = 0;
+      e.target.disabled = true; e.target.textContent = '넣는 중…';
       try {
-        for (const b of olds) await api(`/api/records/budget/${b.id}`, { method: 'DELETE' });
-        for (const r of pickRows) {
-          await api('/api/records/budget', { method: 'POST', body: { year: state.year, data: { source: kind, program: progOfRow(r), item: r.item, category: r.category, detail: r.detail, formula: r.formula, amount: r.amount, note: r.note } } });
-          n++;
-        }
-        toast(`${n}줄을 넣었습니다.${olds.length ? ` (기존 ${olds.length}줄 삭제)` : ''}`); close(); reload();
-      } catch (err) { toast(`${n}줄까지 넣고 멈췄습니다: ${err.message}`, 'error'); e.target.disabled = false; reload(); }
+        const items = pickRows.map((r) => ({ program: progOfRow(r), item: r.item, category: r.category, detail: r.detail, formula: r.formula, amount: r.amount, note: r.note,
+          ...(r.spent ? { spent: r.spent } : {}), ...(r.group ? { group: r.group } : {}), ...(r.unit ? { unit: r.unit } : {}) }));
+        const res = await api('/api/budget/bulk', { method: 'POST', body: { year: state.year, mode, source: kind, items } });
+        toast(`${res.inserted}줄을 넣었습니다.${res.removed ? ` 기존 ${res.removed}줄 삭제.` : ''}${res.skipped ? ` 이미 있는 같은 줄 ${res.skipped}개는 건너뜀.` : ''}`); close(); reload();
+      } catch (err) { toast(err.message, 'error'); e.target.disabled = false; e.target.textContent = '예산에 넣기'; }
     } }, '예산에 넣기'),
   ], { wide: true });
   draw();

@@ -357,7 +357,7 @@ export const MODULES = {
     ],
   },
   budget: {
-    label: '예산 입력', icon: '💰', scope: 'year', edit: 'staff',
+    label: '예산 입력', icon: '💰', scope: 'year', edit: 'staff', extras: ['spent', 'group', 'unit'],
     fields: [
       { key: 'source', label: '재원', type: 'select', options: ['학교본예산', '공모사업'], hint: '비우면 학교본예산' },
       { key: 'program', label: '세부사업·공모사업명', type: 'select', list: 'budgetPrograms', free: true },
