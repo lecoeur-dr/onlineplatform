@@ -907,3 +907,11 @@ td.center { text-align: center; }
 @media (max-width: 700px) { .pc-row { grid-template-columns: 1fr; } .pc-cell { min-height: 46px; } }
 .pc-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.3px; }
 @media (max-width: 700px) { .pc-line { white-space: normal; letter-spacing: -0.5px; } .pc-cell { font-size: 9.5px; } }
+/* 특별수업 위쪽 배너: 고정 + 접기 */
+.prog-banner { position: sticky; top: 50px; z-index: 8; background: var(--bg); padding: 6px 0 8px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.prog-banner .prog-sums { margin: 6px 0 0; max-height: 45vh; overflow: auto; }
+.prog-banner .pb-mini { display: none; flex-wrap: wrap; gap: 6px; }
+.prog-banner.folded .prog-sums { display: none; }
+.prog-banner.folded .pb-mini { display: flex; }
+.pb-chip { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--c); background: var(--panel); }
+.pc-month { scroll-margin-top: calc(var(--pb-h, 0px) + 60px); }

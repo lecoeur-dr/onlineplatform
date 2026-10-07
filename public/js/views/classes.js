@@ -148,16 +148,33 @@ function programBoard(body, rows, reload) {
       h('h3', {}, `📅 ${y}년 ${m}월`, k === ym(t) ? h('span', { class: 'tag ok' }, ' 이번 달') : null),
       h('div', { class: 'pc-row' }, pick.map((p) => monthCal(p, y, m))));
   }));
-  clear(body,
+  // 위쪽 배너(프로그램 단추 + 현황)는 고정, 접고 펼 수 있음 (기억함, 휴대폰은 기본 접힘)
+  let folded = remember('prog_banner_fold') ?? window.innerWidth < 700;
+  const mini = h('div', { class: 'pb-mini' }, pick.map((p) => {
+    const ls = byProg.get(p).filter((r) => r.data.status !== '취소' && programInfo(r.data.content).classes.length);
+    return h('span', { class: 'pb-chip', style: { '--c': colorOf(p) } }, h('span', { class: 'dot', style: { background: colorOf(p) } }), ` ${p} `, h('strong', {}, `${ls.filter((r) => r.data.date <= t).length}/${ls.length}`));
+  }));
+  const sums = names.length ? h('div', { class: 'cards prog-sums' }, pick.map(summary)) : null;
+  const banner = h('div', { class: `prog-banner ${folded ? 'folded' : ''}` });
+  const foldBtn = h('button', { class: 'btn small', title: '현황 접기/펴기', onclick: () => { folded = !folded; remember('prog_banner_fold', folded); banner.classList.toggle('folded', folded); foldBtn.textContent = folded ? '▼ 현황 펴기' : '▲ 현황 접기'; setH(); } }, folded ? '▼ 현황 펴기' : '▲ 현황 접기');
+  // 맨 위 머리글(로고·학년도) 바로 아래에 붙도록 높이를 재서 맞춤 (PC·휴대폰 머리글 높이가 다름)
+  const setH = () => requestAnimationFrame(() => { const gb = document.querySelector('.group-bar'); banner.style.top = `${(document.querySelector('header.top')?.offsetHeight || 0) + (gb && getComputedStyle(gb).display !== 'none' && getComputedStyle(gb).position === 'sticky' ? gb.offsetHeight : 0)}px`; body.style.setProperty('--pb-h', `${banner.offsetHeight}px`); });
+  clear(banner,
     names.length ? h('div', { class: 'toolbar' },
       h('span', { class: 'muted small' }, '프로그램:'),
       names.map((p) => h('button', { class: `chip-check ${pick.includes(p) ? 'on' : ''}`, style: { borderColor: colorOf(p) }, onclick: () => togglePick(p) }, h('span', { class: 'dot', style: { background: colorOf(p) } }), ` ${p} `, h('span', { class: 'muted small' }, byProg.get(p).length))),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn small', onclick: () => document.querySelector('.pc-month.now')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, '이번 달로'),
+      foldBtn,
       canEdit('programs') ? h('button', { class: 'btn small primary', onclick: () => add(pick[0] || '', t) }, '+ 특별수업') : null) : null,
-    names.length ? h('div', { class: 'cards prog-sums' }, pick.map(summary)) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🎨'), h('p', {}, '특별수업이 없습니다. 학교 관리 → 기존 시트 가져오기에서 SW·AI·예술 시간표 시트를 올리면 프로그램별로 나뉩니다.')),
+    mini, sums);
+  clear(body,
+    banner,
+    names.length ? null : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🎨'), h('p', {}, '특별수업이 없습니다. 학교 관리 → 기존 시트 가져오기에서 SW·AI·예술 시간표 시트를 올리면 프로그램별로 나뉩니다.')),
     monthBox,
     h('p', { class: 'hint' }, '시트처럼 프로그램마다 달력을 나란히 보여 줍니다. 위의 프로그램 단추로 보고 싶은 것만 고르고, 칸을 누르면 수정, 빈 날짜를 누르면 그 날짜로 추가합니다. "14/44"는 누적 진행 차시(14차시째 / 총 44차시)입니다.'));
+  setH();
+  if (window.ResizeObserver) new ResizeObserver(setH).observe(banner);
   requestAnimationFrame(() => document.querySelector('.pc-month.now')?.scrollIntoView({ block: 'start' }));
 }
 
