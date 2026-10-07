@@ -1,17 +1,43 @@
 {
   "name": "OnlinePlatform",
-  "short_name": "OnlinePlatform",
+  "short_name": "온라인플랫폼",
   "description": "OnlinePlatform — 학교 업무(온라인 교무실)와 Deskterior(내 학급·수업·기록)",
   "lang": "ko",
   "start_url": "/#/home/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f6f7f9",
-  "theme_color": "#2f6fed",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }

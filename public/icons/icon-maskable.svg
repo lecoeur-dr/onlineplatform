@@ -7,8 +7,8 @@
       <stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <rect width="512" height="512" rx="112" fill="url(#shine)"/>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#shine)"/>
   <g>
     <rect x="252" y="80" width="8" height="56" rx="4" fill="#fff"/>
     <path d="M260 84 L310 99 L260 114 Z" fill="#fbbf24"/>
