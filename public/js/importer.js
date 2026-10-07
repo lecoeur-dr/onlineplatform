@@ -346,17 +346,22 @@ function parseCalendarPrograms(s, out, defaultProgram) {
       const program = top && !/학기|\d{4}\s*년/.test(top) ? top.split('\n')[0] : defaultProgram;
       const hr = r + 1;
       for (let k = 0; k < 7; k++) s.get(hr, c + k);
+      // 날짜는 칸 위치(몇째 주·무슨 요일)로 계산: 시트에 숫자를 잘못 적은 칸(예: 3일 칸에 '10')이 있어도 정확
+      const first = new Date(y, mo - 1, 1).getDay();
+      const last = new Date(y, mo, 0).getDate();
       for (let w = hr + 1; w <= Math.min(s.maxR, hr + 6); w++) {
         for (let k = 0; k < 7; k++) {
           const v = s.get(w, c + k);
           if (v === null) continue;
           if (typeof v === 'number') continue;
           const lines = toText(v).split('\n');
-          const day = parseInt(lines[0], 10);
+          const written = parseInt(lines[0], 10);
+          const pos = (w - hr - 1) * 7 + k - first + 1;
+          const day = pos >= 1 && pos <= last ? pos : written;
           const content = lines.slice(1).map((x) => x.trim()).filter(Boolean).join('\n');
           if (!day || !content) continue;
-          // 휴일 표시(추석, 개천절 등)는 학사일정에 이미 있으므로 특별수업으로 넣지 않음
-          if ((HOLIDAY.test(content) || /휴업|휴일|방학|개천절|한글날|삼일절|현충일|석가|성탄/.test(content)) && !/\d-\d|교시/.test(content)) continue;
+          // 휴일·행사 표시(추석, 개천절, 개학식 등)는 학사일정에 이미 있으므로 특별수업으로 넣지 않음
+          if ((HOLIDAY.test(content) || /휴업|휴일|방학|개천절|한글날|삼일절|현충일|석가|성탄|개학|종업|졸업|입학|[가-힣]식$/.test(content)) && !/\d-\d|교시/.test(content)) continue;
           const status = /변경/.test(content) ? '변경' : /취소/.test(content) ? '취소' : '예정';
           out.push({ module: 'programs', data: { program, date: `${y}-${pad(mo)}-${pad(day)}`, content, status } });
           n++;

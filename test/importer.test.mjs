@@ -71,3 +71,18 @@ test('시트 가져오기: 월별 행사 · 날짜로 바뀐 학급명 복원 ·
   const board = items.find((i) => i.module === 'boards');
   assert.equal(board.data.rows[0][0], '3-1');
 });
+
+test('달력형 특별수업 시트: 날짜는 칸 위치로 계산(잘못 적은 날짜 숫자 무시), 개학식 등 행사는 제외', () => {
+  const rows = [
+    ['국악'],
+    ['📅 2026년 9월'],
+    ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'],
+    ['', '', 1, '2\n(14/44)\n(4-1) 5교시', '10\n(3-2) 1교시', 4, 5],
+    [6, 7, 8, 9, '10\n개학식', 11, 12],
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '예술 시간표');
+  const { items } = parseWorkbook(XLSX, wb, { lists: DEFAULT_LISTS });
+  const p = items.filter((x) => x.module === 'programs');
+  assert.deepEqual(p.map((x) => [x.data.program, x.data.date]), [['국악', '2026-09-02'], ['국악', '2026-09-03']]);
+});

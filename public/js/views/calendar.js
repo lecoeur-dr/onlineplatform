@@ -15,10 +15,26 @@ export function eventItem(r) {
   const cat = normCategory(r.data.category);
   return { mod: 'events', r, date: r.data.date, endDate: r.data.endDate, cat, color: categoryColor(cat), label: (r.data.title || '').split('\n')[0], sub: r.data.dept, review: r.data.review };
 }
+// 특별수업 칸 내용 풀기: '(14/44)' 진행 차시 · '(4-1) 5교시' 반·교시 줄 · 나머지 메모
+export function programInfo(content) {
+  const lines = String(content || '').split('\n').map((x) => x.trim()).filter(Boolean);
+  let progress = null;
+  const classes = [];
+  const notes = [];
+  for (const l of lines) {
+    const pm = l.match(/^\(?\s*(\d+)\s*\/\s*(\d+)\s*\)?$/);
+    if (pm && !progress) { progress = { n: Number(pm[1]), total: Number(pm[2]) }; continue; }
+    if (/\(?\d-\d+\)?\s*\d*\s*[~-]?\s*\d*\s*교시|^\(\d-\d+\)/.test(l)) classes.push(l.replace(/\s+/g, ' ')); else if (l !== '-') notes.push(l);
+  }
+  return { progress, classes, notes };
+}
 export function programItem(r, legendBy = 'category', programs = []) {
   const cat = legendBy === 'program' ? r.data.program || '기타' : '특별수업';
   const color = legendBy === 'program' ? paletteColor(Math.max(0, programs.indexOf(r.data.program))) : categoryColor('특별수업');
-  return { mod: 'programs', r, date: r.data.date, cat, color, label: `[${r.data.program || ''}] ${(r.data.content || '').split('\n')[0]}`, sub: r.data.place, cancel: r.data.status === '취소' };
+  const info = programInfo(r.data.content);
+  const head = info.classes.length ? `${info.classes[0]}${info.classes.length > 1 ? ` 외 ${info.classes.length - 1}반` : ''}` : info.notes[0] || '';
+  const label = `[${r.data.program || ''}] ${info.progress ? `${info.progress.n}/${info.progress.total}차시 · ` : ''}${head}`;
+  return { mod: 'programs', r, date: r.data.date, cat, color, label, sub: r.data.place, cancel: r.data.status === '취소' };
 }
 const LEAVE_ICON = { 출장: '🚌', 조퇴: '🏃', 외출: '🚶', 지참: '⏰', 연가: '🌿', 병가: '🏥', 공가: '📋', 특별휴가: '🎗️' };
 export function tripItem(r) {

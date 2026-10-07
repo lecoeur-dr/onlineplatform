@@ -3,7 +3,7 @@ import { categoryColor, NO_SCHOOL_CATEGORIES, normCategory } from '../modules.js
 import { h, api, clear, DOW, today, addDays, fmtDate } from '../ui.js';
 import { state, remember, canEdit, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
-import { renderCalendar, eventItem, programItem, openClassItem, substituteItem } from './calendar.js';
+import { renderCalendar, eventItem, programItem, openClassItem, substituteItem, programInfo } from './calendar.js';
 import { tableView } from './table.js';
 import { sortTimetables, glanceTable, editTimetable, conflicts, activeOn } from './timetable.js';
 import { openClassesView } from './openclasses.js';
@@ -69,11 +69,12 @@ export async function classOverview(root) {
 
 // 특별수업: 달력(프로그램별 색) / 목록
 export async function programsView(root) {
-  const mode = remember('prog_mode') || 'cal';
+  const mode = remember('prog_mode2') || 'board';
   const body = h('div', {});
-  clear(root, h('div', { class: 'subbar' }, seg([['cal', '달력'], ['list', '목록']], mode, (m) => { remember('prog_mode', m); programsView(root); })), body);
+  clear(root, h('div', { class: 'subbar' }, seg([['board', '🎨 프로그램별'], ['cal', '통합 달력'], ['list', '목록']], mode, (m) => { remember('prog_mode2', m); programsView(root); })), body);
   if (mode === 'list') return tableView(body, 'programs', { groupBy: 'program', reload: () => programsView(root) });
   const d = await api(`/api/bundle?year=${state.year}&modules=programs`);
+  if (mode === 'board') return programBoard(body, d.programs, () => programsView(root));
   const programs = [...new Set([...(state.settings.lists.programs || []), ...d.programs.map((r) => r.data.program).filter(Boolean)])];
   const items = d.programs.map((r) => programItem(r, 'program', programs));
   renderCalendar(body, {
@@ -82,6 +83,82 @@ export async function programsView(root) {
     reload: () => programsView(root),
     add: [{ mod: 'programs', label: '특별수업', defaults: (date) => ({ date, status: '예정' }) }],
   });
+}
+
+// 🎨 프로그램별: 시트(SW·AI 시간표, 예술 시간표)처럼 프로그램마다 달력을 나란히 + 진행 현황
+const PROG_COLORS = ['#7c3aed', '#16a34a', '#ea580c', '#db2777', '#0284c7', '#ca8a04', '#0d9488', '#9333ea'];
+const ym = (d) => d.slice(0, 7);
+function programBoard(body, rows, reload) {
+  const t = today();
+  const names = [...new Set([...(state.settings.lists.programs || []).filter((p) => rows.some((r) => r.data.program === p)), ...rows.map((r) => r.data.program).filter(Boolean)])];
+  const colorOf = (p) => PROG_COLORS[Math.max(0, names.indexOf(p)) % PROG_COLORS.length];
+  let pick = (remember('prog_pick') || names).filter((p) => names.includes(p));
+  if (!pick.length) pick = names;
+  const byProg = new Map(names.map((p) => [p, rows.filter((r) => r.data.program === p).sort((a, b) => a.data.date.localeCompare(b.data.date))]));
+  const togglePick = (p) => { const set = new Set(pick); if (set.has(p)) set.delete(p); else set.add(p); remember('prog_pick', names.filter((x) => set.has(x))); reload(); };
+  const open = (r) => openRecordForm('programs', r, { onSaved: reload });
+  const add = (program, date) => canEdit('programs') && openRecordForm('programs', null, { defaults: { program, date, status: '예정' }, onSaved: reload });
+
+  // 진행 현황 카드
+  const summary = (p) => {
+    const list = byProg.get(p).filter((r) => r.data.status !== '취소');
+    const lessons = list.filter((r) => programInfo(r.data.content).classes.length);
+    const past = lessons.filter((r) => r.data.date <= t);
+    const next = lessons.find((r) => r.data.date > t);
+    const prog = [...list].reverse().map((r) => ({ r, ...programInfo(r.data.content) })).find((x) => x.progress && x.r.data.date <= t);
+    const perClass = {};
+    for (const r of past) for (const c of programInfo(r.data.content).classes) { const k = (c.match(/\d-\d+/) || [])[0]; if (k) perClass[k] = (perClass[k] || 0) + 1; }
+    return h('div', { class: 'card prog-sum', style: { '--c': colorOf(p) } },
+      h('div', { class: 'card-head' }, h('strong', {}, p), h('span', { class: 'muted small' }, `${lessons.length}일 예정`)),
+      h('div', { class: 'progress-row' }, h('div', { class: 'tally-track' }, h('span', { class: 'tally-fill', style: { width: `${lessons.length ? Math.round((past.length / lessons.length) * 100) : 0}%`, background: colorOf(p) } })),
+        h('span', { class: 'progress-text' }, `${past.length} / ${lessons.length}일 진행`)),
+      prog ? h('div', { class: 'small' }, `📊 누적 ${prog.progress.n} / ${prog.progress.total}차시 (${fmtDate(prog.r.data.date, false)} 기준)`) : null,
+      next ? h('div', { class: 'small click', onclick: () => open(next) }, `⏭ 다음: ${fmtDate(next.data.date)} · ${programInfo(next.data.content).classes.slice(0, 2).join(', ')}${programInfo(next.data.content).classes.length > 2 ? ' …' : ''}`) : h('div', { class: 'small muted' }, '남은 수업 없음'),
+      Object.keys(perClass).length ? h('div', { class: 'small muted' }, '반별 진행: ', Object.entries(perClass).sort((a, b) => a[0].localeCompare(b[0], 'ko', { numeric: true })).map(([k, n]) => `${k} ${n}회`).join(' · ')) : null);
+  };
+
+  // 한 프로그램의 한 달 달력
+  const monthCal = (p, y, m) => {
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    const map = new Map();
+    for (const r of byProg.get(p)) if (ym(r.data.date) === key) { if (!map.has(r.data.date)) map.set(r.data.date, []); map.get(r.data.date).push(r); }
+    const first = new Date(y, m - 1, 1).getDay();
+    const last = new Date(y, m, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < first; i++) cells.push(h('div', { class: 'pc-cell empty' }));
+    for (let d = 1; d <= last; d++) {
+      const date = `${key}-${String(d).padStart(2, '0')}`;
+      const items = map.get(date) || [];
+      const dow = (first + d - 1) % 7;
+      cells.push(h('div', { class: `pc-cell ${items.length ? 'has' : ''} ${date === t ? 'today' : ''} ${date < t ? 'past' : ''} ${dow === 0 ? 'sun' : dow === 6 ? 'sat' : ''}`, onclick: items.length ? null : () => add(p, date) },
+        h('div', { class: 'pc-day' }, d),
+        items.map((r) => { const info = programInfo(r.data.content); return h('div', { class: `pc-item ${r.data.status === '취소' ? 'cancel' : r.data.status === '변경' ? 'changed' : ''}`, onclick: (e) => { e.stopPropagation(); open(r); } },
+          info.progress ? h('span', { class: 'pc-prog' }, `${info.progress.n}/${info.progress.total}`) : null,
+          info.classes.map((c) => h('div', { class: 'pc-line', title: c }, c.replace(/[()]/g, '').replace(/\s+/g, ' ').trim())), info.notes.map((n) => h('div', { class: 'muted pc-line', title: n }, n))); })));
+    }
+    return h('div', { class: 'pc-cal', style: { '--c': colorOf(p) } },
+      h('div', { class: 'pc-title' }, p, h('span', { class: 'muted small' }, ` ${map.size ? `${map.size}일` : ''}`)),
+      h('div', { class: 'pc-grid' }, DOW.map((x, i) => h('div', { class: `pc-dow ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}` }, x)), cells));
+  };
+
+  const months = [...new Set(rows.filter((r) => pick.includes(r.data.program)).map((r) => ym(r.data.date)))].sort();
+  const monthBox = h('div', {}, months.map((k) => {
+    const [y, m] = k.split('-').map(Number);
+    return h('section', { class: `pc-month ${k === ym(t) ? 'now' : ''}`, 'data-ym': k },
+      h('h3', {}, `📅 ${y}년 ${m}월`, k === ym(t) ? h('span', { class: 'tag ok' }, ' 이번 달') : null),
+      h('div', { class: 'pc-row' }, pick.map((p) => monthCal(p, y, m))));
+  }));
+  clear(body,
+    names.length ? h('div', { class: 'toolbar' },
+      h('span', { class: 'muted small' }, '프로그램:'),
+      names.map((p) => h('button', { class: `chip-check ${pick.includes(p) ? 'on' : ''}`, style: { borderColor: colorOf(p) }, onclick: () => togglePick(p) }, h('span', { class: 'dot', style: { background: colorOf(p) } }), ` ${p} `, h('span', { class: 'muted small' }, byProg.get(p).length))),
+      h('span', { class: 'grow' }),
+      h('button', { class: 'btn small', onclick: () => document.querySelector('.pc-month.now')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, '이번 달로'),
+      canEdit('programs') ? h('button', { class: 'btn small primary', onclick: () => add(pick[0] || '', t) }, '+ 특별수업') : null) : null,
+    names.length ? h('div', { class: 'cards prog-sums' }, pick.map(summary)) : h('div', { class: 'empty-state' }, h('div', { class: 'empty-ico' }, '🎨'), h('p', {}, '특별수업이 없습니다. 학교 관리 → 기존 시트 가져오기에서 SW·AI·예술 시간표 시트를 올리면 프로그램별로 나뉩니다.')),
+    monthBox,
+    h('p', { class: 'hint' }, '시트처럼 프로그램마다 달력을 나란히 보여 줍니다. 위의 프로그램 단추로 보고 싶은 것만 고르고, 칸을 누르면 수정, 빈 날짜를 누르면 그 날짜로 추가합니다. "14/44"는 누적 진행 차시(14차시째 / 총 44차시)입니다.'));
+  requestAnimationFrame(() => document.querySelector('.pc-month.now')?.scrollIntoView({ block: 'start' }));
 }
 
 // 동료장학: 달력 / 공개수업·참관 신청
