@@ -7,16 +7,33 @@ import { swatches, applyTheme } from '../theme.js';
 import { smartTab } from './smart-tab.js';
 
 let tab = 'users';
-const TABS = { users: '사용자·초대', access: '🔐 행정·예산 권한', smart: '🪄 새 학기 가져오기', settings: '설정', import: '기존 시트 가져오기', copy: '연도 복사', audit: '변경 기록', backup: '백업' };
+const TABS = { users: '👥 사용자·초대', access: '🔐 행정·예산 권한', settings: '⚙️ 설정', smart: '🪄 새 학기 가져오기', audit: '🕘 변경 기록', import: '📄 기존 시트', copy: '📋 연도 복사', backup: '💾 백업' };
+
+// 휴대폰에서 넓은 표 → 줄마다 카드로 (머리글을 각 칸 앞에 이름표로 붙임)
+export function stackTables(root) {
+  for (const t of root.querySelectorAll('table.table')) {
+    const heads = [...t.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    if (!heads.length) continue;
+    t.classList.add('stack');
+    for (const tr of t.querySelectorAll('tbody tr, tfoot tr')) [...tr.children].forEach((td, i) => { if (!td.hasAttribute('data-label')) td.setAttribute('data-label', heads[i] || ''); });
+  }
+}
 
 export async function adminView(root, refreshApp) {
   const want = location.hash.match(/[?&]tab=(\w+)/)?.[1];
   if (want && TABS[want]) { tab = want; history.replaceState(null, '', '#/admin'); }
   const body = h('div', {});
-  clear(root,
-    h('div', { class: 'seg tabs' }, Object.entries(TABS).map(([k, v]) => h('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; adminView(root, refreshApp); } }, v))),
-    body);
+  // 탭: 넓은 화면은 여러 줄, 휴대폰은 한 줄 가로 넘김
+  const bar = h('div', { class: 'seg tabs admin-tabs' }, Object.entries(TABS).map(([k, v]) => h('button', { class: tab === k ? 'on' : '', 'data-tab': k, onclick: () => { tab = k; adminView(root, refreshApp); } }, v)));
+  clear(root, bar, body);
+  bar.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  // 가입 요청이 있으면 사용자 탭에 숫자
+  api('/api/admin/users').then((list) => { const n = list.filter((u) => u.role === 'pending').length; if (n) bar.querySelector('[data-tab=users]')?.append(h('span', { class: 'badge' }, String(n))); }).catch(() => {});
+  // 표를 다시 그려도(승인·필터 등) 휴대폰 카드 모양 유지
+  let raf = 0;
+  new MutationObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => stackTables(body)); }).observe(body, { childList: true, subtree: true });
   await ({ users, access: accessTab, smart: smartTab, settings, import: importTab, copy, audit, backup })[tab](body, refreshApp);
+  stackTables(body);
 }
 
 // 🔐 행정·예산 권한: 공모 안내·기한 안내는 모두에게 보임. 나머지 탭은 관리자 + 여기서 체크한 사람만 보고 입력
@@ -160,8 +177,9 @@ async function settings(root, refreshApp) {
   h('div', { class: 'row' }, h('label', {}, '학교 이름'), h('input', { name: 'schoolName', value: s.schoolName })),
   h('div', { class: 'row' }, h('label', {}, '기본 학년도'), h('input', { name: 'currentYear', type: 'number', value: s.currentYear }),
     h('small', { class: 'hint' }, `학년도 ${s.currentYear} = ${s.currentYear}년 3월 1일 ~ ${s.currentYear + 1}년 2월 말. 선생님들이 처음 들어왔을 때 보이는 학년도이며, 3월 1일이 되면 자동으로 새 학년도로 바뀝니다(2월에 미리 다음 학년도로 바꿔 둘 수도 있음).`)),
-  h('div', { class: 'lists' }, Object.keys(DEFAULT_LISTS).map((k) => h('div', { class: 'row' },
-    h('label', {}, `${LABELS[k] || k} 목록 (한 줄에 하나)`),
+  h('p', { class: 'muted small' }, '아래 목록은 입력 창의 고르기 칸에 쓰입니다. 눌러서 펼친 뒤 한 줄에 하나씩 적어 주세요.'),
+  h('div', { class: 'lists' }, Object.keys(DEFAULT_LISTS).map((k) => h('details', { class: 'list-box' },
+    h('summary', {}, h('strong', {}, LABELS[k] || k), h('span', { class: 'muted small' }, ` ${(s.lists[k] || []).length}개 · ${(s.lists[k] || []).slice(0, 4).join(', ')}${(s.lists[k] || []).length > 4 ? ' …' : ''}`)),
     h('textarea', { name: k, rows: 8, value: (s.lists[k] || []).join('\n') })))),
   h('div', {}, h('button', { class: 'btn primary' }, '설정 저장')));
   const themeBox = h('section', { class: 'card' });

@@ -949,3 +949,42 @@ td.center { text-align: center; }
 .content.is-loading::before { content: ''; position: absolute; top: -6px; left: 0; height: 3px; width: 35%; border-radius: 3px; background: var(--primary); opacity: 0; animation: load-bar 1s ease-in-out .15s infinite; z-index: 5; }
 @keyframes load-bar { 0% { left: 0; width: 15%; opacity: .9; } 50% { left: 40%; width: 40%; opacity: .9; } 100% { left: 90%; width: 10%; opacity: .9; } }
 @media (prefers-reduced-motion: reduce) { .content.is-loading::before { animation: none; opacity: .6; width: 100%; } }
+
+/* ⚙️ 학교 관리: 휴대폰 화면 정리 */
+body.on-admin .fab { display: none; }
+.admin-tabs .badge { background: var(--danger, #e5484d); color: #fff; font-weight: 700; }
+.admin-strip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: inherit; text-decoration: none; }
+.admin-strip .as-ico { font-size: 1.4rem; }
+.admin-strip .as-txt { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.admin-strip .as-go { font-size: 1.5rem; color: var(--muted); }
+.admin-strip.has-req { border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); background: var(--warn-soft); }
+.admin-strip .as-req { color: var(--warn); font-weight: 600; }
+.list-box { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); margin-bottom: 8px; }
+.list-box > summary { padding: 10px 12px; cursor: pointer; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.list-box > summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.list-box[open] > summary { border-bottom: 1px solid var(--line); }
+.list-box textarea { width: 100%; border: 0; border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+.lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0 10px; align-items: start; }
+
+@media (max-width: 720px) {
+  /* 탭: 한 줄 가로 넘김 */
+  .admin-tabs { display: flex; width: auto; max-width: 100%; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+  .admin-tabs::-webkit-scrollbar { display: none; }
+  .admin-tabs button { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; }
+  /* 넓은 표 → 카드 */
+  .table.stack thead { display: none; }
+  .table.stack, .table.stack tbody, .table.stack tfoot, .table.stack tr, .table.stack td { display: block; width: 100%; }
+  .table.stack tr { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); padding: 8px 12px; margin-bottom: 10px; }
+  .table.stack td { display: flex; align-items: center; gap: 10px; border: 0; padding: 5px 0; min-height: 0; text-align: left; word-break: break-all; }
+  .table.stack td::before { content: attr(data-label); flex: 0 0 5.6em; color: var(--muted); font-size: .82em; font-weight: 600; word-break: keep-all; }
+  .table.stack td[data-label=""]::before { display: none; }
+  .table.stack td > input:not([type=checkbox]), .table.stack td > select { flex: 1; min-width: 0; width: auto; }
+  .table.stack td.center, .table.stack td.num { justify-content: space-between; }
+  .table.stack td.center::before { flex: 1; }
+  .table.stack td:empty { display: none; }
+  .table-wrap:has(> .table.stack) { overflow: visible; border: 0; background: transparent; box-shadow: none; }
+  .invite-row { flex-wrap: wrap; }
+  .invite-row code { flex: 1 1 100%; overflow-x: auto; white-space: nowrap; }
+  .inline-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .inline-form input[type=email] { grid-column: 1 / -1; }
+}

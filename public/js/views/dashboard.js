@@ -79,6 +79,7 @@ export async function dashboardView(root) {
         h('a', { class: 'qa', href: '#/class/substitutes' }, h('span', {}, '🔁'), '보결'),
         h('a', { class: 'qa', href: '#/notice/briefings' }, h('span', {}, '📣'), '전달'),
         h('a', { class: 'qa', href: '#/class/reservations' }, h('span', {}, '🏫'), '예약'))),
+    state.me?.role === 'admin' ? adminStrip() : null,
     inRange ? null : h('p', { class: 'alert' }, `지금 ${state.year}학년도 기록을 보고 있습니다. 오늘 일정은 올해 학년도를 선택해야 보입니다.`),
     pinned.length ? h('section', { class: 'section' }, h('div', { class: 'cards' }, pinned.map((n) => noticeCard(n, reload, { compact: true })))) : null,
     ddays.length ? h('div', { class: 'dday-row' }, ddays.map((e) => h('button', { class: 'dday', style: { '--c': '#3b6fe0' }, onclick: () => openRecordForm('events', e, { onSaved: reload }) },
@@ -152,4 +153,15 @@ function installHint() {
       } }, '추가 방법'),
       h('button', { class: 'btn small', onclick: () => { try { localStorage.setItem('gy_install_hide', '1'); } catch { /* 무시 */ } box.remove(); } }, '닫기')));
   return box;
+}
+
+// 관리자: 홈 맨 위에 학교 관리 바로가기 (가입 요청이 있으면 숫자로 알림)
+function adminStrip() {
+  const sub = h('span', { class: 'muted small' }, '사용자·권한·설정');
+  const a = h('a', { class: 'admin-strip', href: '#/admin' }, h('span', { class: 'as-ico' }, '⚙️'), h('span', { class: 'as-txt' }, h('strong', {}, '학교 관리'), sub), h('span', { class: 'as-go' }, '›'));
+  api('/api/admin/users').then((list) => {
+    const n = list.filter((u) => u.role === 'pending').length;
+    if (n) { a.classList.add('has-req'); clear(sub, h('span', { class: 'as-req' }, `🙋 가입 요청 ${n}명 — 눌러서 승인`)); }
+  }).catch(() => {});
+  return a;
 }

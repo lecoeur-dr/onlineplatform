@@ -315,6 +315,7 @@ async function route() {
   }
   const space = spaceOfPath(path);
   state.space = space;
+  document.body.classList.toggle('on-admin', path.split('/')[0] === 'admin'); // 관리 화면에서는 + 버튼 숨김
   document.body.dataset.space = space;
   for (const a of document.querySelectorAll('.space-tab')) a.classList.toggle('on', a.dataset.space === space && !['join', 'platform', 'me'].includes(path));
   for (const a of document.querySelectorAll('.bottom-bar a')) a.style.display = '';
