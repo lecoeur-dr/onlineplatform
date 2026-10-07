@@ -20,8 +20,11 @@ mountAuth(app);
 
 const autoSchoolYear = () => { const d = new Date(Date.now() + 9 * 3600000); return d.getUTCMonth() < 2 ? d.getUTCFullYear() - 1 : d.getUTCFullYear(); };
 async function getSettings(db, schoolId) {
-  const school = await db.prepare('SELECT name FROM schools WHERE id = ?').bind(schoolId).first();
-  const rows = await db.prepare('SELECT key, value FROM school_settings WHERE school_id = ?').bind(schoolId).all();
+  const [schoolRes, rows] = await db.batch([ // 학교 이름 + 설정을 DB 왕복 1번에
+    db.prepare('SELECT name FROM schools WHERE id = ?').bind(schoolId),
+    db.prepare('SELECT key, value FROM school_settings WHERE school_id = ?').bind(schoolId),
+  ]);
+  const school = schoolRes.results[0];
   const s = Object.fromEntries(rows.results.map((r) => [r.key, JSON.parse(r.value)]));
   return {
     // 학년도는 3월 1일에 바뀜: 저장된 학년도가 지났으면 자동으로 올해 학년도 (2월에 다음 학년도로 미리 바꿔 둔 것은 그대로)
@@ -123,34 +126,37 @@ const MONEY_AREAS = ['overview', 'school', 'contests', 'spend', 'purchases'];
 const MONEY_SCOPED = ['contests', 'budget', 'spending', 'purchases', 'purchaseRequests'];
 // 자유 표 '나만 보기': 만든 사람만 보고 고침
 const isPrivateOther = (row, email) => row.module === 'boards' && JSON.parse(row.data).visibility === '나만 보기' && row.created_by !== email;
-async function moneyAccess(c, mem) {
-  if (!mem) return null;
-  const cached = c.get('moneyAcc');
-  if (cached) return cached;
-  let acc;
-  if (mem.role === 'admin') acc = { admin: true, areas: new Set(MONEY_AREAS), mine: new Set(), all: new Set(), has: () => true };
-  else {
-    const email = String(c.get('user').email || '').toLowerCase();
-    const access = (await c.env.DB.prepare("SELECT value FROM school_settings WHERE school_id = ? AND key = 'access'").bind(mem.schoolId).first())?.value;
-    const grants = access ? JSON.parse(access) : {};
-    const areas = new Set(MONEY_AREAS.filter((a) => (grants[a] || []).includes(email)));
-    const rows = (await c.env.DB.prepare("SELECT data FROM records WHERE module = 'contests' AND school_id = ?").bind(mem.schoolId).all()).results.map((r) => JSON.parse(r.data));
-    const me = String(mem.name || '').replace(/\s/g, '');
-    const all = new Set(rows.map((d) => d.name).filter(Boolean));
-    const mine = new Set(rows.filter((d) => me && (d.managers || []).map((x) => String(x).replace(/\s/g, '')).includes(me)).map((d) => d.name));
-    // 구매신청 건별 공개: 공개 범위가 '전체 교직원'이거나 '지정한 사람'에 내 이름이 있으면 그 건만 보고 품목을 담음
-    const reqRows = (await c.env.DB.prepare("SELECT id, data FROM records WHERE module = 'purchaseRequests' AND school_id = ?").bind(mem.schoolId).all()).results;
-    const reqs = new Set();
-    const reqsOpen = new Set();
-    for (const r of reqRows) {
-      const d = JSON.parse(r.data);
-      const names = (Array.isArray(d.members) ? d.members : String(d.members || '').split(/[,，\n]/)).map((x) => x.replace(/\s/g, '')).filter(Boolean);
-      if (d.audience === '전체 교직원' || (d.audience === '지정한 사람' && me && names.includes(me))) { reqs.add(r.id); if (d.open) reqsOpen.add(r.id); }
-    }
-    acc = { admin: false, areas, mine, all, reqs, reqsOpen, me, has: (a) => areas.has(a) };
+// 같은 요청 안에서 여러 메뉴를 동시에 불러도 한 번만 계산 (약속(promise)을 기억)
+function moneyAccess(c, mem) {
+  if (!mem) return Promise.resolve(null);
+  if (!c.get('moneyAccP')) c.set('moneyAccP', computeMoneyAccess(c, mem));
+  return c.get('moneyAccP');
+}
+async function computeMoneyAccess(c, mem) {
+  if (mem.role === 'admin') return { admin: true, areas: new Set(MONEY_AREAS), mine: new Set(), all: new Set(), has: () => true };
+  const email = String(c.get('user').email || '').toLowerCase();
+  // 세 가지를 한 번에 물어봄 (DB 왕복 1번)
+  const [accRes, contestRes, reqRes] = await c.env.DB.batch([
+    c.env.DB.prepare("SELECT value FROM school_settings WHERE school_id = ? AND key = 'access'").bind(mem.schoolId),
+    c.env.DB.prepare("SELECT data FROM records WHERE module = 'contests' AND school_id = ?").bind(mem.schoolId),
+    c.env.DB.prepare("SELECT id, data FROM records WHERE module = 'purchaseRequests' AND school_id = ?").bind(mem.schoolId),
+  ]);
+  const access = accRes.results[0]?.value;
+  const grants = access ? JSON.parse(access) : {};
+  const areas = new Set(MONEY_AREAS.filter((a) => (grants[a] || []).includes(email)));
+  const rows = contestRes.results.map((r) => JSON.parse(r.data));
+  const me = String(mem.name || '').replace(/\s/g, '');
+  const all = new Set(rows.map((d) => d.name).filter(Boolean));
+  const mine = new Set(rows.filter((d) => me && (d.managers || []).map((x) => String(x).replace(/\s/g, '')).includes(me)).map((d) => d.name));
+  // 구매신청 건별 공개: 공개 범위가 '전체 교직원'이거나 '지정한 사람'에 내 이름이 있으면 그 건만 보고 품목을 담음
+  const reqs = new Set();
+  const reqsOpen = new Set();
+  for (const r of reqRes.results) {
+    const d = JSON.parse(r.data);
+    const names = (Array.isArray(d.members) ? d.members : String(d.members || '').split(/[,，\n]/)).map((x) => x.replace(/\s/g, '')).filter(Boolean);
+    if (d.audience === '전체 교직원' || (d.audience === '지정한 사람' && me && names.includes(me))) { reqs.add(r.id); if (d.open) reqsOpen.add(r.id); }
   }
-  c.set('moneyAcc', acc);
-  return acc;
+  return { admin: false, areas, mine, all, reqs, reqsOpen, me, has: (a) => areas.has(a) };
 }
 // 이 사람에게 보이는 행정·예산 탭 (메뉴 표시용)
 async function myMoneyTabs(c, mem) {
@@ -356,9 +362,10 @@ const yearOf = async (c, q) => Number(q) || (await memberOf(c) ? (await getSetti
 app.get('/api/bundle', async (c) => {
   const year = await yearOf(c, c.req.query('year'));
   const mods = String(c.req.query('modules') || '').split(',').filter((m) => MODULES[m]);
-  const out = {};
-  for (const m of mods) out[m] = await listRecords(c, m, year);
-  return c.json(out);
+  // 메뉴별 목록을 차례로 기다리지 않고 동시에 불러옴 (학교 확인은 먼저 한 번만)
+  if (mods.some((m) => spaceOf(m) === 'school')) await memberOf(c);
+  const lists = await Promise.all(mods.map((m) => listRecords(c, m, year)));
+  return c.json(Object.fromEntries(mods.map((m, i) => [m, lists[i]])));
 });
 
 app.get('/api/records/:module', async (c) => {
@@ -378,6 +385,7 @@ app.get('/api/search', async (c) => {
   const needle = q.toLowerCase();
   const email = c.get('user').email;
   const mods = Object.keys(MODULES).filter((m) => spaceOf(m) === space);
+  if (space === 'school') await memberOf(c); // 동시에 여러 메뉴를 찾기 전에 학교 확인은 한 번만
   const per = await Promise.all(mods.map(async (m) => {
     let t;
     try { t = await tenant(c, m); } catch { return []; }

@@ -20,7 +20,7 @@ import { joinView, platformView, meView } from './views/account.js';
 import { bellButton, refreshBell } from './views/inbox.js';
 import { searchButton } from './search.js';
 import { openRecordForm } from './form.js';
-import { loadNews, markSeen, paintBadges } from './news.js';
+import { loadNews, markSeen, noteSeen, paintBadges } from './news.js';
 import { isDemo, startDemo, exitDemo, resetDemo, demoApi } from './demo.js';
 import { applyTheme } from './theme.js';
 
@@ -319,7 +319,18 @@ async function route() {
   for (const a of document.querySelectorAll('.space-tab')) a.classList.toggle('on', a.dataset.space === space && !['join', 'platform', 'me'].includes(path));
   for (const a of document.querySelectorAll('.bottom-bar a')) a.style.display = '';
 
+  // 새 화면이 준비될 때까지 이전 화면을 흐리게 남겨 둠 (빈 화면·'불러오는 중' 깜빡임 방지)
+  //   이전 화면 조각은 새 화면이 그려지면(clear) 자연히 사라지고, 다 그린 뒤 남은 것은 지움
   const content = h('div', { class: 'content' });
+  let stale = [];
+  const adoptStale = () => {
+    stale = [...(main.querySelector(':scope > .content')?.childNodes || [])];
+    if (!stale.length) return;
+    for (const n of stale) if (n.nodeType === 1) n.classList.add('stale-view');
+    content.append(...stale);
+    content.classList.add('is-loading');
+  };
+  const settle = () => { content.classList.remove('is-loading'); for (const n of content.querySelectorAll(':scope > .stale-view')) n.remove(); };
   window.scrollTo(0, 0);
   const special = { admin: ['⚙️ 학교 관리', adminView], join: ['🙋 학교 가입·개설', joinView], platform: ['🛰 플랫폼 운영', platformView], me: ['👤 내 정보', meView] }[path.split('/')[0]];
 
@@ -327,8 +338,10 @@ async function route() {
     const [title, view] = special || ['🙋 학교 가입·개설', joinView];
     drawNav(space === 'desk' ? 'desk' : 'school', path, '');
     drawGroupBar(space, path.split('/')[0]);
+    adoptStale();
     clear(main, h('h2', { class: 'page-title' }, backButton(), title), content);
     try { await view(content, refresh); } catch (e) { showError(content, e); }
+    settle();
     return;
   }
 
@@ -353,16 +366,17 @@ async function route() {
   const title = group ? `${group.icon} ${group.label}` : '';
   const scopeNote = mod?.scope === 'global' ? '' : `  ${state.year}학년도`;
   const prefix = space === 'desk' ? '#/desk/' : '#/';
+  adoptStale();
   clear(main,
     yearBanner(space, mod),
     h('h2', { class: 'page-title' }, backButton(), title, h('span', { class: 'muted small' }, scopeNote)),
     group?.tabs.length > 1 ? h('div', { class: 'tabs-bar' }, group.tabs.map((t) => h('a', { href: `${prefix}${gid}/${t.id}`, class: t.id === tid ? 'on' : '' }, t.label))) : null,
     content);
-  content.append(h('p', { class: 'muted' }, '불러오는 중…'));
+  if (!stale.length) content.append(h('p', { class: 'muted' }, '불러오는 중…'));
   if (space === 'school') {
-    await loadNews();
-    if (tab?.module) markSeen(tab.module);
-    paintBadges();
+    // 새 글 배지는 화면을 막지 않고 뒤에서 (1분에 한 번 서버 확인)
+    if (tab?.module) noteSeen(tab.module);
+    loadNews().then(() => { if (tab?.module) markSeen(tab.module); paintBadges(); });
   }
   try {
     const view = space === 'desk' ? DESK_VIEWS[key] : VIEWS[key];
@@ -373,6 +387,7 @@ async function route() {
     state.pendingOpen = null;
     if (po) openRecordForm(po.module, po.record, { onSaved: () => route() });
   } catch (e) { showError(content, e); }
+  settle();
 }
 
 // 올해가 아닌 학년도를 보고 있을 때 알림 (학년도는 3월 1일 ~ 다음 해 2월 말, 3월 1일에 자동으로 바뀜)

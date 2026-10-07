@@ -8,6 +8,11 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*", "/auth/*", "/pub/*"]
 
+# ⚡ 서버 코드를 데이터베이스(D1) 가까운 곳에서 실행 → DB에 묻는 왕복 시간이 짧아짐
+#   (Cloudflare가 실제 요청을 보고 자리를 정하므로 적용까지 시간이 조금 걸릴 수 있음)
+[placement]
+mode = "smart"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "gyomusil"

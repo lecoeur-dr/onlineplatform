@@ -35,10 +35,14 @@ export function unseen() {
   return news.items.filter((it) => it.at > seenOf(it.module, map));
 }
 
-// 메뉴를 열 때: 강조 기준을 남기고 '본 시점'을 지금으로
+// 메뉴를 열 때 ① 화면 그리기 전에 강조 기준만 남김 (서버를 기다리지 않음)
+export function noteSeen(module) {
+  prevSeen[module] = seenOf(module);
+}
+// ② 새 글 목록을 받은 뒤 '본 시점'을 지금으로
 export function markSeen(module) {
   const map = seenMap();
-  prevSeen[module] = seenOf(module, map);
+  if (!(module in prevSeen)) prevSeen[module] = seenOf(module, map);
   if (news.now) { map[module] = news.now; remember('seen', map); }
 }
 
