@@ -990,3 +990,7 @@ body.on-admin .fab { display: none; }
 }
 th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover { color: var(--primary); }
+/* 사용자 표: 부서 칸이 비어 있어도 입력 칸임이 보이게 */
+.dept-cell input { min-width: 9em; background: var(--panel); border: 1px dashed color-mix(in srgb, var(--primary) 45%, var(--line)); }
+.dept-cell input:not(:placeholder-shown) { border-style: solid; border-color: var(--line); }
+.dept-chips { margin: 6px 0; }

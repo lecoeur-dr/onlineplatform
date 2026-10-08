@@ -98,7 +98,7 @@ async function users(root) {
   } },
   h('input', { name: 'email', type: 'email', placeholder: 'gmail 주소', required: true }),
   h('input', { name: 'name', placeholder: '이름 (참관 명단 등에 표시)' }),
-  h('input', { name: 'dept', placeholder: '부서' }),
+  h('input', { name: 'dept', placeholder: '부서 선택·입력', list: 'adm-depts' }),
   h('select', { name: 'role' }, ['staff', 'viewer', 'admin'].map((r) => h('option', { value: r }, ROLES[r]))),
   h('button', { class: 'btn primary' }, '미리 등록'));
 
@@ -114,10 +114,25 @@ async function users(root) {
   const sortSel = h('select', { 'aria-label': '정렬', onchange: (e) => { sortKey = e.target.value; desc = false; remember('adm_user_sort', sortKey); drawTable(); } },
     SORTS.map(([k, l]) => h('option', { value: k, selected: k === sortKey }, l)));
   const dirBtn = h('button', { type: 'button', class: 'btn small', title: '순서 뒤집기', onclick: () => { desc = !desc; drawTable(); } });
-  const sortBar = h('div', { class: 'toolbar slim' }, h('strong', {}, `교직원 ${list.length}명`), h('span', { class: 'grow' }), h('span', { class: 'muted small' }, '정렬'), sortSel, dirBtn);
+  // 🏷 부서 관리: 부서 목록(설정)에서 고르거나 직접 입력 + 부서별로 걸러 보기
+  let deptFilter = '';
+  const deptNames = () => [...new Set([...(state.settings.lists?.depts || []), ...list.map((u) => u.dept).filter(Boolean)])];
+  const deptList = h('datalist', { id: 'adm-depts' });
+  const deptChips = h('div', { class: 'seg wrap dept-chips' });
+  const drawChips = () => {
+    clear(deptList, deptNames().map((d) => h('option', { value: d })));
+    const count = (d) => list.filter((u) => (d === '(미지정)' ? !u.dept : u.dept === d)).length;
+    const names = [...new Set(list.map((u) => u.dept).filter(Boolean))].sort(ko);
+    clear(deptChips, [['', `전체 ${list.length}`], ...names.map((d) => [d, `${d} ${count(d)}`]), ...(count('(미지정)') ? [['(미지정)', `부서 미지정 ${count('(미지정)')}`]] : [])]
+      .map(([v, l]) => h('button', { type: 'button', class: deptFilter === v ? 'on' : '', onclick: () => { deptFilter = v; drawChips(); drawTable(); } }, l)));
+  };
+  const sortBar = h('div', {}, deptList,
+    h('div', { class: 'toolbar slim' }, h('strong', {}, `🏷 교직원·부서 ${list.length}명`), h('span', { class: 'grow' }), h('span', { class: 'muted small' }, '정렬'), sortSel, dirBtn),
+    deptChips,
+    h('p', { class: 'muted small' }, '부서 칸을 눌러 목록에서 고르거나 직접 적으면 바로 저장됩니다. 부서 목록은 [⚙️ 설정] → 부서에서 바꿉니다.'));
   const COLS = [['email', '이메일'], ['name', '이름'], ['dept', '부서'], ['homeroom', '담임·전담'], ['role', '권한'], ['last_login', '최근 로그인'], ['', '']];
   const drawTable = () => {
-    let rows = list.slice().sort(compareUsers(sortKey));
+    let rows = list.filter((u) => !deptFilter || (deptFilter === '(미지정)' ? !u.dept : u.dept === deptFilter)).sort(compareUsers(sortKey));
     if (desc) {
       // 거꾸로 해도 담임·전담·부서가 '없음'인 사람은 맨 뒤
       const blank = (u) => (sortKey === 'homeroom' ? !u.homeroom : sortKey === 'dept' ? !u.dept : false);
@@ -130,7 +145,7 @@ async function users(root) {
       h('tbody', {}, rows.map((u) => h('tr', { class: u.role === 'pending' ? 'hl' : '' },
         h('td', {}, u.email),
         h('td', {}, h('input', { value: u.name, onchange: (e) => { u.name = e.target.value; update(u.email, { name: u.name }); } })),
-        h('td', {}, h('input', { value: u.dept, onchange: (e) => { u.dept = e.target.value; update(u.email, { dept: u.dept }); } })),
+        h('td', { class: 'dept-cell' }, h('input', { value: u.dept || '', list: 'adm-depts', placeholder: '부서 선택·입력', 'aria-label': `${u.name || u.email} 부서`, onchange: (e) => { u.dept = e.target.value.trim(); update(u.email, { dept: u.dept }); drawChips(); } })),
         h('td', {}, homeroomSelect(u.homeroom || '', (v) => { u.homeroom = v; update(u.email, { homeroom: v }); })),
         h('td', {}, h('select', { onchange: (e) => update(u.email, { role: e.target.value }).then(() => users(root)) },
           Object.entries(ROLES).map(([k, v]) => h('option', { value: k, selected: k === u.role }, v)))),
@@ -154,6 +169,7 @@ async function users(root) {
     h('p', { class: 'hint' }, '이름은 보결·담당 배정·내 할 일에 쓰이므로 실명으로 맞춰 주세요. 이메일을 미리 등록해 두면 그 선생님은 첫 로그인부터 바로 사용합니다. "담임·전담"을 지정하면 그 선생님의 수업 → 시간표 탭이 자기 시간표로 바로 열립니다(학급·전담 목록은 시간표 탭의 ⚙ 학년반·전담·특별실에서).'),
     form,
     sortBar, tableBox);
+  drawChips();
   drawTable();
 }
 
