@@ -186,6 +186,22 @@ export const MODULES = {
       { key: 'note', label: '설명', type: 'text' },
     ],
   },
+  // 🍚 급식 의견: 학생에게 링크·QR로 메뉴 투표(후보 중 고르기) 또는 메뉴 추천(직접 적기)을 받음. 응답은 meal_responses 표 (이름 없이 학년만)
+  mealPolls: {
+    label: '급식 의견', icon: '🍚', scope: 'year', edit: 'staff', extras: ['token'],
+    fields: [
+      { key: 'title', label: '제목', type: 'text', required: true, hint: '예) 11월 먹고 싶은 메뉴 투표' },
+      { key: 'kind', label: '종류', type: 'select', options: ['메뉴 투표', '메뉴 추천'], required: true, hint: '메뉴 투표 = 선생님이 올린 후보 중 고르기 · 메뉴 추천 = 학생이 직접 적기' },
+      { key: 'month', label: '반영할 달', type: 'month' },
+      { key: 'grades', label: '대상 학년', type: 'text', hint: '예) 3~6학년, 1,2학년 (비우면 전 학년). 학생은 이 중에서 자기 학년을 고릅니다' },
+      { key: 'options', label: '메뉴 후보 (투표용, 한 줄에 하나)', type: 'textarea' },
+      { key: 'maxPick', label: '고를 수 있는 개수 (투표)', type: 'number', hint: '기본 3개' },
+      { key: 'recCount', label: '적을 수 있는 메뉴 수 (추천)', type: 'number', hint: '기본 3개' },
+      { key: 'note', label: '학생 안내 글', type: 'textarea' },
+      { key: 'due', label: '마감일', type: 'date' },
+      { key: 'open', label: '응답 받는 중', type: 'bool' },
+    ],
+  },
   // 📥 취합: 확인 · 제출 · 참석 조사 · 선택(정원) · 설문. 응답은 responses 표, 집계는 tally, 응답한 사람은 done
   collections: {
     label: '취합', icon: '📥', scope: 'year', edit: 'staff', extras: ['questions', 'tally', 'noticeId', 'meetingId'],
@@ -687,6 +703,7 @@ export const GROUPS = [
     { id: 'notices', label: '공지', module: 'notices' },
     { id: 'briefings', label: '전달사항', module: 'briefings' },
     { id: 'collections', label: '취합', module: 'collections' },
+    { id: 'meal', label: '급식 의견', module: 'mealPolls' },
     { id: 'duties', label: '담당 배정', module: 'duties' },
     { id: 'meetingPlans', label: '회의', module: 'meetingPlans' },
     { id: 'meetings', label: '회의록', module: 'meetings' },

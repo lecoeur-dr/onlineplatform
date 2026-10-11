@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#f59e0b">
+<title>급식 의견</title>
+<style>
+  :root { --bg: #fff8ec; --panel: #fff; --line: #f1e3c8; --text: #2a2113; --muted: #7d6f58; --primary: #ea7a0c; --soft: #fff1dc; --danger: #e5484d; --ok: #1f9d55; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17130d; --panel: #211b13; --line: #3a3022; --text: #f3ece0; --muted: #a99a80; --soft: #33261a; --primary: #f59e0b; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 18px 16px 60px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin-bottom: 14px; }
+  .hero { text-align: center; }
+  .hero .ico { font-size: 44px; }
+  h1 { font-size: 22px; margin: 4px 0; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .note { white-space: pre-wrap; background: var(--soft); border-radius: 12px; padding: 10px 12px; margin-top: 10px; text-align: left; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  .grades { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { flex: 1 0 70px; padding: 12px 0; text-align: center; border: 2px solid var(--line); border-radius: 14px; background: var(--panel); font: inherit; font-weight: 800; color: inherit; cursor: pointer; }
+  .chip.on { border-color: var(--primary); background: var(--soft); color: var(--primary); }
+  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .opt { display: flex; align-items: center; gap: 8px; padding: 12px; border: 2px solid var(--line); border-radius: 14px; cursor: pointer; font-weight: 700; background: var(--panel); color: inherit; font: inherit; text-align: left; }
+  .opt.on { border-color: var(--primary); background: var(--soft); }
+  .opt .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line); flex: 0 0 auto; display: grid; place-items: center; font-size: 14px; }
+  .opt.on .box { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .rec { display: grid; grid-template-columns: 1fr; gap: 6px; margin-bottom: 12px; }
+  input { width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; }
+  .send { font: inherit; font-weight: 800; border: 0; border-radius: 14px; padding: 14px 18px; background: var(--primary); color: #fff; cursor: pointer; width: 100%; margin-top: 6px; }
+  .send:disabled { opacity: .5; }
+  .msg { margin-top: 10px; font-weight: 700; text-align: center; }
+  .ok { color: var(--ok); } .err { color: var(--danger); }
+  .count { font-size: 13px; color: var(--muted); text-align: right; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main id="app"><div class="card">불러오는 중…</div></main>
+<script>
+  // 🍚 로그인 없이 쓰는 학생 화면: 주소의 #t=토큰 으로 설문을 찾음. 이름은 받지 않고 학년만
+  const token = (location.hash.match(/t=([a-f0-9]+)/) || [])[1] || '';
+  const app = document.getElementById('app');
+  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'text') e.textContent = v; else e.setAttribute(k, v); } for (const k of kids.flat()) if (k != null) e.append(k); return e; };
+  const store = { get: (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* 무시 */ } } };
+  // 기기 표시(이름 아님): 같은 기기에서 다시 내면 앞의 응답을 고침
+  let device = store.get('gy_meal_dev');
+  if (!device) { device = [...crypto.getRandomValues(new Uint8Array(12))].map((x) => x.toString(16).padStart(2, '0')).join(''); store.set('gy_meal_dev', device); }
+  async function call(method, body) {
+    const r = await fetch(`/pub/m/${token}`, { method, headers: { 'content-type': 'application/json', 'x-requested-with': 'gyomusil-pub' }, body: body ? JSON.stringify(body) : undefined });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || '오류가 났어요.');
+    return j;
+  }
+  async function render() {
+    if (!token) { app.replaceChildren(el('div', { class: 'card', text: '링크가 올바르지 않아요. 선생님께 다시 받아 주세요.' })); return; }
+    let p;
+    try { p = await call('GET'); } catch (e) { app.replaceChildren(el('div', { class: 'card err', text: e.message })); return; }
+    document.title = p.title;
+    const saved = (() => { try { return JSON.parse(store.get(`gy_meal_${token}`) || 'null'); } catch { return null; } })();
+    const st = { grade: saved?.grade || (p.grades.length === 1 ? p.grades[0] : 0), picks: new Set(saved?.picks || []), recs: saved?.recs || [] };
+    const vote = p.kind === '메뉴 투표';
+    const msg = el('div', { class: 'msg' });
+    const head = el('div', { class: 'card hero' }, el('div', { class: 'ico', text: vote ? '🗳️' : '🍽️' }), el('h1', { text: p.title }),
+      el('div', { class: 'muted', text: [p.school, p.due ? `마감 ${p.due.slice(5).replace('-', '/')}` : ''].filter(Boolean).join(' · ') }),
+      p.note ? el('div', { class: 'note', text: p.note }) : null);
+    if (!p.open) { app.replaceChildren(head, el('div', { class: 'card', text: '지금은 응답을 받지 않아요. 다음에 또 참여해 주세요! 🙂' })); return; }
+    const gradeBox = el('div', { class: 'grades' });
+    const drawGrades = () => gradeBox.replaceChildren(...p.grades.map((g) => el('button', { type: 'button', class: `chip ${st.grade === g ? 'on' : ''}`, onclick: () => { st.grade = g; drawGrades(); } }, `${g}학년`)));
+    drawGrades();
+    let body;
+    if (vote) {
+      const count = el('div', { class: 'count' });
+      const grid = el('div', { class: 'opts' });
+      const draw = () => {
+        grid.replaceChildren(...p.options.map((o) => el('button', { type: 'button', class: `opt ${st.picks.has(o) ? 'on' : ''}`, onclick: () => {
+          if (st.picks.has(o)) st.picks.delete(o);
+          else if (st.picks.size >= p.maxPick) { msg.className = 'msg err'; msg.textContent = `${p.maxPick}개까지 고를 수 있어요.`; return; } else st.picks.add(o);
+          msg.textContent = ''; draw();
+        } }, el('span', { class: 'box', text: st.picks.has(o) ? '✓' : '' }), o)));
+        count.textContent = `${st.picks.size} / ${p.maxPick}개 골랐어요`;
+      };
+      draw();
+      body = el('div', { class: 'card' }, el('h2', { text: `② 먹고 싶은 메뉴를 골라 주세요 (최대 ${p.maxPick}개)` }), grid, count);
+    } else {
+      const rows = Array.from({ length: p.recCount }, (_, i) => {
+        const menu = el('input', { placeholder: `먹고 싶은 메뉴 ${i + 1}${i ? ' (선택)' : ''}`, maxlength: 30, value: st.recs[i]?.menu || '' });
+        const reason = el('input', { placeholder: '이유 (선택)', maxlength: 100, value: st.recs[i]?.reason || '' });
+        return { menu, reason, box: el('div', { class: 'rec' }, menu, reason) };
+      });
+      st.getRecs = () => rows.map((r) => ({ menu: r.menu.value.trim(), reason: r.reason.value.trim() })).filter((r) => r.menu);
+      body = el('div', { class: 'card' }, el('h2', { text: `② 먹고 싶은 메뉴를 적어 주세요 (최대 ${p.recCount}개)` }), rows.map((r) => r.box));
+    }
+    const send = el('button', { class: 'send', type: 'button', onclick: async () => {
+      if (!st.grade) { msg.className = 'msg err'; msg.textContent = '먼저 학년을 골라 주세요.'; return; }
+      const payload = vote ? { grade: st.grade, picks: [...st.picks] } : { grade: st.grade, recs: st.getRecs() };
+      send.disabled = true;
+      try {
+        const r = await call('POST', { ...payload, device });
+        store.set(`gy_meal_${token}`, JSON.stringify(payload));
+        msg.className = 'msg ok'; msg.textContent = r.updated ? '고친 내용으로 다시 냈어요. 고마워요! 🙌' : '냈어요! 의견 고마워요 🙌 (마감 전에는 다시 고칠 수 있어요)';
+      } catch (e) { msg.className = 'msg err'; msg.textContent = e.message; }
+      send.disabled = false;
+    } }, saved ? '고쳐서 다시 내기' : '의견 보내기');
+    app.replaceChildren(head, el('div', { class: 'card' }, el('h2', { text: '① 몇 학년인가요?' }), gradeBox), body, el('div', {}, send, msg),
+      el('p', { class: 'muted', style: 'text-align:center', text: '이름은 받지 않아요. 학년만 모아서 급식 메뉴를 정할 때 참고해요.' }));
+  }
+  render();
+</script>
+</body>
+</html>

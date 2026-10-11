@@ -6,6 +6,7 @@ import { randomToken, encryptText, decryptText } from './crypto.js';
 import { evalFormula } from '../public/js/calc.js';
 import { presetQuestions, tallyOf, checkAnswers } from '../public/js/collect.js';
 import { isSubtotalRow } from '../public/js/budget-groups.js';
+import { checkMeal, mealResults, gradesOf, optionsOf, maxPickOf, recCountOf } from '../public/js/meal.js';
 import { notify, pushReady, sendPush } from './push.js';
 
 const app = new Hono();
@@ -99,7 +100,7 @@ async function toClient(env, row) {
   for (const k of encKeys(row.module)) if (data[k]) { try { data[k] = await decryptText(env, data[k]); } catch { data[k] = '(복호화 실패)'; } }
   const out = { id: row.id, year: row.year, date: row.date, sort: row.sort, version: row.version, data, updatedBy: row.updated_by, updatedAt: row.updated_at };
   if (row.author_name !== undefined) { out.author = row.author_name || ''; out.owner = row.owner; }
-  if (row.module === 'boards' || row.module === 'collections') out.createdBy = row.created_by;
+  if (row.module === 'boards' || row.module === 'collections' || row.module === 'mealPolls') out.createdBy = row.created_by;
   return out;
 }
 
@@ -573,7 +574,7 @@ app.post('/api/records/:module', async (c) => {
   const body = await c.req.json();
   const clean = normalizeData(m, body.data);
   if (m === 'market') { clean.likes = []; if (String(clean.html || '').length > 300000) return c.json({ error: 'HTML 도구는 300KB까지 올릴 수 있습니다.' }, 413); }
-  if (m === 'activities') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
+  if (m === 'activities' || m === 'mealPolls') clean.token = randomToken(16); // 학생 링크 토큰은 서버가 만듦
   if (m === 'events') clean.noticeId = '';
   if (m === 'meetingPlans') { clean.eventId = ''; clean.noticeId = ''; clean.collectionId = ''; }
   if (m === 'meetings' && t.member?.role !== 'admin') clean.showRecent = false; // 한눈에 게시는 관리자만
@@ -648,6 +649,7 @@ app.put('/api/records/:module/:id', async (c) => {
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   if (isPrivateOther(prev, user.email)) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (m === 'collections' && prev.created_by && prev.created_by !== user.email && t.member?.role !== 'admin') return c.json({ error: '취합은 만든 사람과 관리자만 고칠 수 있습니다.' }, 403);
+  if (m === 'mealPolls' && prev.created_by !== user.email && t.member?.role !== 'admin') return c.json({ error: '급식 의견은 만든 사람과 관리자만 고칠 수 있습니다.' }, 403);
   const body = await c.req.json();
   const prevData = JSON.parse(prev.data);
   const clean = normalizeData(m, body.data);
@@ -655,6 +657,7 @@ app.put('/api/records/:module/:id', async (c) => {
   if (m === 'events') clean.noticeId = prevData.noticeId || '';
   if (m === 'meetingPlans') { clean.eventId = prevData.eventId || ''; clean.noticeId = prevData.noticeId || ''; clean.collectionId = prevData.collectionId || ''; }
   if (m === 'meetings' && t.member?.role !== 'admin') clean.showRecent = !!prevData.showRecent;
+  if (m === 'mealPolls') clean.token = prevData.token || randomToken(16); // 학생 링크는 그대로 유지
   if (m === 'collections') { clean.tally = prevData.tally || {}; clean.noticeId = prevData.noticeId || ''; clean.meetingId = prevData.meetingId || ''; if (!Array.isArray(clean.questions)) clean.questions = prevData.questions || []; }
   if (m === 'budget' && evalFormula(clean.formula) !== null) clean.amount = evalFormula(clean.formula);
   const denied = await contestGuard(c, t, m, clean, prevData);
@@ -692,10 +695,12 @@ app.delete('/api/records/:module/:id', async (c) => {
   if (!canWrite(c, t, prev)) return c.json({ error: '수정 권한이 없습니다.' }, 403);
   if (isPrivateOther(prev, c.get('user').email)) return c.json({ error: '기록을 찾을 수 없습니다.' }, 404);
   if (m === 'collections' && prev.created_by && prev.created_by !== c.get('user').email && t.member?.role !== 'admin') return c.json({ error: '취합은 만든 사람과 관리자만 삭제할 수 있습니다.' }, 403);
+  if (m === 'mealPolls' && prev.created_by !== c.get('user').email && t.member?.role !== 'admin') return c.json({ error: '급식 의견은 만든 사람과 관리자만 삭제할 수 있습니다.' }, 403);
   const denied = await contestGuard(c, t, m, null, JSON.parse(prev.data));
   if (denied) return c.json({ error: denied }, 403);
   await c.env.DB.prepare('DELETE FROM records WHERE id = ?').bind(id).run();
   if (m === 'activities') await c.env.DB.prepare('DELETE FROM submissions WHERE activity_id = ?').bind(id).run();
+  if (m === 'mealPolls') await c.env.DB.prepare('DELETE FROM meal_responses WHERE poll_id = ?').bind(id).run();
   if (m === 'meetingPlans' && t.member) { const pd = JSON.parse(prev.data); await dropLinked(c, t.member.schoolId, 'events', pd.eventId); await dropLinked(c, t.member.schoolId, 'notices', pd.noticeId); await dropLinked(c, t.member.schoolId, 'collections', pd.collectionId); }
   if (m === 'collections' && t.member) { const pd = JSON.parse(prev.data); await c.env.DB.prepare('DELETE FROM responses WHERE collection_id = ? AND school_id = ?').bind(id, t.member.schoolId).run(); await dropLinked(c, t.member.schoolId, 'notices', pd.noticeId); }
   if (t.space === 'school') await audit(c, 'delete', m, id, m === 'secrets' ? null : prev.data);
@@ -1230,7 +1235,6 @@ app.get('/api/admin/export', async (c) => {
   return c.json({ exportedAt: new Date().toISOString(), schoolId, records: records.results, settings: settings.results, users: members.results });
 });
 
-app.all('/api/*', (c) => c.json({ error: '없는 주소입니다.' }, 404));
 
 // 매일 새벽 자동: 학교마다 나이스 학사일정 동기화 (wrangler.toml [triggers])
 // ---------- 학생 제출 (로그인 없이 링크로) ----------
@@ -1283,6 +1287,57 @@ app.post('/pub/a/:token', async (c) => {
   else await c.env.DB.prepare('INSERT INTO submissions (activity_id, owner, who, num, name, body) VALUES (?, ?, ?, ?, ?, ?)').bind(a.id, a.owner, who, num, encName, encBody).run();
   return c.json({ ok: true, updated: !!prev });
 });
+// ---------- 🍚 급식 의견: 학생 화면(로그인 없음) ----------
+async function mealByToken(db, token) {
+  if (!/^[a-f0-9]{24,64}$/.test(String(token))) return null;
+  const row = await db.prepare("SELECT r.id, r.school_id, r.data, s.name AS school_name FROM records r LEFT JOIN schools s ON s.id = r.school_id WHERE r.module = 'mealPolls' AND json_extract(r.data, '$.token') = ?").bind(token).first();
+  return row ? { id: row.id, schoolId: row.school_id, schoolName: row.school_name || '', data: JSON.parse(row.data) } : null;
+}
+const mealOpen = (d) => !!d.open && !(d.due && d.due < kstToday());
+app.get('/pub/m/:token', async (c) => {
+  const p = await mealByToken(c.env.DB, c.req.param('token'));
+  if (!p) return c.json({ error: '설문을 찾을 수 없습니다. 선생님께 링크를 다시 받아 주세요.' }, 404);
+  const d = p.data;
+  return c.json({ school: p.schoolName, title: d.title, kind: d.kind, note: d.note || '', month: d.month || '', due: d.due || '', open: mealOpen(d),
+    grades: gradesOf(d.grades), options: d.kind === '메뉴 투표' ? optionsOf(d.options) : [], maxPick: maxPickOf(d), recCount: recCountOf(d) });
+});
+app.post('/pub/m/:token', async (c) => {
+  if (c.req.header('x-requested-with') !== 'gyomusil-pub') return c.json({ error: '잘못된 요청입니다.' }, 400);
+  const p = await mealByToken(c.env.DB, c.req.param('token'));
+  if (!p) return c.json({ error: '설문을 찾을 수 없습니다.' }, 404);
+  if (!mealOpen(p.data)) return c.json({ error: '지금은 응답을 받지 않아요.' }, 403);
+  const b = await c.req.json().catch(() => ({}));
+  const device = String(b.device || '').replace(/[^a-z0-9]/gi, '').slice(0, 40);
+  if (device.length < 12) return c.json({ error: '잘못된 요청입니다.' }, 400);
+  const r = checkMeal(p.data, b);
+  if (r.error) return c.json({ error: r.error }, 400);
+  const recent = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM meal_responses WHERE poll_id = ? AND updated_at > datetime('now', '-1 minute')").bind(p.id).first();
+  if ((recent?.n || 0) > 200) return c.json({ error: '잠시 후 다시 시도해 주세요.' }, 429);
+  const prev = await c.env.DB.prepare('SELECT id FROM meal_responses WHERE poll_id = ? AND device = ?').bind(p.id, device).first();
+  if (prev) await c.env.DB.prepare("UPDATE meal_responses SET grade = ?, answers = ?, hidden = 0, updated_at = datetime('now') WHERE id = ?").bind(r.clean.grade, JSON.stringify(r.clean.answers), prev.id).run();
+  else await c.env.DB.prepare('INSERT INTO meal_responses (school_id, poll_id, device, grade, answers) VALUES (?, ?, ?, ?, ?)').bind(p.schoolId, p.id, device, r.clean.grade, JSON.stringify(r.clean.answers)).run();
+  return c.json({ ok: true, updated: !!prev });
+});
+// 결과 (학교 교직원 누구나 보기) · 장난 응답 숨기기 (만든 사람·관리자)
+async function mealPoll(c) {
+  const mem = await requireSchool(c);
+  const row = await c.env.DB.prepare("SELECT * FROM records WHERE id = ? AND module = 'mealPolls' AND school_id = ?").bind(c.req.param('id'), mem.schoolId).first();
+  if (!row) throw err(404, '급식 의견을 찾을 수 없습니다.');
+  return { mem, row, data: JSON.parse(row.data), owner: row.created_by === c.get('user').email || mem.role === 'admin' };
+}
+app.get('/api/meal/:id/results', async (c) => {
+  const { row, data, owner } = await mealPoll(c);
+  const rows = (await c.env.DB.prepare('SELECT id, grade, answers, hidden, updated_at FROM meal_responses WHERE poll_id = ? ORDER BY id').bind(row.id).all()).results.map((r) => ({ id: r.id, grade: r.grade, answers: JSON.parse(r.answers), hidden: !!r.hidden, at: r.updated_at }));
+  return c.json({ owner, ...mealResults(data, rows), responses: data.kind === '메뉴 추천' ? rows : [] });
+});
+app.post('/api/meal/:id/hide/:rid', async (c) => {
+  const { row, owner } = await mealPoll(c);
+  if (!owner) return c.json({ error: '만든 사람과 관리자만 숨길 수 있습니다.' }, 403);
+  const b = await c.req.json().catch(() => ({}));
+  const r = await c.env.DB.prepare('UPDATE meal_responses SET hidden = ? WHERE id = ? AND poll_id = ?').bind(b.hidden === false ? 0 : 1, Number(c.req.param('rid')), row.id).run();
+  return r.meta.changes ? c.json({ ok: true }) : c.json({ error: '찾을 수 없습니다.' }, 404);
+});
+
 app.get('/api/activities/:id/submissions', async (c) => {
   const id = c.req.param('id');
   const a = await c.env.DB.prepare("SELECT id FROM records WHERE id = ? AND module = 'activities' AND owner = ?").bind(id, c.get('user').email).first();
@@ -1332,5 +1387,8 @@ async function scheduled(_event, env, ctx) {
     }
   })());
 }
+
+// 위에 없는 /api 주소 (맨 마지막에 둬야 다른 주소를 가리지 않음)
+app.all('/api/*', (c) => c.json({ error: '없는 주소입니다.' }, 404));
 
 export default { fetch: app.fetch, scheduled };

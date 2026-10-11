@@ -15,6 +15,7 @@ import { deadlinesView } from './views/deadlines.js';
 import { moneyOverview, purchasesView, budgetView, schoolBudgetView, contestBudgetView, spendView } from './views/money.js';
 import { infoOverview, contactsView, rulesView, resourcesView, assignmentsView } from './views/info.js';
 import { collectionsView } from './views/collections.js';
+import { mealView } from './views/meal.js';
 import { DESK_VIEWS } from './views/desk.js';
 import { joinView, platformView, meView } from './views/account.js';
 import { bellButton, refreshBell } from './views/inbox.js';
@@ -43,6 +44,7 @@ const VIEWS = {
   'notice/meetingPlans': meetingPlansView,
   'notice/meetings': meetingsView,
   'notice/collections': collectionsView,
+  'notice/meal': mealView,
   'notice/duties': dutiesView,
   'money/overview': moneyOverview,
   'money/purchases': purchasesView,
