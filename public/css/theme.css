@@ -1175,10 +1175,16 @@ button.dnum:hover { background: var(--primary-soft); }
 .month-table thead th { background: var(--bg-2, var(--panel)); }
 .month-table thead th:nth-child(1) { left: 0; z-index: 3; } .month-table thead th:nth-child(2) { left: 92px; z-index: 3; }
 .month-table thead th:nth-child(1), .month-table thead th:nth-child(2) { position: sticky; }
-.month-table .mt-use { min-width: 130px; }
+.month-table .mt-use { min-width: 64px; text-align: right; }
+.upct { display: inline-block; min-width: 3.4em; text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.upct.hi { color: var(--primary); }
+.upct.mid { color: color-mix(in srgb, var(--primary) 70%, var(--text)); }
+.upct.lo { color: var(--text); font-weight: 600; }
+.upct.zero, .upct.none { color: var(--muted); font-weight: 500; }
+.upct.over { color: var(--danger, #e5484d); }
 .month-table .mt-m { min-width: 64px; text-align: right; border-left: 1px solid color-mix(in srgb, var(--line) 60%, transparent); transition: filter .1s; }
-.month-table .now { box-shadow: inset 0 2px 0 var(--primary); }
-.month-table th.now { color: var(--primary); }
+.month-table th.now { color: var(--primary); box-shadow: inset 0 -3px 0 var(--primary); } /* 이번 달: 머리칸에만 밑줄, 칸들은 아주 연한 바탕 */
+.month-table td.now:not([style]) { background-color: color-mix(in srgb, var(--primary) 4%, var(--panel)); }
 .month-table tr.mt-prog td { background: color-mix(in srgb, var(--primary) 6%, var(--panel)); border-top: 2px solid color-mix(in srgb, var(--primary) 35%, var(--line)); cursor: pointer; }
 .month-table tr.mt-prog td.mt-cat, .month-table tr.mt-prog td.mt-item { background: color-mix(in srgb, var(--primary) 6%, var(--panel)); }
 .month-table tr.mt-prog .mt-psum { font-weight: 800; color: var(--primary); }

@@ -264,6 +264,13 @@ function budgetCompare(focus, catsOf) {
 }
 
 // 📅 항목별 월별 집행표: 사업마다 접고 펴는 머리줄(사업 현황) + 항목 줄 × 3월~2월 (금액이 클수록 진한 칸) · 칸을 누르면 그 달 건별 입력·수정
+// 사용률 숫자만 (많이 쓸수록 진한 색, 초과는 빨강)
+function usePct(used, total) {
+  if (!total) return h('span', { class: 'upct none' }, used ? '초과' : '-');
+  const pct = pctOf(used, total);
+  return h('span', { class: `upct ${used > total ? 'over' : pct >= 90 ? 'hi' : pct >= 50 ? 'mid' : pct > 0 ? 'lo' : 'zero'}`, title: `${won(used)} / ${won(total)}` }, `${pct}%`);
+}
+
 function itemMonthTable(list, { canEditP, reload }) {
   const infos = list.slice().sort((a, b) => b.assigned - a.assigned).map((p) => ({ p, ...lineInfo(p) }));
   if (!infos.some((x) => x.lines.length || x.loose.length)) return h('p', { class: 'muted' }, '예산 항목이 없습니다. [📥 엑셀 올리기]로 예산 현황 파일을 올리거나 아래 [📒 예산 입력]에서 항목을 넣으면 항목별·월별로 나옵니다.');
@@ -284,7 +291,7 @@ function itemMonthTable(list, { canEditP, reload }) {
       h('td', { class: 'mt-cat' }, h('span', { class: 'mt-caret' }, isFold ? '▸' : '▾')),
       h('td', { class: 'mt-item' }, h('strong', {}, p.name), h('span', { class: 'muted small' }, ` ${x.lines.length}개 항목`)),
       h('td', { class: 'num strong' }, won(p.assigned)), h('td', { class: 'num strong' }, won(p.used)), h('td', { class: `num strong ${p.assigned - p.used < 0 ? 'neg' : ''}` }, won(p.assigned - p.used)),
-      h('td', { class: 'mt-use' }, bar(p.used, p.assigned)),
+      h('td', { class: 'mt-use' }, usePct(p.used, p.assigned)),
       MONTH_ORDER.map((m) => h('td', { class: `num mt-m mt-psum ${m === nowMonth() ? 'now' : ''}` }, manShort(pm[m])))));
     if (isFold) continue;
     for (const l of x.lines) {
@@ -293,7 +300,7 @@ function itemMonthTable(list, { canEditP, reload }) {
         h('td', { class: 'mt-cat' }, h('span', { class: 'mt-tag' }, b.data.category || '-')),
         h('td', { class: 'mt-item', title: [b.data.item, b.data.detail, b.data.note].filter(Boolean).join(' · ') }, b.data.detail || b.data.item || b.data.label || '-', l.spends.length ? h('span', { class: 'mt-cnt', title: '건별 기록 수' }, ` 🧾${l.spends.length}`) : null),
         h('td', { class: 'num' }, l.assigned.toLocaleString()), h('td', { class: 'num' }, l.used ? l.used.toLocaleString() : ''), h('td', { class: `num ${l.assigned - l.used < 0 ? 'neg' : ''}` }, (l.assigned - l.used).toLocaleString()),
-        h('td', { class: 'mt-use' }, bar(l.used, l.assigned)),
+        h('td', { class: 'mt-use' }, usePct(l.used, l.assigned)),
         MONTH_ORDER.map((m) => h('td', {
           class: `num mt-m ${m === nowMonth() ? 'now' : ''} ${editable ? 'mt-click' : ''}`, style: heat(l.months[m]),
           title: editable ? `${m}월 ${won(l.months[m] || 0)} · 눌러서 입력·수정` : `${m}월 ${won(l.months[m] || 0)}`,
@@ -312,7 +319,7 @@ function itemMonthTable(list, { canEditP, reload }) {
     h('thead', {}, h('tr', {}, ['', '사업 · 산출내역', '예산', '집행', '잔액', '사용률'].map((t) => h('th', {}, t)), MONTH_ORDER.map((m) => h('th', { class: `num ${m === nowMonth() ? 'now' : ''}` }, `${m}월`)))),
     h('tbody', {}, body),
     h('tfoot', {}, h('tr', {}, h('td', { colspan: 2, class: 'strong mt-item' }, '합계'), h('td', { class: 'num strong' }, won(tot.a)), h('td', { class: 'num strong' }, won(tot.u)), h('td', { class: 'num strong' }, won(tot.a - tot.u)),
-      h('td', { class: 'mt-use' }, bar(tot.u, tot.a)), MONTH_ORDER.map((m) => h('td', { class: `num strong mt-m ${m === nowMonth() ? 'now' : ''}` }, manShort(tot.m[m])))))));
+      h('td', { class: 'mt-use' }, usePct(tot.u, tot.a)), MONTH_ORDER.map((m) => h('td', { class: `num strong mt-m ${m === nowMonth() ? 'now' : ''}` }, manShort(tot.m[m])))))));
 }
 
 // 월별 칸 누르기: 그 항목·그 달의 [엑셀에서 가져온 금액] + [건별 기록]을 보고 입력·수정 (한 달에 여러 건 가능)
