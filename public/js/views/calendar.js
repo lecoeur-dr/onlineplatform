@@ -241,7 +241,10 @@ export function renderCalendar(root, o) {
         ticking = true;
         requestAnimationFrame(() => {
           ticking = false;
-          const line = 50 + (getComputedStyle(banner).position === 'sticky' ? banner.offsetHeight : 0) + 40;
+          // 요일 머리줄 바로 아래를 기준으로, 화면 위쪽 1/3 안에 들어온 달을 '보고 있는 달'로 봄
+          const dowEl = root.querySelector('.sticky-dow');
+          const top = dowEl ? dowEl.getBoundingClientRect().bottom : 50 + (getComputedStyle(banner).position === 'sticky' ? banner.offsetHeight : 0) + 40;
+          const line = top + Math.max(60, (window.innerHeight - top) / 3);
           let cur = null;
           for (const el of root.querySelectorAll('.month-divider')) {
             if (el.getBoundingClientRect().top <= line + 10) cur = el.dataset.ym; else break;
@@ -455,7 +458,8 @@ function scrollView(o, ctx, allByDate) {
       out.push(h('div', { class: 'month-divider', 'data-ym': ym }, `${y}년 ${m}월`, h('span', { class: 'muted small' }, ` · 수업일수 자동 ${schoolDays(y, m, allByDate)}일`)));
       first = false;
     }
-    out.push(weekRow(o, week, ctx, { visible: (x) => x >= from && x <= to, extraClass: (x) => (Number(x.slice(5, 7)) % 2 ? 'odd-month' : ''), rowClass: week.includes(ctx.now) ? 'has-today' : '' }));
+    // 달 구분은 색 대신 구분선으로. 새 달이 시작되는 주의 앞쪽(지난달) 날짜만 흐리게
+    out.push(weekRow(o, week, ctx, { visible: (x) => x >= from && x <= to, extraClass: (x) => (firstOfMonth && x < firstOfMonth ? 'other-month' : ''), rowClass: `${week.includes(ctx.now) ? 'has-today' : ''} ${firstOfMonth ? 'month-start' : ''}` }));
     d = addDays(d, 7);
   }
   return h('div', { class: 'scroll-cal' }, out);

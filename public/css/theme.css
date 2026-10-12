@@ -1068,3 +1068,10 @@ th.sortable:hover { color: var(--primary); }
   .day .add-mini { display: none; } /* 휴대폰: 칸을 누르면 추가되므로 + 표시 생략 */
   .hol-name { display: none; } /* 좁은 칸에서는 빨간 날짜·배경으로만 */
 }
+/* 스크롤 달력: 달마다 배경색을 바꾸지 않고, 월 머리줄·굵은 구분선으로만 구분 */
+.day.odd-month { background: var(--panel); }
+.scroll-cal .month-divider { background: var(--panel); color: var(--text); font-size: 15px; font-weight: 800; padding: 10px 12px 6px; border: 1px solid var(--line); border-top: 3px solid var(--text); border-bottom: 0; margin-top: 14px; }
+.scroll-cal .month-divider:first-of-type, .scroll-cal .sticky-dow + .month-divider { margin-top: 0; }
+.scroll-cal .month-divider .muted { font-weight: 500; }
+.day.other-month .dnum { color: var(--muted); opacity: .55; font-weight: 500; }
+.day.other-month > .chip, .day.other-month .hol-name { opacity: .7; }
