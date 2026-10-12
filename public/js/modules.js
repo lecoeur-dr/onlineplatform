@@ -390,7 +390,7 @@ export const MODULES = {
   },
   // 집행(사용) 내역: 날짜별로 입력하면 재원·사업·비목별 대시보드에 반영
   spending: {
-    label: '집행내역', icon: '🧾', scope: 'date', edit: 'staff', extras: ['purchaseId'],
+    label: '집행내역', icon: '🧾', scope: 'date', edit: 'staff', extras: ['purchaseId', 'budgetId'],
     fields: [
       { key: 'date', label: '집행일', type: 'date', required: true },
       { key: 'source', label: '재원', type: 'select', options: ['학교본예산', '공모사업'], required: true },

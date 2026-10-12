@@ -83,8 +83,11 @@ export function buildMoney(d) {
     return list.find((p) => norm(p.name) === n) || (alias.has(n) && programs.get(alias.get(n))) || list.find((p) => subseq(norm(p.name), n) || subseq(n, norm(p.name))) || null;
   };
   const unlinked = [];
+  // 예산 항목(줄)에 연결된 집행(월별 칸에서 입력한 건)은 그 줄의 사업으로
+  const lineOwner = new Map();
+  for (const p of programs.values()) for (const b of p.lines) lineOwner.set(b.id, p);
   for (const s of d.spending) {
-    const p = findProgram(s.data.program, s.data.source) || prog(s.data.source || '학교본예산', s.data.program || '(사업 미지정)');
+    const p = (s.data.budgetId && lineOwner.get(s.data.budgetId)) || findProgram(s.data.program, s.data.source) || prog(s.data.source || '학교본예산', s.data.program || '(사업 미지정)');
     const a = Number(s.data.amount) || 0;
     p.used += a; cat(p, s.data.category).used += a; p.spends.push(s);
     const sm = Number(String(s.data.date || '').slice(5, 7));
@@ -118,9 +121,12 @@ async function loadMoney() {
 
 // ---------- 그리기 도구 ----------
 
+// 사용률 막대: 막대 길이 = 숫자 그대로 (글자는 막대 밖 오른쪽)
 function bar(used, total) {
   const pct = pctOf(used, total);
-  return h('div', { class: `bar ${used > total && total > 0 ? 'over' : ''}`, title: `${pct}%` }, h('span', { style: { width: `${Math.min(100, pct)}%` } }), h('em', {}, total > 0 ? `${pct}%` : '-'));
+  return h('div', { class: `ubar ${used > total && total > 0 ? 'over' : ''}`, title: `${won(used)} / ${won(total)} (${pct}%)` },
+    h('div', { class: 'ubar-track' }, h('span', { style: { width: `${Math.min(100, Math.max(0, pct))}%` } })),
+    h('em', {}, total > 0 ? `${pct}%` : '-'));
 }
 function kpi(label, value, sub, cls = '') {
   return h('div', { class: `kpi ${cls}` }, h('div', { class: 'kpi-label' }, label), h('div', { class: 'kpi-value' }, value), sub ? h('div', { class: 'muted small' }, sub) : null);
@@ -158,57 +164,208 @@ function programTable(list, onPick, title = '사업별 사용 현황') {
         h('td', { class: `num ${p.assigned - p.used < 0 ? 'neg' : ''}` }, won(p.assigned - p.used)), h('td', { style: { minWidth: '140px' } }, bar(p.used, p.assigned))))))) : h('p', { class: 'muted' }, '사업이 없습니다.'));
 }
 
-// 월별 집행액 막대 (3월 ~ 다음 해 2월): 엑셀 월별 칸 + 날짜별 집행내역
+// 월별 집행: 엑셀 월별 칸(예산 줄의 monthly) + 날짜별 집행내역(건별). 건별이 예산 줄에 연결돼 있으면(budgetId) 그 줄로
 const MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
-const monthsOf = (list) => { const m = {}; for (const p of list) for (const [k, v] of Object.entries(p.months || {})) m[k] = (m[k] || 0) + v; return m; };
 const nowMonth = () => Number(today().slice(5, 7));
+const SERIES = (i) => `var(--series-${(i % 7) + 1})`;
+const manShort = (v) => (!v ? '' : Math.abs(v) >= 10000 ? `${(Math.round(v / 1000) / 10).toLocaleString()}만` : Number(v).toLocaleString());
+const spendMonth = (s) => Number(String(s.data.date || '').slice(5, 7));
+// 사업 하나의 줄별 월별 집행 + 줄에 연결되지 않은 건별 집행(비목별)
+function lineInfo(p) {
+  const lines = p.lines.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0)).map((b) => ({ b, months: Object.fromEntries(Object.entries(b.data.monthly || {}).map(([m, v]) => [m, Number(v) || 0])), spends: [] }));
+  const byId = new Map(lines.map((x) => [x.b.id, x]));
+  const loose = new Map();
+  for (const sp of p.spends) {
+    const m = spendMonth(sp); const a = Number(sp.data.amount) || 0;
+    const li = sp.data.budgetId && byId.get(sp.data.budgetId);
+    if (li) { li.spends.push(sp); if (m) li.months[m] = (li.months[m] || 0) + a; continue; }
+    const k = sp.data.category || '(비목 없음)';
+    if (!loose.has(k)) loose.set(k, { cat: k, months: {}, spends: [] });
+    const x = loose.get(k); x.spends.push(sp); if (m) x.months[m] = (x.months[m] || 0) + a;
+  }
+  for (const x of lines) { x.assigned = Number(x.b.data.amount) || 0; x.used = (Number(x.b.data.spent) || 0) + x.spends.reduce((a, sp) => a + (Number(sp.data.amount) || 0), 0); }
+  return { lines, loose: [...loose.values()] };
+}
+const catColorMap = (cats) => { const m = new Map(); cats.forEach((c, i) => m.set(c, SERIES(i))); return m; };
+
+// 📊 월별 집행액: 비목별로 쌓은 막대 + [전체 · 비목 · 항목] 골라 보기
 function monthChart(list, title = '월별 집행액') {
-  const sums = monthsOf(list);
-  const vals = MONTH_ORDER.map((m) => sums[m] || 0);
-  const max = Math.max(1, ...vals);
-  const total = vals.reduce((a, b) => a + b, 0);
-  let acc = 0;
-  return h('section', { class: 'section' }, h('h3', {}, title, h('span', { class: 'muted small' }, ` · 합계 ${won(total)}`)),
-    h('div', { class: 'month-chart' }, MONTH_ORDER.map((m, i) => { acc += vals[i]; return h('div', { class: `mc-col ${m === nowMonth() ? 'now' : ''}`, title: `${m}월 ${won(vals[i])} · 누계 ${won(acc)}` },
-      h('div', { class: 'mc-val' }, vals[i] ? `${(Math.round(vals[i] / 1000) / 10).toLocaleString()}만` : ''), h('div', { class: 'mc-bar' }, h('span', { style: { height: `${(vals[i] / max) * 100}%` } })), h('div', { class: 'mc-lbl' }, `${m}월`)); })));
+  const infos = list.map((p) => ({ p, ...lineInfo(p) }));
+  const allLines = infos.flatMap((x) => x.lines.map((l) => ({ ...l, p: x.p })));
+  const cats = [...new Set([...allLines.map((l) => l.b.data.category || '(비목 없음)'), ...infos.flatMap((x) => x.loose.map((l) => l.cat))])];
+  const colors = catColorMap(cats);
+  // 시리즈: 비목 → 월별 금액
+  const catMonths = new Map(cats.map((c) => [c, {}]));
+  const addTo = (c, months) => { const t = catMonths.get(c); for (const [m, v] of Object.entries(months)) t[m] = (t[m] || 0) + v; };
+  for (const l of allLines) addTo(l.b.data.category || '(비목 없음)', l.months);
+  for (const x of infos) for (const l of x.loose) addTo(l.cat, l.months);
+  let sel = remember('mn_chart') || '';
+  if (sel.startsWith('cat:') && !cats.includes(sel.slice(4))) sel = '';
+  if (sel.startsWith('line:') && !allLines.some((l) => l.b.id === sel.slice(5))) sel = '';
+  const box = h('section', { class: 'section month-chart-box' });
+  const draw = () => {
+    let series;
+    if (sel.startsWith('line:')) { const l = allLines.find((x) => x.b.id === sel.slice(5)); series = [{ name: l.b.data.detail || l.b.data.item || '항목', color: colors.get(l.b.data.category || '(비목 없음)'), months: l.months, budget: l.assigned }]; }
+    else if (sel.startsWith('cat:')) { const c = sel.slice(4); series = [{ name: c, color: colors.get(c), months: catMonths.get(c) }]; }
+    else series = cats.map((c) => ({ name: c, color: colors.get(c), months: catMonths.get(c) }));
+    const totals = MONTH_ORDER.map((m) => series.reduce((a, x) => a + (x.months[m] || 0), 0));
+    const max = Math.max(1, ...totals);
+    const sum = totals.reduce((a, b) => a + b, 0);
+    let acc = 0;
+    clear(box,
+      h('div', { class: 'mc-head' }, h('h3', {}, title, h('span', { class: 'muted small' }, ` · ${sel ? `${series[0].name} ` : ''}합계 ${won(sum)}`)),
+        h('span', { class: 'grow' }),
+        allLines.length ? h('select', { class: 'mc-line-pick', 'aria-label': '항목 하나 골라 보기', onchange: (e) => { sel = e.target.value; remember('mn_chart', sel); draw(); } },
+          h('option', { value: '' }, '항목 하나 골라 보기…'),
+          infos.map((x) => h('optgroup', { label: x.p.name }, x.lines.map((l) => h('option', { value: `line:${l.b.id}`, selected: sel === `line:${l.b.id}` }, `${l.b.data.category || ''} · ${l.b.data.detail || l.b.data.item || '항목'}`))))) : null),
+      h('div', { class: 'mc-chips' },
+        h('button', { class: `chip-btn ${!sel ? 'on' : ''}`, onclick: () => { sel = ''; remember('mn_chart', ''); draw(); } }, '전체 (비목별로 쌓기)'),
+        cats.map((c) => h('button', { class: `chip-btn ${sel === `cat:${c}` ? 'on' : ''}`, onclick: () => { sel = sel === `cat:${c}` ? '' : `cat:${c}`; remember('mn_chart', sel); draw(); } }, h('i', { class: 'mc-dot', style: { background: colors.get(c) } }), c))),
+      h('div', { class: 'month-chart stacked' }, MONTH_ORDER.map((m, i) => {
+        acc += totals[i];
+        return h('div', { class: `mc-col ${m === nowMonth() ? 'now' : ''}`, title: `${m}월 ${won(totals[i])} · 누계 ${won(acc)}\n${series.filter((x) => x.months[m]).map((x) => `${x.name} ${won(x.months[m])}`).join('\n')}` },
+          h('div', { class: 'mc-val' }, manShort(totals[i])),
+          h('div', { class: 'mc-bar' }, h('div', { class: 'mc-stack', style: { height: `${(totals[i] / max) * 100}%` } },
+            series.filter((x) => x.months[m]).map((x) => h('i', { style: { flex: String(x.months[m]), background: x.color } })))),
+          h('div', { class: 'mc-lbl' }, `${m}월`));
+      })),
+      h('p', { class: 'muted small mc-hint' }, '막대 색 = 비목. 위 버튼으로 비목 하나만, 오른쪽 목록으로 예산 항목 하나만 볼 수 있습니다. 막대에 마우스를 올리면 비목별 금액이 나옵니다.'));
+  };
+  draw();
+  return box;
 }
 
-// 📅 항목별 월별 집행표 (엑셀 '사업별 예산 현황'처럼): 항목 줄 × 3월~2월 + 예산·집행·잔액·사용률
-function itemMonthTable(list) {
-  const short = (v) => (v ? Number(v).toLocaleString() : '');
-  const rows = [];
+// 📊 예산 대비 집행: 1줄 = 예산(전체 기준 길이 비교), 2줄 = 그중 집행(채운 부분) + 남은 부분 빗금
+function budgetCompare(focus, catsOf) {
+  const modes = [['cat', '비목별'], ...(focus.length > 1 ? [['prog', '사업별']] : []), ['line', '항목별']];
+  let mode = remember('mn_cmp') || 'cat';
+  if (!modes.some(([m]) => m === mode)) mode = 'cat';
+  const box = h('section', { class: 'section cmp-box' });
+  const draw = () => {
+    let items;
+    if (mode === 'prog') items = focus.map((p) => ({ name: p.name, a: p.assigned, u: p.used }));
+    else if (mode === 'line') items = focus.flatMap((p) => lineInfo(p).lines.map((l) => ({ name: `${l.b.data.detail || l.b.data.item || '항목'}`, sub: focus.length > 1 ? p.name : l.b.data.category, a: l.assigned, u: l.used })));
+    else items = catsOf(focus).map((c) => ({ name: c.name, a: c.assigned, u: c.used }));
+    items = items.filter((x) => x.a || x.u).sort((x, y) => y.a - x.a);
+    const max = Math.max(1, ...items.map((x) => Math.max(x.a, x.u)));
+    clear(box,
+      h('div', { class: 'mc-head' }, h('h3', {}, '📊 예산 대비 집행 한눈에', h('span', { class: 'muted small' }, ' · 막대 길이로 전체를 비교')), h('span', { class: 'grow' }),
+        h('div', { class: 'seg' }, modes.map(([m, l]) => h('button', { class: mode === m ? 'on' : '', onclick: () => { mode = m; remember('mn_cmp', m); draw(); } }, l)))),
+      h('div', { class: 'cmp-legend muted small' }, h('i', { class: 'lg-a' }), ' 예산 ', h('i', { class: 'lg-u' }), ' 집행 ', h('i', { class: 'lg-r' }), ' 남은 예산'),
+      items.length ? h('div', { class: 'cmp-list' }, items.map((x) => h('div', { class: `cmp-row ${x.u > x.a ? 'over' : ''}` },
+        h('div', { class: 'cmp-name', title: x.name }, h('strong', {}, x.name), x.sub ? h('span', { class: 'muted small' }, ` ${x.sub}`) : null),
+        h('div', { class: 'cmp-bars' },
+          h('div', { class: 'cmp-line' }, h('div', { class: 'cmp-track' }, h('span', { class: 'cmp-a', style: { width: `${(x.a / max) * 100}%` } })), h('em', {}, `예산 ${won(x.a)}`)),
+          h('div', { class: 'cmp-line' }, h('div', { class: 'cmp-track' }, h('span', { class: 'cmp-r', style: { width: `${(Math.max(x.a, x.u) / max) * 100}%` } }, h('span', { class: 'cmp-u', style: { width: `${x.a ? Math.min(100, (x.u / Math.max(x.a, x.u)) * 100) : 100}%` } }))),
+            h('em', {}, h('strong', {}, `${pctOf(x.u, x.a)}%`), ` 집행 ${won(x.u)}`)))))) : h('p', { class: 'muted' }, '예산·집행 자료가 없습니다.'));
+  };
+  draw();
+  return box;
+}
+
+// 📅 항목별 월별 집행표: 사업마다 접고 펴는 머리줄(사업 현황) + 항목 줄 × 3월~2월 (금액이 클수록 진한 칸) · 칸을 누르면 그 달 건별 입력·수정
+function itemMonthTable(list, { canEditP, reload }) {
+  const infos = list.slice().sort((a, b) => b.assigned - a.assigned).map((p) => ({ p, ...lineInfo(p) }));
+  if (!infos.some((x) => x.lines.length || x.loose.length)) return h('p', { class: 'muted' }, '예산 항목이 없습니다. [📥 엑셀 올리기]로 예산 현황 파일을 올리거나 아래 [📒 예산 입력]에서 항목을 넣으면 항목별·월별로 나옵니다.');
+  const cellMax = Math.max(1, ...infos.flatMap((x) => [...x.lines, ...x.loose].flatMap((l) => Object.values(l.months))));
+  const folded = new Set(remember('mn_fold') || []);
+  // 칸 색: 금액이 클수록 진하게 (제곱근 눈금 — 아주 큰 한 칸 때문에 나머지가 흐려지지 않게)
+  const heat = (v) => { if (!v) return null; const r = Math.sqrt(v / cellMax); return { background: `color-mix(in srgb, var(--primary) ${Math.round(10 + r * 55)}%, var(--panel))`, color: r > 0.62 ? '#fff' : '' }; };
   const tot = { a: 0, u: 0, m: {} };
-  const add = (m, v) => { tot.m[m] = (tot.m[m] || 0) + v; };
-  const multi = list.length > 1;
-  for (const p of list.slice().sort((a, b) => b.assigned - a.assigned)) {
-    const lines = p.lines.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0)); // 엑셀에 적힌 순서 그대로
-    // 날짜별 집행내역은 비목별로 묶어 한 줄씩
-    const byCat = new Map();
-    for (const s of p.spends) { const k = s.data.category || '(비목 없음)'; if (!byCat.has(k)) byCat.set(k, { u: 0, m: {}, n: 0 }); const x = byCat.get(k); const a = Number(s.data.amount) || 0; x.u += a; x.n++; const mm = Number(String(s.data.date || '').slice(5, 7)); if (mm) x.m[mm] = (x.m[mm] || 0) + a; }
-    if (!lines.length && !byCat.size) continue;
-    if (multi) rows.push(h('tr', { class: 'group-row' }, h('td', { colspan: 6 + 12 }, h('strong', {}, p.name), h('span', { class: 'muted small' }, ` · 예산 ${won(p.assigned)} · 집행 ${won(p.used)}`))));
-    for (const b of lines) {
-      const a = Number(b.data.amount) || 0; const u = Number(b.data.spent) || 0; const mo = b.data.monthly || {};
-      tot.a += a; tot.u += u; for (const [m, v] of Object.entries(mo)) add(m, Number(v) || 0);
-      rows.push(h('tr', {},
-        h('td', { class: 'mt-cat' }, b.data.category || '-'), h('td', { class: 'mt-item', title: [b.data.item, b.data.detail, b.data.note].filter(Boolean).join(' · ') }, b.data.detail || b.data.item || b.data.label || '-'),
-        h('td', { class: 'num' }, short(a)), h('td', { class: 'num' }, short(u)), h('td', { class: `num ${a - u < 0 ? 'neg' : ''}` }, short(a - u) || (a ? '0' : '')),
-        h('td', { class: 'num small' }, a ? `${pctOf(u, a)}%` : ''),
-        MONTH_ORDER.map((m) => h('td', { class: `num mt-m ${m === nowMonth() ? 'now' : ''}` }, short(mo[m])))));
+  const body = [];
+  for (const x of infos) {
+    const p = x.p;
+    const pm = {}; for (const l of [...x.lines, ...x.loose]) for (const [m, v] of Object.entries(l.months)) pm[m] = (pm[m] || 0) + v;
+    tot.a += p.assigned; tot.u += p.used; for (const [m, v] of Object.entries(pm)) tot.m[m] = (tot.m[m] || 0) + v;
+    const isFold = folded.has(p.name);
+    const editable = canEditP(p);
+    const toggle = () => { isFold ? folded.delete(p.name) : folded.add(p.name); remember('mn_fold', [...folded]); reload(); };
+    body.push(h('tr', { class: 'mt-prog', onclick: toggle, title: isFold ? '눌러서 펼치기' : '눌러서 접기' },
+      h('td', { class: 'mt-cat' }, h('span', { class: 'mt-caret' }, isFold ? '▸' : '▾')),
+      h('td', { class: 'mt-item' }, h('strong', {}, p.name), h('span', { class: 'muted small' }, ` ${x.lines.length}개 항목`)),
+      h('td', { class: 'num strong' }, won(p.assigned)), h('td', { class: 'num strong' }, won(p.used)), h('td', { class: `num strong ${p.assigned - p.used < 0 ? 'neg' : ''}` }, won(p.assigned - p.used)),
+      h('td', { class: 'mt-use' }, bar(p.used, p.assigned)),
+      MONTH_ORDER.map((m) => h('td', { class: `num mt-m mt-psum ${m === nowMonth() ? 'now' : ''}` }, manShort(pm[m])))));
+    if (isFold) continue;
+    for (const l of x.lines) {
+      const b = l.b;
+      body.push(h('tr', { class: 'mt-line' },
+        h('td', { class: 'mt-cat' }, h('span', { class: 'mt-tag' }, b.data.category || '-')),
+        h('td', { class: 'mt-item', title: [b.data.item, b.data.detail, b.data.note].filter(Boolean).join(' · ') }, b.data.detail || b.data.item || b.data.label || '-', l.spends.length ? h('span', { class: 'mt-cnt', title: '건별 기록 수' }, ` 🧾${l.spends.length}`) : null),
+        h('td', { class: 'num' }, l.assigned.toLocaleString()), h('td', { class: 'num' }, l.used ? l.used.toLocaleString() : ''), h('td', { class: `num ${l.assigned - l.used < 0 ? 'neg' : ''}` }, (l.assigned - l.used).toLocaleString()),
+        h('td', { class: 'mt-use' }, bar(l.used, l.assigned)),
+        MONTH_ORDER.map((m) => h('td', {
+          class: `num mt-m ${m === nowMonth() ? 'now' : ''} ${editable ? 'mt-click' : ''}`, style: heat(l.months[m]),
+          title: editable ? `${m}월 ${won(l.months[m] || 0)} · 눌러서 입력·수정` : `${m}월 ${won(l.months[m] || 0)}`,
+          onclick: editable ? () => cellModal(p, l, m, reload) : null,
+        }, manShort(l.months[m]) || (editable ? h('span', { class: 'mt-plus' }, '+') : '')))));
     }
-    for (const [k, x] of byCat) {
-      tot.u += x.u; for (const [m, v] of Object.entries(x.m)) add(m, v);
-      rows.push(h('tr', { class: 'mt-spend' },
-        h('td', { class: 'mt-cat' }, k), h('td', { class: 'mt-item' }, `🧾 집행내역 ${x.n}건`), h('td', { class: 'num' }, ''), h('td', { class: 'num' }, short(x.u)), h('td', {}, ''), h('td', {}, ''),
-        MONTH_ORDER.map((m) => h('td', { class: `num mt-m ${m === nowMonth() ? 'now' : ''}` }, short(x.m[m])))));
+    for (const l of x.loose) {
+      body.push(h('tr', { class: 'mt-loose' },
+        h('td', { class: 'mt-cat' }, h('span', { class: 'mt-tag ghost' }, l.cat)),
+        h('td', { class: 'mt-item' }, `🧾 항목 미연결 집행 ${l.spends.length}건`),
+        h('td', {}, ''), h('td', { class: 'num' }, l.spends.reduce((a, sp) => a + (Number(sp.data.amount) || 0), 0).toLocaleString()), h('td', {}, ''), h('td', {}, ''),
+        MONTH_ORDER.map((m) => h('td', { class: `num mt-m ${m === nowMonth() ? 'now' : ''}`, style: heat(l.months[m]) }, manShort(l.months[m])))));
     }
   }
-  if (!rows.length) return h('p', { class: 'muted' }, '예산 항목이 없습니다. [📥 엑셀 올리기]로 예산 현황 파일을 올리면 항목별·월별로 나옵니다.');
   return h('div', { class: 'table-wrap month-table-wrap' }, h('table', { class: 'table compact month-table' },
-    h('thead', {}, h('tr', {}, ['비목', '산출내역', '예산', '집행', '잔액', '사용률'].map((t) => h('th', {}, t)), MONTH_ORDER.map((m) => h('th', { class: `num ${m === nowMonth() ? 'now' : ''}` }, `${m}월`)))),
-    h('tbody', {}, rows),
-    h('tfoot', {}, h('tr', {}, h('td', { colspan: 2, class: 'strong' }, '합계'), h('td', { class: 'num strong' }, short(tot.a)), h('td', { class: 'num strong' }, short(tot.u)), h('td', { class: 'num strong' }, short(tot.a - tot.u)),
-      h('td', { class: 'num strong small' }, tot.a ? `${pctOf(tot.u, tot.a)}%` : ''), MONTH_ORDER.map((m) => h('td', { class: `num strong mt-m ${m === nowMonth() ? 'now' : ''}` }, short(tot.m[m])))))));
+    h('thead', {}, h('tr', {}, ['', '사업 · 산출내역', '예산', '집행', '잔액', '사용률'].map((t) => h('th', {}, t)), MONTH_ORDER.map((m) => h('th', { class: `num ${m === nowMonth() ? 'now' : ''}` }, `${m}월`)))),
+    h('tbody', {}, body),
+    h('tfoot', {}, h('tr', {}, h('td', { colspan: 2, class: 'strong mt-item' }, '합계'), h('td', { class: 'num strong' }, won(tot.a)), h('td', { class: 'num strong' }, won(tot.u)), h('td', { class: 'num strong' }, won(tot.a - tot.u)),
+      h('td', { class: 'mt-use' }, bar(tot.u, tot.a)), MONTH_ORDER.map((m) => h('td', { class: `num strong mt-m ${m === nowMonth() ? 'now' : ''}` }, manShort(tot.m[m])))))));
+}
+
+// 월별 칸 누르기: 그 항목·그 달의 [엑셀에서 가져온 금액] + [건별 기록]을 보고 입력·수정 (한 달에 여러 건 가능)
+function cellModal(p, l, m, reload) {
+  const b = l.b;
+  const y = m >= 3 ? state.year : state.year + 1;
+  const ym = `${y}-${String(m).padStart(2, '0')}`;
+  const base = Number(b.data.monthly?.[m]) || 0;
+  const rows = l.spends.filter((sp) => String(sp.data.date || '').startsWith(ym)).sort((a, c) => String(a.data.date).localeCompare(String(c.data.date)));
+  const sumRows = rows.reduce((a, sp) => a + (Number(sp.data.amount) || 0), 0);
+  const name = b.data.detail || b.data.item || '항목';
+  let close = () => {};
+  const done = () => { close(); reload(); };
+  // 엑셀 금액 고치기: 그 달 금액을 바꾸고, 줄의 집행액(spent)도 같이 맞춤
+  const saveBase = async (v) => {
+    const monthly = { ...(b.data.monthly || {}) };
+    const oldSum = Object.values(monthly).reduce((a, x) => a + (Number(x) || 0), 0);
+    const extra = Math.max(0, (Number(b.data.spent) || 0) - oldSum); // 월이 정해지지 않은 집행액은 그대로 둠
+    if (v) monthly[m] = v; else delete monthly[m];
+    const spent = Object.values(monthly).reduce((a, x) => a + (Number(x) || 0), 0) + extra;
+    try { await api(`/api/records/budget/${b.id}`, { method: 'PUT', body: { data: { ...b.data, monthly, spent }, version: b.version } }); toast('저장했습니다.'); done(); } catch (e) { toast(e.message, 'error'); }
+  };
+  const today0 = today();
+  const date = h('input', { type: 'date', value: today0.startsWith(ym) ? today0 : `${ym}-15`, min: `${ym}-01`, max: `${ym}-31` });
+  const content = h('input', { placeholder: '내용 (예: 소모품 구입)', value: name });
+  const amount = h('input', { inputmode: 'numeric', placeholder: '금액 (예: 120,000 또는 12,000×10)' });
+  const calc = h('small', { class: 'muted' });
+  amount.oninput = () => { const v = evalFormula(amount.value); calc.textContent = v !== null && /[×xX*+\-/÷]/.test(amount.value) ? `= ${won(v)}` : ''; };
+  const add = async () => {
+    const v = evalFormula(amount.value) || 0;
+    if (!v || !date.value) { toast('날짜와 금액을 넣어 주세요.', 'error'); return; }
+    try {
+      await api('/api/records/spending', { method: 'POST', body: { data: { date: date.value, source: p.kind, program: p.name, category: b.data.category || '', content: content.value.trim() || name, amount: v, person: state.me?.name || '', budgetId: b.id } } });
+      toast(`${won(v)}을(를) ${m}월에 기록했습니다.`); done();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  const baseInput = h('input', { inputmode: 'numeric', value: base ? base.toLocaleString() : '', placeholder: '없음' });
+  close = modal(`🧾 ${p.name} · ${name} · ${m}월`, h('div', { class: 'form cell-modal' },
+    h('div', { class: 'cm-sum' },
+      h('div', {}, h('span', { class: 'muted small' }, '이 달 합계'), h('strong', {}, won(base + sumRows))),
+      h('div', {}, h('span', { class: 'muted small' }, '항목 예산 · 집행'), h('span', {}, `${won(l.assigned)} · ${won(l.used)} (${pctOf(l.used, l.assigned)}%)`))),
+    h('h4', {}, '건별 기록', h('span', { class: 'muted small' }, ` ${rows.length}건 · ${won(sumRows)}`)),
+    rows.length ? h('ul', { class: 'list cm-list' }, rows.map((sp) => h('li', {},
+      h('span', { class: 'muted' }, String(sp.data.date).slice(5).replace('-', '/')), ' ', h('strong', {}, sp.data.content || ''), h('span', { class: 'grow' }), h('span', { class: 'num' }, won(sp.data.amount)),
+      h('button', { class: 'link-btn small', onclick: () => { close(); openRecordForm('spending', sp, { onSaved: reload }); } }, '수정'),
+      h('button', { class: 'link-btn small danger', onclick: async () => { if (!(await confirmBox(`${sp.data.date} ${won(sp.data.amount)} 기록을 지울까요?`))) return; try { await api(`/api/records/spending/${sp.id}`, { method: 'DELETE' }); toast('지웠습니다.'); done(); } catch (e) { toast(e.message, 'error'); } } }, '삭제')))) : h('p', { class: 'muted small' }, '아직 이 달에 기록한 건이 없습니다.'),
+    h('div', { class: 'cm-add' }, date, content, h('div', { class: 'cm-amt' }, amount, calc), h('button', { class: 'btn primary', onclick: add }, '+ 이 달에 기록')),
+    h('details', { class: 'cm-base', open: !!base },
+      h('summary', {}, `📥 엑셀에서 가져온 ${m}월 금액: ${base ? won(base) : '없음'}`),
+      h('div', { class: 'row-actions' }, baseInput,
+        h('button', { class: 'btn small', onclick: () => saveBase(evalFormula(baseInput.value) || 0) }, '금액 바꾸기'),
+        base ? h('button', { class: 'btn small danger ghost', onclick: () => saveBase(0) }, '지우기') : null),
+      h('p', { class: 'muted small' }, '엑셀 「사업별 예산 현황」의 월별 칸에서 읽은 금액입니다. 같은 지출을 건별로도 넣으면 두 번 더해지니, 건별로 나눠 적었다면 이 금액은 지워 주세요.'))), [(c) => h('button', { class: 'btn', onclick: c }, '닫기')], { wide: true });
 }
 
 function recentSpends(spends, reload) {
@@ -281,7 +438,9 @@ export async function moneyOverview(root) {
       donut('비목별 예산 구성', d.m.catsOf(all).map((c) => ({ name: c.name, value: c.assigned }))),
       donut('정책사업별 예산 구성 (학교본예산)', groupsOf(d.m.byKind('학교본예산')).map((g) => ({ name: g.name, value: g.assigned }))),
       donut('정책사업별 집행 구성 (학교본예산)', groupsOf(d.m.byKind('학교본예산')).map((g) => ({ name: g.name, value: g.used })), { empty: '집행액이 없습니다.' })),
-    h('div', { class: 'two-col' }, catTable(d.m.catsOf(all), '비목별 사용 현황 (전체)'), monthChart(all, '월별 집행액 (전체)')),
+    budgetCompare(all, d.m.catsOf),
+    monthChart(all, '월별 집행액 (전체)'),
+    catTable(d.m.catsOf(all), '비목별 사용 현황 (전체)'),
     groupOverview(groupsOf(d.m.byKind('학교본예산')), (p) => { remember('mn_prog', p.name); location.hash = '#/money/school'; }),
     d.m.byKind('공모사업').length ? programTable(d.m.byKind('공모사업'), (p) => { remember('mn_prog', p.name); location.hash = '#/money/contests'; }, '🏆 공모사업별 사용 현황') : null,
     recentSpends(d.spending, reload),
@@ -465,10 +624,11 @@ async function kindView(root, kind) {
         ? donut('정책사업별 집행 구성', groups.map((g) => ({ name: g.name, value: g.used })), { empty: '집행액이 없습니다.' })
         : donut('비목별 집행 구성', d.m.catsOf(focus).map((c) => ({ name: c.name, value: c.used })), { empty: '집행액이 없습니다.' }),
       pick ? null : donut('세부사업별 예산 구성', focus.map((p) => ({ name: p.name, value: p.assigned })))) : null,
+    focus.length ? budgetCompare(focus, d.m.catsOf) : null,
     !pick && grouped ? groupOverview(gpick ? groups.filter((g) => g.name === gpick) : groups, (p) => choose(p.name), gpick) : null,
-    h('div', { class: 'two-col' }, catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : gpick ? `${gpick} · 비목별 사용 현황` : '비목별 사용 현황'), monthChart(focus, pick ? `${pick} · 월별 집행액` : '월별 집행액')),
-    h('section', { class: 'section' }, h('h3', {}, '📅 항목별 월별 집행', h('span', { class: 'muted small' }, ' · 엑셀의 월별 칸 + 날짜별 집행내역')), itemMonthTable(focus)),
-    pick || grouped ? null : programTable(list, (p) => choose(p.name)),
+    monthChart(focus, pick ? `${pick} · 월별 집행액` : '월별 집행액'),
+    catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : gpick ? `${gpick} · 비목별 사용 현황` : '비목별 사용 현황'),
+    h('section', { class: 'section' }, h('h3', {}, '📅 사업·항목별 월별 집행', h('span', { class: 'muted small' }, ' · 사업 줄을 누르면 접고 펼침 · 월 칸을 누르면 그 달 건별 입력·수정')), itemMonthTable(focus, { canEditP: canEditProgram, reload })),
     h('section', { class: 'section' }, h('h3', {}, '🧾 건별 집행내역', h('span', { class: 'muted small' }, ` · ${spendRows.length}건 (날짜별로 하나씩 넣은 집행)`)), spendBox),
     h('section', { class: 'section' }, h('h3', {}, '📒 예산 입력 (항목 · 비목 · 산출식 · 금액 · 집행액)'), budgetBox),
     kind === '공모사업' ? h('section', { class: 'section' }, h('h3', {}, '🏆 공모사업 목록'), contestBox) : null,

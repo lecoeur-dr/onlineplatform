@@ -1123,20 +1123,87 @@ button.dnum:hover { background: var(--primary-soft); }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
 .pick-grid .btn { width: 100%; justify-content: center; white-space: nowrap; padding-left: 10px; padding-right: 10px; }
 
-/* 💰 항목별 월별 집행표: 왼쪽 비목·산출내역 고정, 옆으로 넘겨 3월~2월 */
-.month-table-wrap { overflow-x: auto; }
-.month-table { min-width: 1100px; font-size: 12.5px; }
-.month-table th, .month-table td { white-space: nowrap; padding: 6px 8px; }
-.month-table .mt-cat { position: sticky; left: 0; z-index: 1; background: var(--panel); min-width: 84px; color: var(--muted); }
-.month-table .mt-item { position: sticky; left: 84px; z-index: 1; background: var(--panel); max-width: 220px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; box-shadow: 1px 0 0 var(--line); }
-.month-table thead th:nth-child(1), .month-table thead th:nth-child(2) { position: sticky; z-index: 2; background: var(--bg-2, var(--panel)); }
-.month-table thead th:nth-child(1) { left: 0; } .month-table thead th:nth-child(2) { left: 84px; }
-.month-table tfoot td:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
-.month-table .mt-m { color: var(--text); min-width: 74px; }
-.month-table .mt-m:empty { background: transparent; }
-.month-table .now { background: color-mix(in srgb, var(--primary) 7%, var(--panel)); }
-.month-table th.now { color: var(--primary); }
-.month-table tr.mt-spend td { color: var(--muted); font-style: italic; }
-.month-table tr.mt-spend .mt-item, .month-table tr.mt-spend .mt-cat { font-style: italic; }
-.month-table .group-row td { position: static; background: var(--bg-2, var(--bg)); }
 .mc-col.now .mc-lbl { color: var(--primary); font-weight: 800; }
+
+/* 💰 사용률 막대: 길이 = 숫자 (글자는 막대 밖) */
+.ubar { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.ubar-track { position: relative; flex: 1; height: 10px; background: var(--bg-2, var(--bg)); border-radius: 999px; overflow: hidden; }
+.ubar-track span { position: absolute; inset: 0 auto 0 0; background: var(--primary); border-radius: 999px; }
+.ubar.over .ubar-track span { background: var(--danger, #e5484d); }
+.ubar em { font-style: normal; font-size: 12px; font-weight: 700; min-width: 3.6em; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 📊 월별 집행: 비목별로 쌓은 막대 + 골라 보기 */
+.month-chart-box .mc-head, .cmp-box .mc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.month-chart-box .mc-head h3, .cmp-box .mc-head h3 { margin: 0; }
+.mc-line-pick { max-width: 320px; }
+.mc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.mc-chips .chip-btn.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.mc-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; vertical-align: 0; }
+.month-chart.stacked { height: 240px; }
+.month-chart.stacked .mc-bar { display: flex; align-items: flex-end; }
+.mc-stack { width: 100%; display: flex; flex-direction: column-reverse; border-radius: 8px 8px 0 0; overflow: hidden; min-height: 0; }
+.mc-stack i { display: block; min-height: 2px; }
+.mc-stack i + i { border-bottom: 1px solid color-mix(in srgb, var(--panel) 70%, transparent); }
+.mc-col.now .mc-bar { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent); }
+.mc-hint { margin: 6px 0 0; }
+
+/* 📊 예산 대비 집행: 1줄 예산 · 2줄 집행(채움) + 남은 예산(빗금) */
+.cmp-legend { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.cmp-legend i { display: inline-block; width: 18px; height: 9px; border-radius: 3px; }
+.lg-a, .cmp-a { background: color-mix(in srgb, var(--primary) 28%, var(--panel)); }
+.lg-u, .cmp-u { background: var(--primary); }
+.lg-r, .cmp-r { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--primary) 14%, var(--panel)) 0 5px, var(--panel) 5px 9px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent); }
+.cmp-list { display: flex; flex-direction: column; gap: 10px; }
+.cmp-row { display: grid; grid-template-columns: minmax(110px, 200px) 1fr; gap: 12px; align-items: center; }
+.cmp-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-bars { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cmp-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cmp-track { flex: 1; min-width: 0; }
+.cmp-track > span { display: block; height: 12px; border-radius: 4px; position: relative; overflow: hidden; min-width: 2px; }
+.cmp-line .cmp-u { position: absolute; inset: 0 auto 0 0; border-radius: 4px 0 0 4px; }
+.cmp-line em { font-style: normal; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; flex: 0 0 190px; }
+.cmp-line em strong { color: var(--text); margin-right: 4px; }
+.cmp-row.over .cmp-u { background: var(--danger, #e5484d); }
+@media (max-width: 700px) { .cmp-row { grid-template-columns: 1fr; gap: 3px; } }
+
+/* 📅 사업·항목별 월별 집행표: 사업 머리줄(접기) + 항목 줄 + 금액만큼 진한 칸 */
+.month-table-wrap { overflow-x: auto; }
+.month-table { min-width: 1180px; font-size: 12.5px; border-collapse: separate; border-spacing: 0; }
+.month-table th, .month-table td { white-space: nowrap; padding: 7px 8px; }
+.month-table .mt-cat { position: sticky; left: 0; z-index: 1; background: var(--panel); width: 92px; min-width: 92px; }
+.month-table .mt-item { position: sticky; left: 92px; z-index: 1; background: var(--panel); min-width: 170px; max-width: 230px; overflow: hidden; text-overflow: ellipsis; box-shadow: 1px 0 0 var(--line); }
+.month-table thead th { background: var(--bg-2, var(--panel)); }
+.month-table thead th:nth-child(1) { left: 0; z-index: 3; } .month-table thead th:nth-child(2) { left: 92px; z-index: 3; }
+.month-table thead th:nth-child(1), .month-table thead th:nth-child(2) { position: sticky; }
+.month-table .mt-use { min-width: 130px; }
+.month-table .mt-m { min-width: 64px; text-align: right; border-left: 1px solid color-mix(in srgb, var(--line) 60%, transparent); transition: filter .1s; }
+.month-table .now { box-shadow: inset 0 2px 0 var(--primary); }
+.month-table th.now { color: var(--primary); }
+.month-table tr.mt-prog td { background: color-mix(in srgb, var(--primary) 6%, var(--panel)); border-top: 2px solid color-mix(in srgb, var(--primary) 35%, var(--line)); cursor: pointer; }
+.month-table tr.mt-prog td.mt-cat, .month-table tr.mt-prog td.mt-item { background: color-mix(in srgb, var(--primary) 6%, var(--panel)); }
+.month-table tr.mt-prog .mt-psum { font-weight: 800; color: var(--primary); }
+.month-table tr.mt-prog:hover td { filter: brightness(.98); }
+.mt-caret { color: var(--primary); font-size: 13px; }
+.mt-tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--bg-2, var(--bg)); color: var(--muted); }
+.mt-tag.ghost { background: transparent; border: 1px dashed var(--line); }
+.month-table tr.mt-line .mt-item { font-weight: 600; }
+.month-table tr.mt-line:hover td { background-color: color-mix(in srgb, var(--primary) 3%, var(--panel)); }
+.month-table td.mt-click { cursor: pointer; }
+.month-table td.mt-click:hover { outline: 2px solid var(--primary); outline-offset: -2px; }
+.mt-plus { color: var(--muted); opacity: 0; font-weight: 700; }
+.month-table tr:hover .mt-plus { opacity: .6; }
+.mt-cnt { font-size: 11px; color: var(--muted); font-weight: 500; }
+.month-table tr.mt-loose td { color: var(--muted); font-style: italic; }
+.month-table tfoot td { background: var(--bg-2, var(--panel)); font-weight: 800; border-top: 2px solid var(--line); }
+.month-table tfoot td.mt-item { position: sticky; left: 0; }
+/* 월별 칸 입력 창 */
+.cell-modal h4 { margin: 12px 0 4px; }
+.cm-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cm-sum > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--bg-2, var(--bg)); }
+.cm-sum strong { font-size: 20px; }
+.cm-list li { display: flex; align-items: center; gap: 6px; }
+.cm-add { display: grid; grid-template-columns: 150px 1fr 200px auto; gap: 8px; align-items: start; margin-top: 8px; }
+.cm-amt { display: flex; flex-direction: column; }
+.cm-base { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.cm-base summary { cursor: pointer; font-weight: 700; font-size: 13px; }
+@media (max-width: 700px) { .cm-add { grid-template-columns: 1fr; } .cm-sum { grid-template-columns: 1fr; } }
