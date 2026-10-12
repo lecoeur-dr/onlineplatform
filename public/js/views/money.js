@@ -237,20 +237,20 @@ function monthChart(list, title = '월별 집행액') {
 
 // 📊 예산 대비 집행: 1줄 = 예산(전체 기준 길이 비교), 2줄 = 그중 집행(채운 부분) + 남은 부분 빗금
 function budgetCompare(focus, catsOf) {
-  const modes = [['cat', '비목별'], ...(focus.length > 1 ? [['prog', '사업별']] : []), ['line', '항목별']];
-  let mode = remember('mn_cmp') || 'cat';
-  if (!modes.some(([m]) => m === mode)) mode = 'cat';
+  // 사업이 여럿이면 [사업별](기본) · [비목별], 사업 하나만 볼 때는 비목별만
+  const modes = [...(focus.length > 1 ? [['prog', '사업별']] : []), ['cat', '비목별']];
+  let mode = remember('mn_cmp2') || modes[0][0];
+  if (!modes.some(([m]) => m === mode)) mode = modes[0][0];
   const box = h('section', { class: 'section cmp-box' });
   const draw = () => {
     let items;
     if (mode === 'prog') items = focus.map((p) => ({ name: p.name, a: p.assigned, u: p.used }));
-    else if (mode === 'line') items = focus.flatMap((p) => lineInfo(p).lines.map((l) => ({ name: `${l.b.data.detail || l.b.data.item || '항목'}`, sub: focus.length > 1 ? p.name : l.b.data.category, a: l.assigned, u: l.used })));
     else items = catsOf(focus).map((c) => ({ name: c.name, a: c.assigned, u: c.used }));
     items = items.filter((x) => x.a || x.u).sort((x, y) => y.a - x.a);
     const max = Math.max(1, ...items.map((x) => Math.max(x.a, x.u)));
     clear(box,
       h('div', { class: 'mc-head' }, h('h3', {}, '📊 예산 대비 집행 한눈에', h('span', { class: 'muted small' }, ' · 막대 길이로 전체를 비교')), h('span', { class: 'grow' }),
-        h('div', { class: 'seg' }, modes.map(([m, l]) => h('button', { class: mode === m ? 'on' : '', onclick: () => { mode = m; remember('mn_cmp', m); draw(); } }, l)))),
+        h('div', { class: 'seg' }, modes.map(([m, l]) => h('button', { class: mode === m ? 'on' : '', onclick: () => { mode = m; remember('mn_cmp2', m); draw(); } }, l)))),
       h('div', { class: 'cmp-legend muted small' }, h('i', { class: 'lg-a' }), ' 예산 ', h('i', { class: 'lg-u' }), ' 집행 ', h('i', { class: 'lg-r' }), ' 남은 예산'),
       items.length ? h('div', { class: 'cmp-list' }, items.map((x) => h('div', { class: `cmp-row ${x.u > x.a ? 'over' : ''}` },
         h('div', { class: 'cmp-name', title: x.name }, h('strong', {}, x.name), x.sub ? h('span', { class: 'muted small' }, ` ${x.sub}`) : null),
