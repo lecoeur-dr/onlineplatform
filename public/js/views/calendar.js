@@ -5,6 +5,7 @@ import { yearMonths, yearRange, CATEGORIES, categoryColor, categoryIcon, normCat
 import { h, clear, pad, fmtDate, addDays, today, DOW, modal } from '../ui.js';
 import { state, canEdit, remember, setYear } from '../state.js';
 import { openRecordForm } from '../form.js';
+import { LOCAL_PROGRAM, isLocalCurriculum } from '../local-curriculum.js';
 
 // ---------- 기록 → 달력 항목 ----------
 
@@ -12,7 +13,8 @@ const PALETTE = ['#8a4fd6', '#1f9d55', '#e07b12', '#d6408f', '#0f8f86', '#3b6fe0
 export const paletteColor = (i) => PALETTE[i % PALETTE.length];
 
 export function eventItem(r) {
-  const cat = normCategory(r.data.category);
+  // 학사일정으로 들어온 '지역교육과정(…)'은 특별수업으로 묶어 보임
+  const cat = isLocalCurriculum(r.data.title) && !NO_SCHOOL_CATEGORIES.includes(normCategory(r.data.category)) ? '특별수업' : normCategory(r.data.category);
   return { mod: 'events', r, date: r.data.date, endDate: r.data.endDate, cat, color: categoryColor(cat), icon: categoryIcon(cat), label: (r.data.title || '').split('\n')[0], sub: r.data.dept, review: r.data.review };
 }
 // 특별수업 칸 내용 풀기: '(14/44)' 진행 차시 · '(4-1) 5교시' 반·교시 줄 · 나머지 메모
@@ -33,7 +35,9 @@ export function programItem(r, legendBy = 'category', programs = []) {
   const color = legendBy === 'program' ? paletteColor(Math.max(0, programs.indexOf(r.data.program))) : categoryColor('특별수업');
   const info = programInfo(r.data.content);
   const head = info.classes.length ? `${info.classes[0]}${info.classes.length > 1 ? ` 외 ${info.classes.length - 1}반` : ''}` : info.notes[0] || '';
-  const label = `[${r.data.program || ''}] ${info.progress ? `${info.progress.n}/${info.progress.total}차시 · ` : ''}${head}`;
+  // 지역교육과정은 활동 이름(피아노·마술 …)을 머리에 붙여 구분
+  const act = r.data.program === LOCAL_PROGRAM && info.classes.length && info.notes[0] ? `·${info.notes[0]}` : '';
+  const label = `[${r.data.program || ''}${act}] ${info.progress ? `${info.progress.n}/${info.progress.total}차시 · ` : ''}${head}`;
   return { mod: 'programs', r, date: r.data.date, cat, color, icon: '🎵', label, sub: r.data.place, cancel: r.data.status === '취소' };
 }
 const LEAVE_ICON = { 출장: '🚌', 조퇴: '🏃', 외출: '🚶', 지참: '⏰', 연가: '🌿', 병가: '🏥', 공가: '📋', 특별휴가: '🎗️' };
