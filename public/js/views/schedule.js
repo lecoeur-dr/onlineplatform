@@ -25,6 +25,9 @@ export async function scheduleOverview(root) {
   ].filter(Boolean);
   renderCalendar(root, {
     key: 'cal_all', items, notices: d.notices, briefings: d.briefings, reload: () => scheduleOverview(root),
+    // 기본 보기: 학교 행사·회의·연수·동료장학·휴일 등 / 특별수업·복무·출장·보결·메모 등은 [보기]에서 켜서 봄
+    defaultHidden: ['특별수업', '복무·출장', '보결', '담당 배정', '메모'],
+    mineToggle: true, side: true,
     add: [
       { mod: 'events', label: '일정', defaults: (date) => ({ date, category: '전체행사' }) },
       { mod: 'programs', label: '특별수업', defaults: (date) => ({ date, status: '예정' }) },

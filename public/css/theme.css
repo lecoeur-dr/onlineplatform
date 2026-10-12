@@ -1075,3 +1075,47 @@ th.sortable:hover { color: var(--primary); }
 .scroll-cal .month-divider .muted { font-weight: 500; }
 .day.other-month .dnum { color: var(--muted); opacity: .55; font-weight: 500; }
 .day.other-month > .chip, .day.other-month .hol-name { opacity: .7; }
+
+/* 📅 보기 골라 보기: 체크 상자 모양 분류 버튼 + 내 일정만 */
+.pick-legend { gap: 6px; }
+.pick-legend .legend-title { font-size: 12px; font-weight: 800; color: var(--muted); margin-right: 2px; }
+.pick-legend .legend-item { gap: 6px; padding: 4px 10px 4px 6px; font-weight: 600; }
+.pick-legend .legend-item .dot { display: none; }
+.pick-legend .legend-item .cbox { width: 16px; height: 16px; border-radius: 4px; border: 2px solid var(--c); display: inline-grid; place-items: center; font-size: 11px; line-height: 1; color: #fff; }
+.pick-legend .legend-item.on { border-color: color-mix(in srgb, var(--c) 45%, var(--line)); background: color-mix(in srgb, var(--c) 8%, var(--panel)); }
+.pick-legend .legend-item.on .cbox { background: var(--c); }
+.pick-legend .legend-item.off { opacity: .75; text-decoration: none; color: var(--muted); }
+.mine-toggle { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.mine-toggle.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.mine-bar { display: none; }
+@media (max-width: 700px) {
+  .mine-bar { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 700; color: var(--primary); padding: 4px 2px; }
+}
+/* 넓은 화면: 달력 + 오른쪽 '선택한 날 · 다가오는 일정' */
+.main:has(.cal-layout.with-side) { max-width: 1800px; }
+.cal-layout { display: block; }
+.cal-side { display: none; }
+@media (min-width: 1500px) { /* 노트북(1366) 등에서는 달력을 넓게, 큰 화면에서만 오른쪽 칸 */
+  .cal-layout.with-side { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  .cal-layout.with-side .cal-side { display: block; position: sticky; top: calc(58px + var(--banner-h, 0px)); max-height: calc(100vh - 70px - var(--banner-h, 0px)); overflow-y: auto; overscroll-behavior: contain; }
+}
+@media (min-width: 1700px) { .cal-layout.with-side { grid-template-columns: minmax(0, 1fr) 340px; } }
+.side-in { display: flex; flex-direction: column; gap: 12px; }
+.side-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.side-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.side-hol { color: #dc2626; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+.side-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.side-list li { display: flex; gap: 8px; padding: 6px 6px; border-radius: 8px; cursor: pointer; }
+.side-list li:hover { background: var(--bg-2, var(--bg)); }
+.side-list .sb-bar { width: 4px; border-radius: 4px; background: var(--c); flex: none; }
+.side-list .sb-txt { min-width: 0; }
+.side-list .sb-title { font-weight: 600; font-size: 13.5px; line-height: 1.35; word-break: keep-all; }
+.side-day { margin-bottom: 8px; }
+.side-date { border: 0; background: none; padding: 2px 0; font: inherit; font-weight: 800; font-size: 13px; color: var(--text); cursor: pointer; }
+.side-date:hover { color: var(--primary); }
+.side-hint { margin: 0 4px; }
+/* 날짜 숫자 = 그 날 보기 버튼, 고른 날 표시 */
+button.dnum { border: 0; background: none; font: inherit; font-weight: 700; cursor: pointer; padding: 0 4px; border-radius: 6px; color: inherit; }
+button.dnum:hover { background: var(--primary-soft); }
+.day.picked { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 55%, transparent); }
+.day.today.picked { box-shadow: inset 0 0 0 2px var(--primary); }

@@ -86,6 +86,34 @@ export function openClassItem(r) {
   return { mod: 'openClasses', r, date, cat: '동료장학', color: categoryColor('동료장학'), label: `👀 ${r.data.className || ''} ${r.data.teacher || ''} ${r.data.period || ''}`.trim(), sub: r.data.subject };
 }
 
+// ---------- 내 일정 ----------
+//   전교 행사·휴일은 모두의 일정 + 내 이름·부서·담임 학급(학년)이 들어간 일정 + 내 출장·보결·담당·공개수업·우리 반 특별수업
+const ALL_TARGET = /전교|전체|전\s*학년|교직원|전\s*교원|모든/;
+export function isMine(it) {
+  const me = String(state.member?.name || state.me?.name || '').replace(/\s/g, '');
+  const dept = String(state.member?.dept || '').trim();
+  const room = String(state.member?.homeroom || '').trim();
+  const grade = room.match(/^(\d)\s*-/)?.[1];
+  const d = it.r?.data || {};
+  const text = JSON.stringify(d).replace(/\s/g, '');
+  const has = (x) => !!x && text.includes(String(x).replace(/\s/g, ''));
+  const hasRoom = room && (text.includes(`(${room})`) || new RegExp(`(^|[^\\d])${room.replace('-', '\\s*-\\s*')}($|[^\\d])`).test(JSON.stringify(d)));
+  if (it.memo) return true;
+  if (it.mod === 'events') {
+    if (NO_SCHOOL_CATEGORIES.includes(it.cat)) return true;
+    if (has(me) || (dept && d.dept === dept) || hasRoom) return true;
+    const scope = `${d.target || ''} ${d.title || ''}`;
+    const grades = [...scope.matchAll(/(\d)\s*(?:~\s*(\d))?\s*학년/g)].flatMap((m) => { const a = Number(m[1]); const b = Number(m[2] || m[1]); return Array.from({ length: Math.abs(b - a) + 1 }, (_, i) => Math.min(a, b) + i); });
+    // 대상이 비었거나 전교·교직원이면 모두의 일정. 단 제목에 다른 학년만 적혀 있으면(예: 1학년 현장체험학습) 그 학년 일정
+    if (grades.length) return !!grade && grades.includes(Number(grade));
+    return !String(d.target || '').trim() || ALL_TARGET.test(d.target);
+  }
+  if (it.mod === 'programs') return hasRoom || has(me);
+  if (it.mod === 'briefings') return true;
+  return has(me) || hasRoom;
+}
+const LEGEND_LABEL = { 전체행사: '학교 행사' };
+
 // ---------- 달력 ----------
 
 /**
@@ -101,7 +129,10 @@ export function renderCalendar(root, o) {
   const key = o.key || 'cal';
   const ui = {
     mode: remember(`${key}_mode`) || (window.innerWidth < 700 ? 'list' : o.defaultMode || 'scroll'),
-    hidden: new Set(remember(`${key}_hidden`) || []),
+    // 처음에는 o.defaultHidden(예: 특별수업·복무·출장)을 꺼 둔 채로 시작. 바꾸면 이 기기에 기억
+    hidden: new Set(remember(`${key}_hidden2`) ?? o.defaultHidden ?? []),
+    mine: !!remember(`${key}_mine`),
+    sel: today(),
     q: '',
     month: null,
     noteOpen: remember(`${key}_note`) ?? window.innerWidth > 700, // 주요 안내: PC는 펼침, 휴대폰은 접음이 기본 — 바꾸면 이 기기에 기억
@@ -115,6 +146,7 @@ export function renderCalendar(root, o) {
 
   let allByDate = {};
   let banner;
+  let paintSide = () => {};
 
   // 배너 안의 '그 달' 부분(월 버튼 강조 + 주요 안내)만 다시 그림 — 스크롤할 때 호출
   const paintMonth = () => {
@@ -147,7 +179,7 @@ export function renderCalendar(root, o) {
   };
 
   const draw = () => {
-    const shown = o.items.filter((it) => it && !ui.hidden.has(it.cat) && (!ui.q || `${it.label} ${it.sub || ''} ${JSON.stringify(it.r.data)}`.toLowerCase().includes(ui.q.toLowerCase())));
+    const shown = o.items.filter((it) => it && !ui.hidden.has(it.cat) && (!ui.mine || isMine(it)) && (!ui.q || `${it.label} ${it.sub || ''} ${JSON.stringify(it.r.data)}`.toLowerCase().includes(ui.q.toLowerCase())));
     // byDate: 날짜별 모든 항목(목록 보기용) · single: 하루짜리만(칸 안 띠) · spans: 여러 날 일정(이어진 막대) · holidays: 날짜별 휴일 이름
     const byDate = {};
     const single = {};
@@ -165,7 +197,16 @@ export function renderCalendar(root, o) {
         d = addDays(d, 1);
       }
     }
-    const ctx = { single, spans, holidays, byDate, now };
+    // 날짜 숫자 누르기: 오른쪽 칸이 보이면(큰 화면) 그 칸에, 아니면 하루 일정 창으로
+    const ctx = { single, spans, holidays, byDate, now, sel: o.side ? ui.sel : null };
+    ctx.onPick = (d) => {
+      const sideEl = root.querySelector('.cal-side');
+      if (!sideEl || getComputedStyle(sideEl).display === 'none') { dayModal(o, d, ctx); return; }
+      ui.sel = d; ctx.sel = d;
+      for (const c of root.querySelectorAll('.day.picked')) c.classList.remove('picked');
+      root.querySelector(`.day[data-date="${d}"]`)?.classList.add('picked');
+      paintSide();
+    };
     allByDate = {};
     for (const it of o.items) if (it?.mod === 'events') (allByDate[it.date] ||= []).push(it);
 
@@ -186,11 +227,16 @@ export function renderCalendar(root, o) {
     // ---------- 위쪽 고정 배너: 연도 · 월 · 보기 · 추가 · 주요 안내 · 범례 ----------
     // 위쪽 고정 배너: 한 줄(이전·월·다음·오늘 · 보기 · 검색 · 추가) + 주요 안내(접기/펼치기) + 분류(누르면 숨기기)
     //   휴대폰: 보기·검색·분류는 [⚙ 보기] 안에 접어 두고 달력이 바로 보이게
-    const legendEl = h('div', { class: 'legend' }, legend.filter((c) => counts[c.name]).map((c) => h('button', {
-      class: `legend-item ${ui.hidden.has(c.name) ? 'off' : ''}`, style: { '--c': c.color }, title: ui.hidden.has(c.name) ? '눌러서 다시 보이기' : '눌러서 이 분류 숨기기',
-      onclick: () => { ui.hidden.has(c.name) ? ui.hidden.delete(c.name) : ui.hidden.add(c.name); remember(`${key}_hidden`, [...ui.hidden]); draw(); },
-    }, h('span', { class: 'dot' }), c.icon ? h('span', { class: 'li-ico' }, c.icon) : null, c.name, h('span', { class: 'cnt' }, counts[c.name]))),
-    ui.hidden.size ? h('button', { class: 'link-btn', onclick: () => { ui.hidden.clear(); remember(`${key}_hidden`, []); draw(); } }, `모두 보이기 (${ui.hidden.size}개 숨김)`) : null);
+    const setHidden = (next) => { ui.hidden = new Set(next); remember(`${key}_hidden2`, [...ui.hidden]); draw(); };
+    const legendEl = h('div', { class: 'legend pick-legend' },
+      h('span', { class: 'legend-title' }, '보기'),
+      o.mineToggle ? h('button', { class: `mine-toggle ${ui.mine ? 'on' : ''}`, title: '전교 행사·휴일 + 내 이름·부서·우리 반이 들어간 일정만', onclick: () => { ui.mine = !ui.mine; remember(`${key}_mine`, ui.mine); draw(); } }, ui.mine ? '👤 내 일정만 ✓' : '👤 내 일정만') : null,
+      legend.filter((c) => counts[c.name]).map((c) => h('button', {
+        class: `legend-item ${ui.hidden.has(c.name) ? 'off' : 'on'}`, style: { '--c': c.color }, 'aria-pressed': String(!ui.hidden.has(c.name)), title: ui.hidden.has(c.name) ? '눌러서 보이기' : '눌러서 숨기기',
+        onclick: () => { const n = new Set(ui.hidden); n.has(c.name) ? n.delete(c.name) : n.add(c.name); setHidden(n); },
+      }, h('span', { class: 'cbox' }, ui.hidden.has(c.name) ? '' : '✓'), c.icon ? h('span', { class: 'li-ico' }, c.icon) : null, LEGEND_LABEL[c.name] || c.name, h('span', { class: 'cnt' }, counts[c.name]))),
+      ui.hidden.size ? h('button', { class: 'link-btn', onclick: () => setHidden([]) }, '모두 보기') : null,
+      o.defaultHidden && [...ui.hidden].sort().join() !== [...o.defaultHidden].sort().join() ? h('button', { class: 'link-btn', onclick: () => setHidden(o.defaultHidden) }, '기본으로') : null);
     banner = h('div', { class: `cal-banner ${ui.tools ? 'tools-open' : ''}` },
       h('div', { class: 'banner-row' },
         h('div', { class: 'month-nav' },
@@ -207,10 +253,11 @@ export function renderCalendar(root, o) {
           }, l))),
           h('input', { type: 'search', placeholder: '일정 검색', value: ui.q, oninput: debounce((e) => { ui.q = e.target.value; draw(); const sb = root.querySelector('.cal-banner input[type=search]'); sb.focus(); sb.setSelectionRange(sb.value.length, sb.value.length); }) })),
         h('span', { class: 'grow' }),
-        h('button', { class: `btn tools-btn ${ui.tools ? 'on' : ''} ${ui.hidden.size || ui.q ? 'dot-on' : ''}`, 'aria-expanded': String(ui.tools), onclick: () => { ui.tools = !ui.tools; banner.classList.toggle('tools-open', ui.tools); } }, '⚙ 보기'),
+        h('button', { class: `btn tools-btn ${ui.tools ? 'on' : ''} ${ui.q || ui.mine ? 'dot-on' : ''}`, 'aria-expanded': String(ui.tools), onclick: () => { ui.tools = !ui.tools; banner.classList.toggle('tools-open', ui.tools); } }, '⚙ 보기'),
         addButtons(o, `${ymOf(ui.month)}-01`)),
       o.notices ? h('div', { class: 'banner-note' }) : null,
-      legendEl);
+      legendEl,
+      ui.mine ? h('div', { class: 'mine-bar' }, '👤 내 일정만 보는 중', h('button', { class: 'link-btn', onclick: () => { ui.mine = false; remember(`${key}_mine`, false); draw(); } }, '모두 보기')) : null);
 
     let body;
     if (ui.mode === 'scroll') body = scrollView(o, ctx, allByDate);
@@ -218,7 +265,11 @@ export function renderCalendar(root, o) {
     else body = listView(o, ui.month, byDate);
 
     const keepY = ui.mode === 'scroll' && root._drawn ? window.scrollY : null;
-    clear(root, banner, body,
+    // 넓은 화면: 오른쪽에 선택한 날 · 다가오는 일정 (날짜 숫자를 누르면 그 날로)
+    const side = o.side ? h('aside', { class: 'cal-side' }) : null;
+    paintSide = () => { if (side) clear(side, sidePanel(o, ctx, ui.sel)); };
+    paintSide();
+    clear(root, banner, h('div', { class: `cal-layout ${side ? 'with-side' : ''}` }, h('div', { class: 'cal-main' }, body), side),
       h('p', { class: 'hint' }, '날짜 칸의 빈 곳을 누르면 그 날짜로 바로 입력합니다. 여러 날 일정은 이어진 막대로, 공휴일·방학은 빨간 날로 보입니다. 아래 분류를 누르면 그 분류를 숨깁니다.',
         ui.mode === 'month' ? ' 좌우로 밀거나 ← → 키로 달을 옮깁니다.' : ''));
     root.classList.add('cal-root');
@@ -339,18 +390,49 @@ function dayCell(o, d, ctx, { col, lanes = 0, extraClass = '' } = {}) {
   // 하루짜리 휴일은 날짜 옆에 빨간 글씨로 (여러 날 방학은 막대로)
   const holLabels = hols.filter((it) => !(it.endDate && it.endDate > it.date));
   return h('div', {
-    class: `day ${dow === 0 || hols.length ? 'sun' : ''} ${hols.length ? 'holiday' : ''} ${dow === 6 ? 'sat' : ''} ${d === ctx.now ? 'today' : ''} ${canAdd ? 'can-add' : ''} ${extraClass}`,
+    class: `day ${dow === 0 || hols.length ? 'sun' : ''} ${hols.length ? 'holiday' : ''} ${dow === 6 ? 'sat' : ''} ${d === ctx.now ? 'today' : ''} ${d === ctx.sel ? 'picked' : ''} ${canAdd ? 'can-add' : ''} ${extraClass}`,
+    'data-date': d,
     style: col !== undefined ? { gridColumn: String(col + 1), gridRow: '1 / -1' } : null,
     onclick: canAdd ? () => addAt(o, d) : null,
   },
   h('div', { class: 'day-head' },
-    h('span', { class: 'dnum' }, dd === 1 ? `${m}/${dd}` : dd),
+    ctx.onPick ? h('button', { class: 'dnum', title: '이 날 일정 보기', onclick: (e) => { e.stopPropagation(); ctx.onPick(d); } }, dd === 1 ? `${m}/${dd}` : dd) : h('span', { class: 'dnum' }, dd === 1 ? `${m}/${dd}` : dd),
     holLabels.map((it) => h('button', { class: 'hol-name', title: it.label, onclick: (e) => { e.stopPropagation(); openItem(o, it); } }, it.label)),
     memos.map((it) => h('button', { class: 'memo', title: `메모: ${it.label}`, onclick: (e) => { e.stopPropagation(); openRecordForm('memos', it.r, { onSaved: o.reload }); } }, it.label)),
     canAdd ? h('button', { class: 'add-mini', title: '추가', onclick: (e) => { e.stopPropagation(); addAt(o, d); } }, '+') : null),
   lanes ? h('div', { class: 'lane-space', style: { height: `${lanes * 23}px` } }) : null,
   shown.map((it) => chip(o, it)),
   list.length > shown.length ? h('button', { class: 'more', onclick: (e) => { e.stopPropagation(); dayModal(o, d, ctx); } }, `+${list.length - shown.length}개`) : null);
+}
+
+// 오른쪽 칸: 선택한 날(기본 오늘) 일정 + 앞으로 2주 다가오는 일정 — 지금 켜 둔 분류·내 일정만 설정을 그대로 따름
+function sidePanel(o, ctx, sel) {
+  const uniq = (list) => [...new Map((list || []).map((it) => [`${it.mod}|${it.r.id}`, it])).values()].sort((a, b) => order(a) - order(b));
+  const row = (it, showRange = true) => h('li', { class: 'click', style: { '--c': it.color }, onclick: () => openItem(o, it) },
+    h('span', { class: 'sb-bar' }), h('div', { class: 'sb-txt' },
+      h('div', { class: 'sb-title' }, it.icon && it.mod !== 'trips' ? `${it.icon} ` : '', it.label),
+      h('div', { class: 'muted small' }, [it.sub, it.r.data.place, showRange && it.endDate && it.endDate > it.date ? `${fmtDate(it.date)} ~ ${fmtDate(it.endDate)}` : ''].filter(Boolean).join(' · '))));
+  const selItems = uniq(ctx.byDate[sel]);
+  const days = [];
+  for (let i = 1; i <= 14 && days.length < 8; i++) {
+    const d = addDays(ctx.now, i);
+    const list = uniq(ctx.byDate[d]).filter((it) => !(it.endDate && it.endDate > it.date && it.date < d)); // 이어지는 일정은 시작일에만
+    if (list.length) days.push([d, list]);
+  }
+  const canAdd = (o.add || []).some((t) => canEdit(t.mod));
+  return h('div', { class: 'side-in' },
+    h('section', { class: 'side-box' },
+      h('div', { class: 'side-head' }, h('strong', {}, sel === ctx.now ? `오늘 · ${fmtDate(sel)}` : `📌 ${fmtDate(sel)}`),
+        h('span', { class: 'grow' }), sel !== ctx.now && ctx.onPick ? h('button', { class: 'link-btn small', onclick: () => ctx.onPick(ctx.now) }, '오늘로') : null,
+        canAdd ? h('button', { class: 'btn small', onclick: () => addAt(o, sel) }, '+ 추가') : null),
+      (ctx.holidays[sel] || []).length ? h('div', { class: 'side-hol' }, `🎌 ${uniq(ctx.holidays[sel]).map((it) => it.label).join(', ')}`) : null,
+      selItems.length ? h('ul', { class: 'side-list' }, selItems.map((it) => row(it))) : h('p', { class: 'muted small' }, '이 날 일정이 없습니다.')),
+    h('section', { class: 'side-box' },
+      h('div', { class: 'side-head' }, h('strong', {}, '⏭ 다가오는 일정'), h('span', { class: 'muted small' }, ' 2주')),
+      days.length ? days.map(([d, list]) => h('div', { class: 'side-day' },
+        h('button', { class: 'side-date', onclick: () => ctx.onPick?.(d) }, fmtDate(d), h('span', { class: 'muted small' }, ` · D-${Math.round((new Date(d) - new Date(ctx.now)) / 86400000)}`)),
+        h('ul', { class: 'side-list' }, list.map((it) => row(it))))) : h('p', { class: 'muted small' }, '앞으로 2주 동안 일정이 없습니다.')),
+    h('p', { class: 'muted small side-hint' }, '달력의 날짜 숫자를 누르면 여기에서 그 날 일정을 봅니다. 위 [보기]에서 켠 분류만 나옵니다.'));
 }
 
 const ORDER = ['휴일·방학', '전체행사', '회의', '대회출전', '연수', '학급수업', '특별수업', '동료장학', '출장', '기타'];
