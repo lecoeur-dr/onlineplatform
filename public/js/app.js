@@ -274,7 +274,7 @@ function quickAddButton() {
       ['market', '🧰 Teachshop에 올리기', { kind: 'HTML 도구', category: '수업 도구' }],
     ];
     const list = state.space === 'desk' ? [...desk, ...school] : [...school, ...desk];
-    const close = modal('빠른 추가', h('div', { class: 'choice' }, list.map(([m, label, defaults]) => h('button', { class: 'btn big', onclick: () => {
+    const close = modal('빠른 추가', h('div', { class: 'pick-grid' }, list.map(([m, label, defaults]) => h('button', { class: 'btn big', onclick: () => {
       close();
       openRecordForm(m, null, { defaults, onSaved: () => route() });
     } }, label))));

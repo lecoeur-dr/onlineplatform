@@ -157,7 +157,7 @@ export async function myTimetableView(root) {
   const importSchool = async () => {
     const list = sortTimetables(await api(`/api/records/timetables?year=${state.year}`));
     if (!list.length) { toast('학교 시간표가 없습니다.', 'error'); return; }
-    const close = modal('학교 시간표에서 가져오기', h('div', { class: 'choice' }, list.map((r) => h('button', { class: 'btn', onclick: async () => {
+    const close = modal('학교 시간표에서 가져오기', h('div', { class: 'pick-grid' }, list.map((r) => h('button', { class: 'btn', onclick: async () => {
       close();
       await api('/api/records/myTimetable', { method: 'POST', body: { data: { title: `${r.data.title} (학교)`, semester: r.data.semester || '연간', grid: r.data.grid || DEFAULT_GRID() }, year: state.year } });
       toast('가져왔습니다. 내 시간표는 학교 시간표와 따로 고칠 수 있습니다.'); reload();

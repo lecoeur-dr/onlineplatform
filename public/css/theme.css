@@ -1119,3 +1119,6 @@ button.dnum { border: 0; background: none; font: inherit; font-weight: 700; curs
 button.dnum:hover { background: var(--primary-soft); }
 .day.picked { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 55%, transparent); }
 .day.today.picked { box-shadow: inset 0 0 0 2px var(--primary); }
+/* 고르기 창(날짜 추가·빠른 추가 등): 버튼이 창 밖으로 넘치지 않게 칸 맞춤 */
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+.pick-grid .btn { width: 100%; justify-content: center; white-space: nowrap; padding-left: 10px; padding-right: 10px; }

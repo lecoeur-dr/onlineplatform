@@ -355,7 +355,7 @@ function addAt(o, date) {
   const targets = (o.add || []).filter((t) => canEdit(t.mod));
   if (!targets.length) return;
   if (targets.length === 1) return openAdd(o, targets[0], date);
-  const close = modal(`${fmtDate(date)} 추가`, h('div', { class: 'choice' }, targets.map((t) => h('button', { class: 'btn big', onclick: () => { close(); openAdd(o, t, date); } }, t.label))));
+  const close = modal(`${fmtDate(date)} 추가`, h('div', { class: 'pick-grid' }, targets.map((t) => h('button', { class: 'btn big', onclick: () => { close(); openAdd(o, t, date); } }, t.label))));
 }
 
 const icoOf = (it) => (it.icon && it.mod !== 'trips' ? h('span', { class: 'ci' }, it.icon) : null);
