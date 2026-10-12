@@ -49,19 +49,20 @@ export const bandOf = (grade) => { const g = Number(String(grade || '').match(/\
 
 // 학사일정 색 분류 (순서 = 범례 순서)
 export const CATEGORIES = [
-  { name: '전체행사', color: '#3b6fe0' },
-  { name: '학급수업', color: '#1f9d55' },
-  { name: '특별수업', color: '#8a4fd6' },
-  { name: '동료장학', color: '#d6408f' },
-  { name: '회의', color: '#0f8f86' },
-  { name: '연수', color: '#e07b12' },
-  { name: '복무·출장', color: '#9a6b2f' },
-  { name: '대회출전', color: '#3949ab' },
-  { name: '휴일·방학', color: '#d93b3b' },
-  { name: '기타', color: '#7a808c' },
+  { name: '전체행사', color: '#2563eb', icon: '🏫' },
+  { name: '학급수업', color: '#16a34a', icon: '📘' },
+  { name: '특별수업', color: '#9333ea', icon: '🎵' },
+  { name: '동료장학', color: '#db2777', icon: '👀' },
+  { name: '회의', color: '#0d9488', icon: '💬' },
+  { name: '연수', color: '#ea580c', icon: '📚' },
+  { name: '복무·출장', color: '#92400e', icon: '🚌' },
+  { name: '대회출전', color: '#ca8a04', icon: '🏆' },
+  { name: '휴일·방학', color: '#dc2626', icon: '🎌' },
+  { name: '기타', color: '#6b7280', icon: '•' },
 ];
 export const EVENT_CATEGORIES = CATEGORIES.map((c) => c.name);
 export const categoryColor = (name) => (CATEGORIES.find((c) => c.name === name) || CATEGORIES.at(-1)).color;
+export const categoryIcon = (name) => (CATEGORIES.find((c) => c.name === name) || CATEGORIES.at(-1)).icon;
 
 // v1 분류 → v2 분류
 export function normCategory(c) {
