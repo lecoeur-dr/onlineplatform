@@ -4,7 +4,6 @@
 //   날짜별 집행 내역(spending)을 입력하면 재원·사업·비목별 사용액·사용률에 바로 반영
 import { h, api, clear, won, toast, confirmBox, today, modal } from '../ui.js';
 import { state, canEdit, remember, listOf, hasGrant } from '../state.js';
-import { yearMonths } from '../modules.js';
 import { tableView } from './table.js';
 import { openRecordForm } from '../form.js';
 import { evalFormula, amountFrom } from '../calc.js';
@@ -51,7 +50,7 @@ export function buildMoney(d) {
   const programs = new Map();
   const prog = (kind, name) => {
     const k = `${kind}|${name}`;
-    if (!programs.has(k)) programs.set(k, { kind, name, group: '', assigned: 0, used: 0, pending: 0, cats: new Map(), contest: null, spends: [] });
+    if (!programs.has(k)) programs.set(k, { kind, name, group: '', assigned: 0, used: 0, pending: 0, cats: new Map(), contest: null, spends: [], lines: [], months: {} });
     return programs.get(k);
   };
   const cat = (p, c) => { const k = c || UNSET; if (!p.cats.has(k)) p.cats.set(k, { name: k, assigned: 0, used: 0 }); return p.cats.get(k); };
@@ -63,6 +62,9 @@ export function buildMoney(d) {
     p.assigned += a; cat(p, b.data.category).assigned += a;
     if (sp) { p.used += sp; cat(p, b.data.category).used += sp; }
     if (!p.group && b.data.group) p.group = b.data.group;
+    p.lines.push(b);
+    // 엑셀의 월별 집행 칸 (3월~2월) → 사업의 월별 집행
+    for (const [m, v] of Object.entries(b.data.monthly || {})) p.months[m] = (p.months[m] || 0) + (Number(v) || 0);
   }
   for (const c of d.contests) {
     if (!c.data.name) continue;
@@ -85,6 +87,8 @@ export function buildMoney(d) {
     const p = findProgram(s.data.program, s.data.source) || prog(s.data.source || '학교본예산', s.data.program || '(사업 미지정)');
     const a = Number(s.data.amount) || 0;
     p.used += a; cat(p, s.data.category).used += a; p.spends.push(s);
+    const sm = Number(String(s.data.date || '').slice(5, 7));
+    if (sm) p.months[sm] = (p.months[sm] || 0) + a;
   }
   const spentPurchase = new Set(d.spending.map((s) => s.data.purchaseId).filter(Boolean));
   const purchaseProgram = new Map();
@@ -154,15 +158,57 @@ function programTable(list, onPick, title = '사업별 사용 현황') {
         h('td', { class: `num ${p.assigned - p.used < 0 ? 'neg' : ''}` }, won(p.assigned - p.used)), h('td', { style: { minWidth: '140px' } }, bar(p.used, p.assigned))))))) : h('p', { class: 'muted' }, '사업이 없습니다.'));
 }
 
-// 월별 집행액 막대 (3월 ~ 다음 해 2월)
-function monthChart(spends) {
-  const months = yearMonths(state.year).filter((x) => !(x.y === state.year && x.m < 3));
-  const vals = months.map((x) => spends.filter((s) => String(s.data.date).startsWith(`${x.y}-${String(x.m).padStart(2, '0')}`)).reduce((a, s) => a + (Number(s.data.amount) || 0), 0));
+// 월별 집행액 막대 (3월 ~ 다음 해 2월): 엑셀 월별 칸 + 날짜별 집행내역
+const MONTH_ORDER = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
+const monthsOf = (list) => { const m = {}; for (const p of list) for (const [k, v] of Object.entries(p.months || {})) m[k] = (m[k] || 0) + v; return m; };
+const nowMonth = () => Number(today().slice(5, 7));
+function monthChart(list, title = '월별 집행액') {
+  const sums = monthsOf(list);
+  const vals = MONTH_ORDER.map((m) => sums[m] || 0);
   const max = Math.max(1, ...vals);
+  const total = vals.reduce((a, b) => a + b, 0);
   let acc = 0;
-  return h('section', { class: 'section' }, h('h3', {}, '월별 집행액'),
-    h('div', { class: 'month-chart' }, months.map((x, i) => { acc += vals[i]; return h('div', { class: 'mc-col', title: `${x.m}월 ${won(vals[i])} · 누계 ${won(acc)}` },
-      h('div', { class: 'mc-val' }, vals[i] ? `${Math.round(vals[i] / 10000).toLocaleString()}만` : ''), h('div', { class: 'mc-bar' }, h('span', { style: { height: `${(vals[i] / max) * 100}%` } })), h('div', { class: 'mc-lbl' }, `${x.m}월`)); })));
+  return h('section', { class: 'section' }, h('h3', {}, title, h('span', { class: 'muted small' }, ` · 합계 ${won(total)}`)),
+    h('div', { class: 'month-chart' }, MONTH_ORDER.map((m, i) => { acc += vals[i]; return h('div', { class: `mc-col ${m === nowMonth() ? 'now' : ''}`, title: `${m}월 ${won(vals[i])} · 누계 ${won(acc)}` },
+      h('div', { class: 'mc-val' }, vals[i] ? `${(Math.round(vals[i] / 1000) / 10).toLocaleString()}만` : ''), h('div', { class: 'mc-bar' }, h('span', { style: { height: `${(vals[i] / max) * 100}%` } })), h('div', { class: 'mc-lbl' }, `${m}월`)); })));
+}
+
+// 📅 항목별 월별 집행표 (엑셀 '사업별 예산 현황'처럼): 항목 줄 × 3월~2월 + 예산·집행·잔액·사용률
+function itemMonthTable(list) {
+  const short = (v) => (v ? Number(v).toLocaleString() : '');
+  const rows = [];
+  const tot = { a: 0, u: 0, m: {} };
+  const add = (m, v) => { tot.m[m] = (tot.m[m] || 0) + v; };
+  const multi = list.length > 1;
+  for (const p of list.slice().sort((a, b) => b.assigned - a.assigned)) {
+    const lines = p.lines.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0)); // 엑셀에 적힌 순서 그대로
+    // 날짜별 집행내역은 비목별로 묶어 한 줄씩
+    const byCat = new Map();
+    for (const s of p.spends) { const k = s.data.category || '(비목 없음)'; if (!byCat.has(k)) byCat.set(k, { u: 0, m: {}, n: 0 }); const x = byCat.get(k); const a = Number(s.data.amount) || 0; x.u += a; x.n++; const mm = Number(String(s.data.date || '').slice(5, 7)); if (mm) x.m[mm] = (x.m[mm] || 0) + a; }
+    if (!lines.length && !byCat.size) continue;
+    if (multi) rows.push(h('tr', { class: 'group-row' }, h('td', { colspan: 6 + 12 }, h('strong', {}, p.name), h('span', { class: 'muted small' }, ` · 예산 ${won(p.assigned)} · 집행 ${won(p.used)}`))));
+    for (const b of lines) {
+      const a = Number(b.data.amount) || 0; const u = Number(b.data.spent) || 0; const mo = b.data.monthly || {};
+      tot.a += a; tot.u += u; for (const [m, v] of Object.entries(mo)) add(m, Number(v) || 0);
+      rows.push(h('tr', {},
+        h('td', { class: 'mt-cat' }, b.data.category || '-'), h('td', { class: 'mt-item', title: [b.data.item, b.data.detail, b.data.note].filter(Boolean).join(' · ') }, b.data.detail || b.data.item || b.data.label || '-'),
+        h('td', { class: 'num' }, short(a)), h('td', { class: 'num' }, short(u)), h('td', { class: `num ${a - u < 0 ? 'neg' : ''}` }, short(a - u) || (a ? '0' : '')),
+        h('td', { class: 'num small' }, a ? `${pctOf(u, a)}%` : ''),
+        MONTH_ORDER.map((m) => h('td', { class: `num mt-m ${m === nowMonth() ? 'now' : ''}` }, short(mo[m])))));
+    }
+    for (const [k, x] of byCat) {
+      tot.u += x.u; for (const [m, v] of Object.entries(x.m)) add(m, v);
+      rows.push(h('tr', { class: 'mt-spend' },
+        h('td', { class: 'mt-cat' }, k), h('td', { class: 'mt-item' }, `🧾 집행내역 ${x.n}건`), h('td', { class: 'num' }, ''), h('td', { class: 'num' }, short(x.u)), h('td', {}, ''), h('td', {}, ''),
+        MONTH_ORDER.map((m) => h('td', { class: `num mt-m ${m === nowMonth() ? 'now' : ''}` }, short(x.m[m])))));
+    }
+  }
+  if (!rows.length) return h('p', { class: 'muted' }, '예산 항목이 없습니다. [📥 엑셀 올리기]로 예산 현황 파일을 올리면 항목별·월별로 나옵니다.');
+  return h('div', { class: 'table-wrap month-table-wrap' }, h('table', { class: 'table compact month-table' },
+    h('thead', {}, h('tr', {}, ['비목', '산출내역', '예산', '집행', '잔액', '사용률'].map((t) => h('th', {}, t)), MONTH_ORDER.map((m) => h('th', { class: `num ${m === nowMonth() ? 'now' : ''}` }, `${m}월`)))),
+    h('tbody', {}, rows),
+    h('tfoot', {}, h('tr', {}, h('td', { colspan: 2, class: 'strong' }, '합계'), h('td', { class: 'num strong' }, short(tot.a)), h('td', { class: 'num strong' }, short(tot.u)), h('td', { class: 'num strong' }, short(tot.a - tot.u)),
+      h('td', { class: 'num strong small' }, tot.a ? `${pctOf(tot.u, tot.a)}%` : ''), MONTH_ORDER.map((m) => h('td', { class: `num strong mt-m ${m === nowMonth() ? 'now' : ''}` }, short(tot.m[m])))))));
 }
 
 function recentSpends(spends, reload) {
@@ -235,7 +281,7 @@ export async function moneyOverview(root) {
       donut('비목별 예산 구성', d.m.catsOf(all).map((c) => ({ name: c.name, value: c.assigned }))),
       donut('정책사업별 예산 구성 (학교본예산)', groupsOf(d.m.byKind('학교본예산')).map((g) => ({ name: g.name, value: g.assigned }))),
       donut('정책사업별 집행 구성 (학교본예산)', groupsOf(d.m.byKind('학교본예산')).map((g) => ({ name: g.name, value: g.used })), { empty: '집행액이 없습니다.' })),
-    h('div', { class: 'two-col' }, catTable(d.m.catsOf(all), '비목별 사용 현황 (전체)'), monthChart(d.spending)),
+    h('div', { class: 'two-col' }, catTable(d.m.catsOf(all), '비목별 사용 현황 (전체)'), monthChart(all, '월별 집행액 (전체)')),
     groupOverview(groupsOf(d.m.byKind('학교본예산')), (p) => { remember('mn_prog', p.name); location.hash = '#/money/school'; }),
     d.m.byKind('공모사업').length ? programTable(d.m.byKind('공모사업'), (p) => { remember('mn_prog', p.name); location.hash = '#/money/contests'; }, '🏆 공모사업별 사용 현황') : null,
     recentSpends(d.spending, reload),
@@ -420,10 +466,11 @@ async function kindView(root, kind) {
         : donut('비목별 집행 구성', d.m.catsOf(focus).map((c) => ({ name: c.name, value: c.used })), { empty: '집행액이 없습니다.' }),
       pick ? null : donut('세부사업별 예산 구성', focus.map((p) => ({ name: p.name, value: p.assigned })))) : null,
     !pick && grouped ? groupOverview(gpick ? groups.filter((g) => g.name === gpick) : groups, (p) => choose(p.name), gpick) : null,
-    h('div', { class: 'two-col' }, catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : gpick ? `${gpick} · 비목별 사용 현황` : '비목별 사용 현황'), monthChart(spendRows)),
+    h('div', { class: 'two-col' }, catTable(d.m.catsOf(focus), pick ? `${pick} · 비목별 사용 현황` : gpick ? `${gpick} · 비목별 사용 현황` : '비목별 사용 현황'), monthChart(focus, pick ? `${pick} · 월별 집행액` : '월별 집행액')),
+    h('section', { class: 'section' }, h('h3', {}, '📅 항목별 월별 집행', h('span', { class: 'muted small' }, ' · 엑셀의 월별 칸 + 날짜별 집행내역')), itemMonthTable(focus)),
     pick || grouped ? null : programTable(list, (p) => choose(p.name)),
+    h('section', { class: 'section' }, h('h3', {}, '🧾 건별 집행내역', h('span', { class: 'muted small' }, ` · ${spendRows.length}건 (날짜별로 하나씩 넣은 집행)`)), spendBox),
     h('section', { class: 'section' }, h('h3', {}, '📒 예산 입력 (항목 · 비목 · 산출식 · 금액 · 집행액)'), budgetBox),
-    h('section', { class: 'section' }, h('h3', {}, '🧾 집행내역'), spendBox),
     kind === '공모사업' ? h('section', { class: 'section' }, h('h3', {}, '🏆 공모사업 목록'), contestBox) : null,
     grouped ? h('p', { class: 'hint' }, '정책사업(묶음)은 엑셀에 「정책사업」 칸이 있으면 그 값을, 없으면 세부사업 이름으로 자동 분류합니다(인적자원운용·학생복지·기본적/선택적 교육활동·교육활동 지원·학교 일반운영·시설 확충·예비비). 교육청 분류와 다를 수 있습니다. 집행액 = 예산 줄의 「집행액」(엑셀에서 읽은 값) + [집행내역]에 날짜별로 넣은 금액.') : null);
   budgetGrid(budgetBox, budgetRows, { kind, program: pick, reload, canEdit: (name) => (name ? canEditProgram(progOf(name)) : kind === '학교본예산' && canEdit('budget')) });
@@ -455,6 +502,12 @@ function budgetUpload({ kind, d, list, pick, reload }) {
   };
   const take = (src) => {
     rows = parseBudgetSheet(src, evalFormula).map((r) => ({ ...r, on: true }));
+    // 공모사업: 파일에 적힌 사업명(예: '1. AI디지털활용선도학교')과 비슷한 공모사업을 자동으로 고름
+    if (kind === '공모사업' && rows[0]?.program) {
+      const n = norm(rows[0].program);
+      const hit = allowed.find((x) => norm(x) === n) || allowed.find((x) => subseq(norm(x), n) || subseq(n, norm(x)));
+      if (hit && hit !== target) { target = hit; const sel = progPick.querySelector('select'); if (sel) sel.value = hit; toast(`파일의 '${rows[0].program}' → 공모사업 '${hit}'에 넣습니다. 다르면 위에서 바꿔 주세요.`); }
+    }
     if (kind === '공모사업') rows.forEach((r) => { if (!allowed.includes(progOfRow(r))) r.on = false; });
     if (!rows.length) toast('금액이 있는 예산 줄을 찾지 못했습니다. 머리글(세부사업·비목·산출내역·금액 등)이 있는 표인지 확인해 주세요.', 'error');
     draw();
@@ -485,7 +538,7 @@ function budgetUpload({ kind, d, list, pick, reload }) {
       e.target.disabled = true; e.target.textContent = '넣는 중…';
       try {
         const items = pickRows.map((r) => ({ program: progOfRow(r), item: r.item, category: r.category, detail: r.detail, formula: r.formula, amount: r.amount, note: r.note,
-          ...(r.spent ? { spent: r.spent } : {}), ...(r.group ? { group: r.group } : {}), ...(r.unit ? { unit: r.unit } : {}) }));
+          ...(r.spent ? { spent: r.spent } : {}), ...(r.monthly ? { monthly: r.monthly } : {}), ...(r.group ? { group: r.group } : {}), ...(r.unit ? { unit: r.unit } : {}) }));
         const res = await api('/api/budget/bulk', { method: 'POST', body: { year: state.year, mode, source: kind, items } });
         toast(`${res.inserted}줄을 넣었습니다.${res.removed ? ` 기존 ${res.removed}줄 삭제.` : ''}${res.skipped ? ` 이미 있는 같은 줄 ${res.skipped}개는 건너뜀.` : ''}`); close(); reload();
       } catch (err) { toast(err.message, 'error'); e.target.disabled = false; e.target.textContent = '예산에 넣기'; }

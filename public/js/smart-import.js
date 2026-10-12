@@ -421,9 +421,10 @@ const BCOLS = {
   category: /(비\s*목|통\s*계\s*목|원가\s*통계)/,
   detail: /^(산출\s*(내역|근거|기초)|세부\s*산출\s*(내역|근거)|내\s*용|적\s*요)$/,
   formula: /^(산출\s*식|계산\s*식|수\s*식)$/,
-  amount: /^(금\s*액|예\s*산\s*(액|금액)?|편\s*성\s*(액|금액)|배\s*정\s*액|본\s*예\s*산|계)(\s*\(.*\))?$/,
-  spent: /^(집\s*행\s*(액|금액)?|지\s*출\s*(액|금액)|누계\s*집행(액)?|집행\s*누계)(\s*\(.*\))?$/,
+  amount: /^(금\s*액|예\s*산\s*(액|금액)?|편\s*성\s*(액|금액)|배\s*정\s*액|본\s*예\s*산|계|총\s*계|총\s*액)(\s*\(.*\))?$/,
+  spent: /^(집\s*행\s*(액|금액)?|지\s*출\s*(액|금액)|누계\s*집행(액)?|집행\s*누계|사\s*용(\s*액)?)(\s*\(.*\))?$/,
   note: /^(비\s*고|협\s*의)$/,
+  memo: /^(집\s*행\s*내\s*역|메\s*모)$/,
 };
 // 합계·소계 줄: '[ 세 부 항 목 소 계 ]'처럼 글자 사이 띄어쓰기·괄호가 있어도 알아봄
 export const isSubtotalLabel = (x) => { const t = String(x || '').replace(/[\s\[\]()<>【】]/g, ''); return /^(총?합계|소계|총계|계|합)$/.test(t) || /(소계|합계|총계)$/.test(t); };
@@ -438,16 +439,36 @@ export function parseBudgetSheet(src, evalFn = () => null) {
     let lastProgram = '';
     let lastGroup = '';
     let lastUnit = '';
+    let lastCategory = '';
+    let months = {}; // 열 번호 → 월 (학교 자체 '사업별 예산 현황' 양식의 3월~2월 칸)
+    let prev = [];
     for (const row of table) {
       const cells = row.map((c) => String(c ?? '').replace(/\s+/g, ' ').trim());
       if (cells.some((c) => /단위\s*[:：]?\s*천\s*원/.test(c))) unit = 1000;
+      // 머리글이 두 줄로 나뉜 표(위 줄 '총계·사용·잔액', 아래 줄 '세부항목·비목·산출내역')도 읽도록 빈칸·숫자칸은 윗줄 글자로 채워 봄
+      const merged = cells.map((c, i) => (c && num(c) === null ? c : prev[i] && num(prev[i]) === null ? prev[i] : c));
+      prev = cells;
       const cand = {};
-      cells.forEach((c, i) => { const k = c.replace(/\s*\((천?원)\)\s*$/, ''); for (const [key, re] of Object.entries(BCOLS)) if (cand[key] === undefined && re.test(k)) { cand[key] = i; if (/천\s*원/.test(c)) unit = 1000; } });
-      if (cand.amount !== undefined && ['program', 'item', 'category', 'detail'].some((k) => cand[k] !== undefined)) { map = cand; lastProgram = ''; lastGroup = ''; lastUnit = ''; continue; }
+      const monthCols = {};
+      merged.forEach((c, i) => {
+        const k = c.replace(/\s*\((천?원)\)\s*$/, '');
+        const mm = k.match(/^(\d{1,2})\s*월$/);
+        if (mm && Number(mm[1]) >= 1 && Number(mm[1]) <= 12) { monthCols[i] = Number(mm[1]); return; }
+        for (const [key, re] of Object.entries(BCOLS)) if (cand[key] === undefined && re.test(k)) { cand[key] = i; if (/천\s*원/.test(c)) unit = 1000; }
+      });
+      if (cand.amount !== undefined && ['program', 'item', 'category', 'detail'].some((k) => cand[k] !== undefined)) { map = cand; months = monthCols; lastProgram = ''; lastGroup = ''; lastUnit = ''; lastCategory = ''; continue; }
       if (!map || !cells.some(Boolean)) continue;
-      const get = (k) => (map[k] !== undefined ? cells[map[k]] || '' : '');
+      const get0 = (k) => (map[k] !== undefined ? cells[map[k]] || '' : '');
+      // '세부항목' 칸에 '1. AI디지털활용선도학교'처럼 번호 붙은 사업명이 있으면 그 줄부터 그 사업 (학교 자체 양식)
+      const numberedProgram = map.program === undefined && /^\d+\s*[.)]\s*\S/.test(get0('item')) ? get0('item').replace(/^\d+\s*[.)]\s*/, '') : '';
+      // 세부항목 칸에 숫자만 있으면 옆 요약칸(총금액·남은금액 등)이므로 무시, '10,000원*20명*4일' 같은 식은 메모로
+      const rawItem = get0('item');
+      const itemIsNum = num(rawItem) !== null;
+      const itemIsCalc = !itemIsNum && /\d\s*[×xX*✕]\s*\d|원\s*[×xX*✕]/.test(rawItem);
+      const get = (k) => (k === 'item' && (numberedProgram || itemIsNum || itemIsCalc) ? '' : get0(k));
       const labels = [get('group'), get('unit'), get('program'), get('item'), get('category'), get('detail')];
       if (labels.some((x) => TOTAL_RE.test(x.replace(/\s/g, '')) || isSubtotalLabel(x))) continue;
+      if (numberedProgram) lastProgram = numberedProgram;
       const program = get('program') || lastProgram;
       if (get('program')) lastProgram = get('program');
       if (get('group')) lastGroup = get('group');
@@ -462,9 +483,19 @@ export function parseBudgetSheet(src, evalFn = () => null) {
       if (amount === null && formula) amount = evalFn(formula) !== null ? evalFn(formula) / unit : null;
       if (amount === null) continue; // 금액 없는 줄 = 사업 제목·설명 줄
       if (!get('item') && !get('category') && !detail && !formula) continue; // 사업 합계 줄
-      const spent = num(get('spent'));
-      out.push({ program, item: get('item'), category: get('category'), detail: formula === detail ? '' : detail, formula, amount: Math.round(amount * unit), note: get('note'),
-        ...(spent !== null ? { spent: Math.round(spent * unit) } : {}), ...(lastGroup ? { group: lastGroup } : {}), ...(lastUnit ? { unit: lastUnit } : {}) });
+      // 월별 집행 칸 (3월~2월)
+      const monthly = {};
+      for (const [col, m] of Object.entries(months)) { const v = num(cells[col]); if (v) monthly[m] = Math.round(v * unit); }
+      let spent = num(get('spent'));
+      if (spent === null && Object.keys(monthly).length) spent = Object.values(monthly).reduce((a, b) => a + b, 0) / unit;
+      if (!amount && !spent && !Object.keys(monthly).length) continue; // 금액·집행 모두 0인 빈 항목
+      // 비목 칸이 합쳐진(병합) 줄은 윗줄 비목을 이어받음
+      const category = get('category') || (detail && Object.keys(months).length ? lastCategory : '');
+      if (get('category')) lastCategory = get('category');
+      const memo = get('memo');
+      const note = [get('note'), memo && num(memo) === null ? memo : '', itemIsCalc ? `산출: ${rawItem}` : ''].filter(Boolean).join(' · ');
+      out.push({ program, item: get('item'), category, detail: formula === detail ? '' : detail, formula, amount: Math.round(amount * unit), note,
+        ...(spent !== null ? { spent: Math.round(spent * unit) } : {}), ...(Object.keys(monthly).length ? { monthly } : {}), ...(lastGroup ? { group: lastGroup } : {}), ...(lastUnit ? { unit: lastUnit } : {}) });
     }
   }
   return out;
