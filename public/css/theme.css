@@ -1213,3 +1213,63 @@ button.dnum:hover { background: var(--primary-soft); }
 .cm-base { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 8px; }
 .cm-base summary { cursor: pointer; font-weight: 700; font-size: 13px; }
 @media (max-width: 700px) { .cm-add { grid-template-columns: 1fr; } .cm-sum { grid-template-columns: 1fr; } }
+
+/* 🔁 보결 배정 보드 */
+.sub-board { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 14px; }
+.sb-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; }
+.sb-date { display: flex; align-items: center; gap: 6px; }
+.sb-date input[type=date] { width: auto; }
+.sb-day { font-size: 1.05em; margin-left: 4px; }
+.sb-sum { display: flex; flex-wrap: wrap; gap: 6px; }
+.sb-chip { padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); font-size: 13px; }
+.sb-chip b { font-size: 15px; margin: 0 1px; }
+.sb-chip.ok b { color: var(--ok); }
+.sb-chip.warn { background: var(--warn-soft); border-color: var(--warn); }
+.sb-chip.warn b { color: var(--warn); }
+.sb-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; align-items: start; }
+.sb-card { border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: var(--radius-sm); background: var(--bg); overflow: hidden; }
+.sb-card.all-done { border-left-color: var(--ok); }
+.sb-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.sb-who { font-size: 1.08em; }
+.sb-card-head .ellip { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-prog { font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.sb-prog.ok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.sb-lines { display: flex; flex-direction: column; }
+.sb-line { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.sb-line:last-child { border-bottom: 0; }
+.sb-line.todo { background: color-mix(in srgb, var(--warn) 6%, transparent); }
+.sb-line.mine { background: var(--warn-soft); }
+.sb-line.open { background: var(--primary-soft); }
+.sb-period { font-weight: 800; min-width: 48px; }
+.sb-cls { min-width: 42px; color: var(--text-2); }
+.sb-subj { font-weight: 600; }
+.sb-need { color: var(--warn); font-weight: 700; font-size: 13px; }
+.sb-assigned strong { color: var(--ok); }
+.sb-acts { display: flex; gap: 4px; }
+.sb-empty, .sb-foot { padding: 8px 12px; margin: 0; }
+.sb-foot { border-top: 1px dashed var(--line); }
+.sb-none { padding: 10px 0; }
+.sb-pick { padding: 10px 12px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.sb-pick-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.sb-group { margin-top: 8px; }
+.sb-group-title { font-size: 13px; font-weight: 700; color: var(--text-2); margin-bottom: 4px; }
+.sb-cands { display: flex; flex-wrap: wrap; gap: 6px; }
+.sb-cand { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.sb-cand:hover { border-color: var(--primary); }
+.sb-cand.free { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 7%, var(--bg)); }
+.sb-cand.busy, .sb-cand.absent { opacity: .55; }
+.sb-cand.on { outline: 2px solid var(--primary); }
+.sb-name { font-weight: 700; }
+.sb-room { font-size: 12px; color: var(--muted); }
+.sb-tag { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--panel-2); color: var(--text-2); }
+.sb-tag.subj { background: var(--primary-soft); color: var(--primary); }
+.sb-tag.grade { background: var(--warn-soft); color: var(--warn); }
+.sb-cnt { font-size: 12px; color: var(--muted); }
+.sb-list-title { margin: 22px 0 6px; }
+@media (max-width: 700px) {
+  .sub-board { padding: 10px; }
+  .sb-cards { grid-template-columns: 1fr; }
+  .sb-line { flex-wrap: wrap; gap: 6px 10px; }
+  .sb-acts { width: 100%; justify-content: flex-end; }
+  .sb-card-head .ellip { max-width: 120px; }
+}

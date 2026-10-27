@@ -340,12 +340,17 @@ app.put('/api/platform/schools/:id', async (c) => {
 
 app.get('/api/staff', async (c) => {
   const m = await requireSchool(c);
-  const rows = await c.env.DB.prepare("SELECT name, dept FROM members WHERE school_id = ? AND role IN ('admin','staff','viewer') AND name != '' ORDER BY name").bind(m.schoolId).all();
+  // 이름·부서·담임 학급(전담) — 보결 배정 때 '그 시간에 수업이 있는지' 계산에 씀
+  const rows = await c.env.DB.prepare("SELECT name, dept, homeroom FROM members WHERE school_id = ? AND role IN ('admin','staff','viewer') AND name != '' ORDER BY name").bind(m.schoolId).all();
   // 업무분장표에만 있는 교직원(아직 가입 전)도 이름 드롭다운에 포함
   const { currentYear } = await getSettings(c.env.DB, m.schoolId);
-  const extra = await c.env.DB.prepare("SELECT DISTINCT json_extract(data, '$.name') AS name, json_extract(data, '$.dept') AS dept FROM records WHERE school_id = ? AND module = 'assignments' AND year IN (?, ?)").bind(m.schoolId, currentYear, currentYear + 1).all();
-  const have = new Set(rows.results.map((r) => r.name));
-  for (const r of extra.results) if (r.name && !have.has(r.name)) { have.add(r.name); rows.results.push({ name: r.name, dept: r.dept || '' }); }
+  const extra = await c.env.DB.prepare("SELECT DISTINCT json_extract(data, '$.name') AS name, json_extract(data, '$.dept') AS dept, json_extract(data, '$.homeroom') AS homeroom FROM records WHERE school_id = ? AND module = 'assignments' AND year IN (?, ?) ORDER BY year DESC").bind(m.schoolId, currentYear, currentYear + 1).all();
+  const byName = new Map(rows.results.map((r) => [r.name, r]));
+  for (const r of extra.results) {
+    if (!r.name) continue;
+    const have = byName.get(r.name);
+    if (!have) { const x = { name: r.name, dept: r.dept || '', homeroom: r.homeroom || '' }; byName.set(r.name, x); rows.results.push(x); } else if (!have.homeroom && r.homeroom) have.homeroom = r.homeroom; // 담임 미지정이면 업무분장표 값
+  }
   rows.results.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   return c.json(rows.results);
 });

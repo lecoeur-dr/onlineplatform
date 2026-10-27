@@ -8,6 +8,7 @@ import { tableView } from './table.js';
 import { sortTimetables, glanceTable, editTimetable, conflicts, activeOn } from './timetable.js';
 import { openClassesView } from './openclasses.js';
 import { seg } from './schedule.js';
+import { substituteBoard } from './substitute-board.js';
 
 const CLASS_CATS = ['학급수업', '특별수업', '동료장학'];
 
@@ -193,9 +194,10 @@ export async function openClassesTab(root) {
   });
 }
 
-// 보결: 날짜별 목록(내 보결 강조) + 교사별 횟수
+// 보결: 위에는 하루 배정 보드(부재 교사 → 결강 수업 → 공강 교사), 아래는 날짜별 목록(내 보결 강조) + 교사별 횟수
 export async function substitutesView(root) {
-  const rows = await api(`/api/bundle?year=${state.year}&modules=substitutes`).then((x) => x.substitutes);
+  const d = await api(`/api/bundle?year=${state.year}&modules=substitutes,trips,timetables`);
+  const rows = d.substitutes;
   const reload = () => substitutesView(root);
   const me = myName();
   const mode = remember('sub_mode') || 'upcoming';
@@ -210,11 +212,13 @@ export async function substitutesView(root) {
   for (const r of rows) if (r.data.substitute) counts.set(r.data.substitute, (counts.get(r.data.substitute) || 0) + 1);
   const mineCount = rows.filter((r) => r.data.substitute === me && r.data.date >= t).length;
   clear(root,
+    substituteBoard(rows, d.trips, d.timetables, reload),
+    h('h3', { class: 'sb-list-title' }, '📋 보결 기록'),
     h('div', { class: 'toolbar' },
       seg([['upcoming', '오늘 이후'], ['mine', `내 보결${mineCount ? ` (${mineCount})` : ''}`], ['all', '전체']], mode, (v) => { remember('sub_mode', v); reload(); }),
       h('span', { class: 'grow' }),
       canEdit('substitutes') ? h('button', { class: 'btn primary', onclick: () => openRecordForm('substitutes', null, { defaults: { date: t }, onSaved: reload }) }, '+ 보결') : null),
-    h('p', { class: 'hint' }, '복무·출장 목록의 [보결 배정] 버튼으로도 바로 입력할 수 있습니다. 내가 보결 교사인 수업은 주황색으로 표시됩니다.'),
+    h('p', { class: 'hint' }, '내가 보결 교사인 수업은 주황색으로 표시됩니다. 줄을 누르면 고칠 수 있습니다.'),
     byDate.size ? [...byDate].map(([date, list]) => h('section', { class: 'section' },
       h('h3', {}, fmtDate(date), date === t ? h('span', { class: 'badge warn' }, '오늘') : null),
       h('div', { class: 'table-wrap' }, h('table', { class: 'table compact' },
