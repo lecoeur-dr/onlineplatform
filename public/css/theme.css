@@ -1273,3 +1273,29 @@ button.dnum:hover { background: var(--primary-soft); }
   .sb-acts { width: 100%; justify-content: flex-end; }
   .sb-card-head .ellip { max-width: 120px; }
 }
+/* 예산 칸 누적 기록 */
+.cm-sum { grid-template-columns: repeat(3, 1fr); }
+.cm-table td, .cm-table th { vertical-align: middle; }
+.cm-table .cm-run { color: var(--primary); font-weight: 700; }
+.cm-table .cm-base-row td { background: var(--panel-2); }
+.cm-table .cm-acts { text-align: right; }
+.cm-table tfoot td { border-top: 2px solid var(--line); }
+.cm-edit td { background: var(--primary-soft); }
+.cm-edit input { max-width: 160px; }
+.cm-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+.cell-modal .neg { color: var(--danger); }
+@media (max-width: 700px) { .cm-sum { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .cm-sum { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .cm-sum > div:last-child { grid-column: 1 / -1; }
+  .cm-sum strong { font-size: 17px; }
+  .cm-table td:nth-child(2) { min-width: 120px; word-break: keep-all; }
+  .cm-table td:nth-child(2) .muted { display: none; }
+  .cm-table .cm-acts { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+  .cm-table td, .cm-table th { padding-left: 6px; padding-right: 6px; }
+}
+.cm-run-m { display: none; }
+@media (max-width: 700px) {
+  .cm-table th:nth-child(4), .cm-table td:nth-child(4) { display: none; }
+  .cm-run-m { display: block; color: var(--primary); font-weight: 700; font-size: 11px; }
+}

@@ -357,22 +357,55 @@ function cellModal(p, l, m, reload) {
     } catch (e) { toast(e.message, 'error'); }
   };
   const baseInput = h('input', { inputmode: 'numeric', value: base ? base.toLocaleString() : '', placeholder: '없음' });
+  // 이 달 누적 목록: 엑셀 금액(있으면 맨 위) + 건별 기록을 날짜순으로, 줄마다 누적 합계
+  let run = 0;
+  const editBase = h('tr', { class: 'cm-edit', hidden: true }, h('td', { colspan: 5 }, h('div', { class: 'row-actions' }, baseInput,
+    h('button', { class: 'btn small primary', onclick: () => saveBase(evalFormula(baseInput.value) || 0) }, '저장'),
+    h('span', { class: 'muted small' }, '엑셀 「사업별 예산 현황」의 월별 칸에서 읽은 금액입니다. 같은 지출을 건별로도 적었다면 두 번 더해지니 지워 주세요.'))));
+  const entries = [
+    ...(base ? [{ base: true, date: '', content: '📥 엑셀에서 가져온 금액', amount: base }] : []),
+    ...rows.map((sp) => ({ sp, date: sp.data.date, content: sp.data.content || '', amount: Number(sp.data.amount) || 0 })),
+  ];
+  const listBody = entries.map((e) => {
+    run += e.amount;
+    return [h('tr', { class: e.base ? 'cm-base-row' : '' },
+      h('td', { class: 'muted nowrap' }, e.date ? String(e.date).slice(5).replace('-', '/') : '—'),
+      h('td', {}, h('strong', {}, e.content), e.sp?.data.person ? h('span', { class: 'muted small' }, ` · ${e.sp.data.person}`) : null),
+      h('td', { class: 'num' }, won(e.amount), h('small', { class: 'cm-run-m' }, `누적 ${won(run)}`)),
+      h('td', { class: 'num cm-run' }, won(run)),
+      h('td', { class: 'nowrap cm-acts' },
+        h('button', { class: 'link-btn small', onclick: () => { if (e.base) { editBase.hidden = !editBase.hidden; if (!editBase.hidden) baseInput.focus(); } else { close(); openRecordForm('spending', e.sp, { onSaved: reload }); } } }, '수정'),
+        h('button', { class: 'link-btn small danger', onclick: async () => {
+          if (!(await confirmBox(e.base ? `엑셀에서 가져온 ${m}월 금액 ${won(e.amount)}을(를) 지울까요?` : `${e.date} ${won(e.amount)} 기록을 지울까요?`))) return;
+          if (e.base) { saveBase(0); return; }
+          try { await api(`/api/records/spending/${e.sp.id}`, { method: 'DELETE' }); toast('지웠습니다.'); done(); } catch (err) { toast(err.message, 'error'); }
+        } }, '삭제'))),
+    e.base ? editBase : null];
+  });
+  // 내용별 합계 (같은 내용이 여러 번이면 묶어서)
+  const byContent = new Map();
+  for (const e of entries) byContent.set(e.content, (byContent.get(e.content) || { n: 0, v: 0 }));
+  for (const e of entries) { const x = byContent.get(e.content); x.n++; x.v += e.amount; }
+  // 3월부터 이 달까지 누적
+  const upto = MONTH_ORDER.slice(0, MONTH_ORDER.indexOf(m) + 1).reduce((a, k) => a + (Number(l.months[k]) || 0), 0);
   close = modal(`🧾 ${p.name} · ${name} · ${m}월`, h('div', { class: 'form cell-modal' },
     h('div', { class: 'cm-sum' },
-      h('div', {}, h('span', { class: 'muted small' }, '이 달 합계'), h('strong', {}, won(base + sumRows))),
-      h('div', {}, h('span', { class: 'muted small' }, '항목 예산 · 집행'), h('span', {}, `${won(l.assigned)} · ${won(l.used)} (${pctOf(l.used, l.assigned)}%)`))),
-    h('h4', {}, '건별 기록', h('span', { class: 'muted small' }, ` ${rows.length}건 · ${won(sumRows)}`)),
-    rows.length ? h('ul', { class: 'list cm-list' }, rows.map((sp) => h('li', {},
-      h('span', { class: 'muted' }, String(sp.data.date).slice(5).replace('-', '/')), ' ', h('strong', {}, sp.data.content || ''), h('span', { class: 'grow' }), h('span', { class: 'num' }, won(sp.data.amount)),
-      h('button', { class: 'link-btn small', onclick: () => { close(); openRecordForm('spending', sp, { onSaved: reload }); } }, '수정'),
-      h('button', { class: 'link-btn small danger', onclick: async () => { if (!(await confirmBox(`${sp.data.date} ${won(sp.data.amount)} 기록을 지울까요?`))) return; try { await api(`/api/records/spending/${sp.id}`, { method: 'DELETE' }); toast('지웠습니다.'); done(); } catch (e) { toast(e.message, 'error'); } } }, '삭제')))) : h('p', { class: 'muted small' }, '아직 이 달에 기록한 건이 없습니다.'),
-    h('div', { class: 'cm-add' }, date, content, h('div', { class: 'cm-amt' }, amount, calc), h('button', { class: 'btn primary', onclick: add }, '+ 이 달에 기록')),
-    h('details', { class: 'cm-base', open: !!base },
-      h('summary', {}, `📥 엑셀에서 가져온 ${m}월 금액: ${base ? won(base) : '없음'}`),
-      h('div', { class: 'row-actions' }, baseInput,
-        h('button', { class: 'btn small', onclick: () => saveBase(evalFormula(baseInput.value) || 0) }, '금액 바꾸기'),
-        base ? h('button', { class: 'btn small danger ghost', onclick: () => saveBase(0) }, '지우기') : null),
-      h('p', { class: 'muted small' }, '엑셀 「사업별 예산 현황」의 월별 칸에서 읽은 금액입니다. 같은 지출을 건별로도 넣으면 두 번 더해지니, 건별로 나눠 적었다면 이 금액은 지워 주세요.'))), [(c) => h('button', { class: 'btn', onclick: c }, '닫기')], { wide: true });
+      h('div', {}, h('span', { class: 'muted small' }, `${m}월 합계 (${entries.length}건)`), h('strong', {}, won(base + sumRows))),
+      h('div', {}, h('span', { class: 'muted small' }, `3월~${m}월 누적`), h('strong', {}, won(upto)), h('span', { class: 'muted small' }, `예산 ${won(l.assigned)}의 ${pctOf(upto, l.assigned)}%`)),
+      h('div', {}, h('span', { class: 'muted small' }, '항목 전체 집행 · 잔액'), h('span', {}, `${won(l.used)} · `, h('b', { class: l.assigned - l.used < 0 ? 'neg' : '' }, won(l.assigned - l.used))))),
+    h('h4', {}, `📋 ${m}월 누적 기록`),
+    entries.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table compact cm-table' },
+      h('thead', {}, h('tr', {}, ['날짜', '내용', '금액', '누적', ''].map((t, i) => h('th', { class: i === 2 || i === 3 ? 'num' : '' }, t)))),
+      h('tbody', {}, listBody),
+      h('tfoot', {}, h('tr', {}, h('td', { colspan: 2, class: 'strong' }, `합계 ${entries.length}건`), h('td', { class: 'num strong' }, won(run)), h('td', {}), h('td', {})))))
+      : h('p', { class: 'muted small' }, '아직 이 달에 기록한 건이 없습니다. 아래에서 날짜·내용·금액을 넣어 기록하세요.'),
+    byContent.size > 1 && byContent.size < entries.length ? h('div', { class: 'cm-group' }, h('span', { class: 'muted small' }, '내용별: '),
+      [...byContent].sort((a, c) => c[1].v - a[1].v).map(([k, x]) => h('span', { class: 'tag ghost' }, `${k.replace('📥 ', '')} ${x.n}건 ${won(x.v)}`))) : null,
+    h('div', { class: 'cm-add' }, date, content, h('div', { class: 'cm-amt' }, amount, calc), h('button', { class: 'btn primary', onclick: add }, '+ 이 달에 추가')),
+    !base ? h('details', { class: 'cm-base' },
+      h('summary', {}, `📥 엑셀 월별 금액으로 넣기 (선택)`),
+      h('div', { class: 'row-actions' }, baseInput, h('button', { class: 'btn small', onclick: () => saveBase(evalFormula(baseInput.value) || 0) }, '저장')),
+      h('p', { class: 'muted small' }, '건별로 나누지 않고 그 달 금액만 한 번에 적을 때 씁니다.')) : null), [(c) => h('button', { class: 'btn', onclick: c }, '닫기')], { wide: true });
 }
 
 function recentSpends(spends, reload) {
