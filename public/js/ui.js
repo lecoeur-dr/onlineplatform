@@ -55,7 +55,7 @@ export const clearApiCache = () => cache.clear();
 const idle = () => !document.querySelector('.modal-wrap') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) && window.scrollY < 80;
 export async function api(path, opts = {}) {
   const method = opts.method || 'GET';
-  if (apiCtx.mock || method !== 'GET' || NO_CACHE.test(path)) {
+  if (apiCtx.mock || method !== 'GET' || opts.fresh || NO_CACHE.test(path)) {
     const out = await rawApi(path, opts);
     if (method !== 'GET') cache.clear();
     return out;

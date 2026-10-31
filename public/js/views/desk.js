@@ -6,6 +6,7 @@ import { openRecordForm } from '../form.js';
 import { tableView } from './table.js';
 import { seg } from './schedule.js';
 import { loadStudents, sortStudents, todoItem, lessonsOn, dowOf, ATT_COLOR, monthOf, copyText } from './desk-common.js';
+import { classBoardView } from './desk-board.js';
 import { studentCards, attendanceView, checklistsView, pointsView, studentsView, seatsView, rolesView, toolsView } from './desk-class.js';
 import { weekBoard, dailyNotesView, weeklyView, myTimetableView, progressView } from './desk-lesson.js';
 import { evalView, studentEvalView, remarksView, planDocView, standardsView } from './desk-eval.js';
@@ -194,6 +195,7 @@ export const DESK_VIEWS = {
   'class/roles': rolesView,
   'class/portfolio': portfolioView,
   'class/career': careerView,
+  'class/board': classBoardView,
   'class/tools': toolsView,
   'lesson/overview': (el) => weekBoard(el),
   'lesson/notes': dailyNotesView,

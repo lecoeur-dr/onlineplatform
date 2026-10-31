@@ -183,9 +183,11 @@ async function moneyFilter(c, mem) {
   return (m, d, id) => moneyCanSee(acc, m, d, id);
 }
 
-async function listRecords(c, m, year) {
+async function listRecords(c, m, year, { date } = {}) {
   const t = await tenant(c, m);
   const w = scopeWhere(m, year, t);
+  // 날짜 하나만 (교실 화면처럼 자주 새로 고치는 화면용)
+  if (date && MODULES[m].scope === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(date)) { w.sql += ' AND date = ?'; w.args.push(date); }
   const order = MODULES[m].scope === 'date' ? 'date, sort, created_at' : t.space === 'market' ? 'created_at DESC' : 'sort, created_at';
   const sql = t.space === 'market'
     ? `SELECT r.*, COALESCE(NULLIF(u.name, ''), '선생님') AS author_name FROM records r LEFT JOIN users u ON u.email = r.owner WHERE ${w.sql.replace(/\bmodule\b/, 'r.module')} ORDER BY r.${order.replace(/, /g, ', r.')} LIMIT 500`
@@ -376,7 +378,7 @@ app.get('/api/bundle', async (c) => {
 
 app.get('/api/records/:module', async (c) => {
   const m = requireModule(c);
-  return c.json(await listRecords(c, m, await yearOf(c, c.req.query('year'))));
+  return c.json(await listRecords(c, m, await yearOf(c, c.req.query('year')), { date: c.req.query('date') }));
 });
 
 // 🔎 전체 검색: 학교(OnlinePlatform) / 내 책상(Deskterior)을 따로. 목록 화면과 같은 권한 규칙(공개 범위·행정·예산 권한)을 그대로 씀

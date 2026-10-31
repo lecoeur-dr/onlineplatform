@@ -499,6 +499,14 @@ export const MODULES = {
       { key: 'reason', label: '이유', type: 'text' },
     ],
   },
+  classBoard: {
+    label: '교실 화면 설정', icon: '🖥', scope: 'year', edit: 'staff', space: 'desk', extras: ['config'],
+    fields: [{ key: 'title', label: '학급 이름', type: 'text' }],
+  },
+  boardDays: {
+    label: '교실 화면 하루 기록', icon: '🖥', scope: 'date', edit: 'staff', space: 'desk', extras: ['checks', 'memo', 'mood'],
+    fields: [{ key: 'date', label: '날짜', type: 'date', required: true }],
+  },
   dailyNotes: {
     label: '알림장', icon: '📒', scope: 'date', edit: 'staff', space: 'desk',
     fields: [
@@ -742,7 +750,8 @@ export const DESK_GROUPS = [
     { id: 'roles', label: '1인 1역', module: 'classRoles' },
     { id: 'portfolio', label: '포트폴리오', module: 'portfolios' },
     { id: 'career', label: '진로·진학', module: 'careers' },
-    { id: 'tools', label: '뽑기·타이머' },
+    { id: 'board', label: '✨ 반짝 교실판' },
+    { id: 'tools', label: '간단 도구' },
   ] },
   { id: 'lesson', label: '수업', icon: '📘', tabs: [
     { id: 'overview', label: '이번 주' },
