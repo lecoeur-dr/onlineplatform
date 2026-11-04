@@ -742,6 +742,7 @@ export const DESK_GROUPS = [
   { id: 'home', label: '내 책상', icon: '🪴', tabs: [] },
   { id: 'class', label: '학급', icon: '🧒', tabs: [
     { id: 'overview', label: '학생 카드' },
+    { id: 'board', label: '✨ 반짝 교실판' },
     { id: 'attendance', label: '출결', module: 'attendance' },
     { id: 'checklists', label: '체크리스트', module: 'checklists' },
     { id: 'points', label: '칭찬 점수', module: 'points' },
@@ -750,7 +751,6 @@ export const DESK_GROUPS = [
     { id: 'roles', label: '1인 1역', module: 'classRoles' },
     { id: 'portfolio', label: '포트폴리오', module: 'portfolios' },
     { id: 'career', label: '진로·진학', module: 'careers' },
-    { id: 'board', label: '✨ 반짝 교실판' },
     { id: 'tools', label: '간단 도구' },
   ] },
   { id: 'lesson', label: '수업', icon: '📘', tabs: [
