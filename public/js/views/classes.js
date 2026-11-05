@@ -9,6 +9,8 @@ import { sortTimetables, glanceTable, editTimetable, conflicts, activeOn } from 
 import { openClassesView } from './openclasses.js';
 import { seg } from './schedule.js';
 import { substituteBoard } from './substitute-board.js';
+import { fixedToday, fixedBusy, planTab, countTab } from './substitute-plan-view.js';
+import { holidayChecker } from '../substitute-plan.js';
 
 const CLASS_CATS = ['학급수업', '특별수업', '동료장학'];
 
@@ -196,9 +198,19 @@ export async function openClassesTab(root) {
 
 // 보결: 위에는 하루 배정 보드(부재 교사 → 결강 수업 → 공강 교사), 아래는 날짜별 목록(내 보결 강조) + 교사별 횟수
 export async function substitutesView(root) {
-  const d = await api(`/api/bundle?year=${state.year}&modules=substitutes,trips,timetables`);
+  const d = await api(`/api/bundle?year=${state.year}&modules=substitutes,trips,timetables,subPlans,events`);
   const rows = d.substitutes;
   const reload = () => substitutesView(root);
+  // 탭: 하루 배정 / 고정 보결표 / 교사별 시수
+  const tab = remember('sub_tab') || 'day';
+  const isHoliday = holidayChecker(d.events);
+  const tabs = h('div', { class: 'toolbar sub-tabs' }, seg([['day', '📅 하루 배정'], ['plan', `🗓 고정 보결표${d.subPlans.length ? ` (${d.subPlans.length})` : ''}`], ['count', '📊 교사별 시수']], tab, (v) => { remember('sub_tab', v); reload(); }));
+  if (tab !== 'day') {
+    const body = h('div', {});
+    clear(root, tabs, body);
+    if (tab === 'plan') planTab(body, d, reload); else countTab(body, d, isHoliday, reload);
+    return;
+  }
   const me = myName();
   const mode = remember('sub_mode') || 'upcoming';
   const t = today();
@@ -212,7 +224,8 @@ export async function substitutesView(root) {
   for (const r of rows) if (r.data.substitute) counts.set(r.data.substitute, (counts.get(r.data.substitute) || 0) + 1);
   const mineCount = rows.filter((r) => r.data.substitute === me && r.data.date >= t).length;
   clear(root,
-    substituteBoard(rows, d.trips, d.timetables, reload),
+    tabs,
+    substituteBoard(rows, d.trips, d.timetables, reload, { fixedToday: (date) => fixedToday(d.subPlans, date, { isHoliday, reload }), fixedBusy: (date) => fixedBusy(d.subPlans, date, isHoliday) }),
     h('h3', { class: 'sb-list-title' }, '📋 보결 기록'),
     h('div', { class: 'toolbar' },
       seg([['upcoming', '오늘 이후'], ['mine', `내 보결${mineCount ? ` (${mineCount})` : ''}`], ['all', '전체']], mode, (v) => { remember('sub_mode', v); reload(); }),

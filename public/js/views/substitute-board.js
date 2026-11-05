@@ -26,7 +26,7 @@ function namesIn(text, staffNames) {
   return known.length ? known : [s];
 }
 
-export function substituteBoard(rows, trips, tts, reload) {
+export function substituteBoard(rows, trips, tts, reload, opts = {}) {
   const date = ui.date || (ui.date = today());
   const staff = (state.staff || []).filter((s) => s.name);
   const staffNames = staff.map((s) => s.name);
@@ -66,7 +66,8 @@ export function substituteBoard(rows, trips, tts, reload) {
   const total = cards.reduce((n, c) => n + c.lines.length, 0);
   const done = cards.reduce((n, c) => n + c.lines.filter((l) => l.rec?.data.substitute).length, 0);
   // 같은 날 같은 교시에 이미 보결 들어가는 사람
-  const subAt = (period) => new Set(dayRows.filter((r) => pnum(r.data.period) === pnum(period) && r.data.substitute).map((r) => r.data.substitute));
+  const fixed = opts.fixedBusy?.(date) || new Map(); // 고정 보결표로 그 교시에 들어가는 사람
+  const subAt = (period) => new Set([...dayRows.filter((r) => pnum(r.data.period) === pnum(period) && r.data.substitute).map((r) => r.data.substitute), ...(fixed.get(pnum(period)) || [])]);
 
   const go = (d) => { ui.date = d; ui.open = ''; reload(); };
   const save = async (line, absName, info, sub) => {
@@ -168,6 +169,7 @@ export function substituteBoard(rows, trips, tts, reload) {
         h('span', { class: 'sb-chip ok' }, '배정 ', h('b', {}, done)),
         h('span', { class: `sb-chip ${total - done ? 'warn' : ''}` }, '미배정 ', h('b', {}, total - done))),
       h('span', { class: 'grow' }), addSel),
+    opts.fixedToday?.(date),
     cards.length ? h('div', { class: 'sb-cards' }, cards.map(card))
       : h('p', { class: 'muted sb-none' }, `${fmtDate(date)}에는 복무·출장으로 빠지는 선생님이 없습니다. 다른 사유로 빠지는 선생님은 [+ 부재 교사 추가]로 넣으세요.`),
     h('p', { class: 'hint' }, '✅ 공강 = 그 교시에 수업 없음 · ❔ 정보 없음 = 담임·전담 미지정 · ⛔ 수업 있음 = 그 교시에 수업이나 다른 보결 · 🚫 부재 = 그 날 복무·출장. 수업은 시간표(적용 기간 포함)와 학교 관리의 담임·전담 지정으로 계산합니다.'));

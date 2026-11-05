@@ -1534,3 +1534,70 @@ body.cb-full .bottom-bar, body.cb-full .fab { display: none !important; }
 .cb-btn { color: var(--cb-ink); }
 .cb-settings .table { width: auto; }
 .cb-settings .table td, .cb-settings .table th { padding: 4px 6px; }
+
+/* 🗓 고정 보결표 */
+.sub-tabs { margin-bottom: 10px; }
+.fx-red { color: #e5484d; }
+.fx-today { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+.fx-row { border: 1px solid var(--line); border-left: 4px solid #e5484d; border-radius: var(--radius-sm); background: var(--bg); padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.fx-row.off { border-left-color: var(--line-2); opacity: .8; }
+.fx-head { display: flex; flex-direction: column; min-width: 120px; }
+.fx-cls { font-size: 15px; }
+.fx-n { font-size: 12px; color: #e5484d; font-weight: 700; }
+.fx-cells { display: grid; grid-template-columns: repeat(6, minmax(78px, 1fr)); gap: 6px; flex: 1; min-width: 0; }
+.fx-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
+.fx-cell small { font-size: 11px; color: var(--muted); }
+.fx-cell b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.fx-cell em { font-style: normal; font-size: 11px; color: var(--muted); }
+.fx-cell.sub { border-color: color-mix(in srgb, #e5484d 45%, var(--line)); background: color-mix(in srgb, #e5484d 7%, var(--panel)); }
+.fx-cell.sub b { color: #e5484d; }
+.fx-cell.class { cursor: default; } .fx-cell.class b { color: var(--text); }
+.fx-cell:disabled { cursor: default; }
+.fx-cell.changed { outline: 2px dashed #e5484d; outline-offset: -3px; }
+.fx-cell.cancel b { color: var(--muted); text-decoration: line-through; }
+.fx-plans { display: flex; flex-wrap: wrap; gap: 6px; }
+.fx-plans .chip { border: 1.5px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 700; cursor: pointer; color: var(--text); }
+.fx-plans .chip.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.fx-plans .chip small { font-weight: 400; color: var(--muted); }
+.fx-editor { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.fx-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.fx-title h3 { margin: 0; }
+.fx-grid { border-collapse: collapse; width: 100%; max-width: 720px; table-layout: fixed; background: var(--panel); }
+.fx-grid th, .fx-grid td { border: 1px solid #b8bfcc; text-align: center; }
+.fx-grid thead th { background: var(--panel-2); padding: 6px; font-weight: 700; }
+.fx-grid .fx-corner { font-size: 13px; color: var(--muted); }
+.fx-grid tbody th { background: var(--panel-2); width: 72px; padding: 6px; font-weight: 600; }
+.fx-td { position: relative; padding: 0; }
+.fx-td input { width: 100%; border: 0; background: transparent; text-align: center; font: inherit; font-size: 17px; font-weight: 700; padding: 10px 4px 12px; color: var(--text); border-radius: 0; }
+.fx-td input:focus { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-soft); }
+.fx-td.sub input { color: #e5484d; }
+.fx-td.sub { background: color-mix(in srgb, #e5484d 5%, transparent); }
+.fx-flip { position: absolute; right: 2px; bottom: 1px; border: 0; background: none; font-size: 9px; color: var(--muted); cursor: pointer; padding: 0 2px; opacity: .7; }
+.fx-td.sub .fx-flip { color: #e5484d; }
+.fx-flip:hover { opacity: 1; text-decoration: underline; }
+.fx-paste { margin-top: 10px; } .fx-paste summary { cursor: pointer; font-weight: 700; } .fx-paste textarea { width: 100%; margin: 6px 0; }
+.fx-side { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 12px; }
+.fx-total { display: flex; align-items: baseline; gap: 6px; } .fx-total b { font-size: 30px; color: #e5484d; }
+.fx-load { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fx-load li { display: flex; justify-content: space-between; padding: 4px 8px; border-radius: 8px; background: var(--panel-2); }
+.fx-load b { color: #e5484d; }
+.fx-skip { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 12px; }
+.fx-skip h4 { margin: 0 0 4px; }
+.fx-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.fx-count .fx-who { position: relative; font-weight: 700; white-space: nowrap; min-width: 120px; }
+.fx-count .fx-who span { position: relative; z-index: 1; }
+.fx-bar { position: absolute; left: 0; top: 20%; bottom: 20%; background: color-mix(in srgb, #e5484d 13%, transparent); border-radius: 0 6px 6px 0; }
+.fx-count .fx-sum { background: color-mix(in srgb, #e5484d 6%, transparent); } .fx-count td.fx-sum b { color: #e5484d; font-size: 16px; }
+.fx-detail td { background: var(--panel-2); }
+.fx-log { display: flex; flex-wrap: wrap; gap: 4px; }
+.fx-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, #e5484d 10%, var(--panel)); color: #c4353a; }
+.fx-chip.extra { background: var(--primary-soft); color: var(--primary); }
+.fx-dates td.fx-dc { text-align: center; font-weight: 700; }
+.fx-dates td.fx-dc.sub { color: #e5484d; } .fx-dates td.fx-dc.class { color: var(--text); font-weight: 400; }
+.fx-dates td.fx-dc.changed { text-decoration: underline dotted; } .fx-dates td.fx-dc.cancel { color: var(--muted); }
+.fx-dates tr.fx-future td { opacity: .5; }
+@media (max-width: 900px) { .fx-editor { grid-template-columns: 1fr; } .fx-kpis { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) { .fx-cells { grid-template-columns: repeat(3, 1fr); } .fx-td input { font-size: 15px; padding: 8px 2px 12px; } .fx-grid tbody th { width: 52px; font-size: 13px; } }
+.fx-count { width: auto; min-width: 520px; }
+.fx-count .fx-who { width: 200px; max-width: 220px; }
+.fx-count td.num, .fx-count th.num { min-width: 56px; }

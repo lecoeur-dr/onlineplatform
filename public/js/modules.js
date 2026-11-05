@@ -122,6 +122,15 @@ export const MODULES = {
       { key: 'note', label: '비고', type: 'text' },
     ],
   },
+  subPlans: {
+    label: '고정 보결표', icon: '🗓', scope: 'year', edit: 'staff', extras: ['grid', 'overrides', 'skip'],
+    fields: [
+      { key: 'title', label: '대상 학급', type: 'select', list: 'classes', free: true, required: true, hint: '예) 6-2 (담임 부재 학급)' },
+      { key: 'start', label: '시작일', type: 'date', required: true },
+      { key: 'end', label: '종료일', type: 'date', hint: '비우면 학년도 끝까지' },
+      { key: 'note', label: '메모', type: 'text', hint: '예) 담임 병가 대체' },
+    ],
+  },
   briefings: {
     label: '전달사항', icon: '📣', scope: 'date', edit: 'staff',
     fields: [
