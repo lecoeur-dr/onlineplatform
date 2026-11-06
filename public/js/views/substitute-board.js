@@ -4,6 +4,7 @@ import { h, api, clear, toast, confirmBox, today, addDays, fmtDate } from '../ui
 import { state, canEdit, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { activeOn } from './timetable.js';
+import { SUB_TEACHER } from '../substitute-plan.js';
 import { makeCtx, absentLessons, candidates, subCounts, coversPeriod } from '../substitute-logic.js';
 
 const pnum = (x) => Number(String(x || '').match(/\d+/)?.[0]) || 0;
@@ -101,6 +102,7 @@ export function substituteBoard(rows, trips, tts, reload, opts = {}) {
         h('span', { class: 'muted small' }, ' 공강 → 같은 과목·같은 학년 → 보강 적은 순'),
         h('span', { class: 'grow' }),
         h('button', { class: 'link-btn small', onclick: () => { ui.open = ''; reload(); } }, '닫기')),
+      h('div', { class: 'sb-group free' }, h('div', { class: 'sb-cands' }, h('button', { class: 'sb-cand free sb-subt', onclick: () => save(line, absName, info, SUB_TEACHER) }, h('span', { class: 'sb-name' }, `🧑‍🏫 ${SUB_TEACHER}`), h('span', { class: 'sb-cnt' }, `보강 ${counts.get(SUB_TEACHER)?.sub || 0}`)))),
       groups.length ? groups.map(([k, l]) => h('div', { class: `sb-group ${STATUS[k].cls}` },
         h('div', { class: 'sb-group-title' }, `${STATUS[k].icon} ${STATUS[k].label} ${l.length}`),
         h('div', { class: 'sb-cands' }, l.map((c) => h('button', { class: `sb-cand ${STATUS[k].cls} ${c.name === line.rec?.data.substitute ? 'on' : ''}`, onclick: () => pick(c), title: c.room ? `${c.room}` : '담임·전담 미지정' },

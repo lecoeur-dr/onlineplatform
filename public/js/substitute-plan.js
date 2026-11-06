@@ -5,7 +5,9 @@
 import { normCategory, NO_SCHOOL_CATEGORIES } from './modules.js';
 
 export const PLAN_DAYS = ['월', '화', '수', '목', '금'];
-export const ROLES = ['교장', '교감', '교무', '연구', '행정', '보건', '사서', '상담', '영양', '실무사', '강사', '돌봄', '특수', '정보', '생활', '체육부', '방과후'];
+// 보결전담강사: 보결만 맡는 강사 (항상 후보 맨 앞)
+export const SUB_TEACHER = '보결전담강사';
+export const ROLES = [SUB_TEACHER, '보결강사', '교장', '교감', '교무', '연구', '행정', '보건', '사서', '상담', '영양', '실무사', '강사', '돌봄', '특수', '정보', '생활', '체육부', '방과후'];
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 export const weekdayOf = (date) => { const [y, m, d] = String(date).split('-').map(Number); return WD[new Date(y, m - 1, d).getDay()]; };
 const addDay = (s, n) => { const [y, m, d] = s.split('-').map(Number); const x = new Date(y, m - 1, d + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };

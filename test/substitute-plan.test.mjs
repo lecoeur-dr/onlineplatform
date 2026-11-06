@@ -65,3 +65,8 @@ test('붙여넣기: 머리글·교시 칸 건너뜀', () => {
   const g = parsePasted('\t월\t화\t수\t목\t금\n1교시\t5-1\t과\t4-1\t영\t영\n2교시\t5-1\t3-2\t4-1\t3-1\t도');
   assert.deepEqual(g, [['5-1', '과', '4-1', '영', '영'], ['5-1', '3-2', '4-1', '3-1', '도']]);
 });
+
+test('보결전담강사는 보결로 인식', () => {
+  assert.deepEqual(parseCell('보결전담강사'), { kind: 'sub', who: '보결전담강사', subj: '' });
+  assert.deepEqual(parseCell('수(보결전담강사)'), { kind: 'sub', who: '보결전담강사', subj: '수' });
+});

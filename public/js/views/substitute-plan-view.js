@@ -4,7 +4,7 @@ import { h, api, clear, toast, modal, confirmBox, today, fmtDate, download } fro
 import { state, canEdit, remember, myName } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { seg } from './schedule.js';
-import { PLAN_DAYS, ROLES, parseCell, cellOf, runsOn, entriesOn, tally, weeklyLoad, parsePasted, weekOf, addDay } from '../substitute-plan.js';
+import { PLAN_DAYS, ROLES, SUB_TEACHER, parseCell, cellOf, runsOn, entriesOn, tally, weeklyLoad, parsePasted, weekOf, addDay } from '../substitute-plan.js';
 import { makeCtx, classDay, homeroomTeacher, candidates, subCounts } from '../substitute-logic.js';
 import { activeOn } from './timetable.js';
 
@@ -62,7 +62,7 @@ export function fixedToday(plans, date, { isHoliday, reload }) {
 }
 function editDay(p, date, e, reload) {
   const { names } = staffResolver();
-  const opts = [...new Set([...ROLES.slice(0, 4), ...names])];
+  const opts = [...new Set([...ROLES.slice(0, 6), ...names])];
   const input = h('input', { list: 'fx-who', value: e.cancelled ? '' : e.who, placeholder: '보결 교사 (이름·학급·직책)' });
   const set = async (val, close) => {
     const ov = { ...(p.data.overrides || {}) }; const day = { ...(ov[date] || {}) };
@@ -198,13 +198,15 @@ export function planTab(root, d, reload, isHoliday) {
         ci.runs ? h('div', { class: 'fx-scope' }, h('span', { class: 'muted small' }, '배정 범위 '), h('div', { class: 'seg' }, [['week', `🔁 매주 ${PLAN_DAYS[di]} ${period}`], ['day', `📅 ${md(date)}만`]].map(([k, l]) => h('button', { class: scope === k ? 'on' : '', onclick: () => { remember('fx_scope', k); redraw(); } }, l)))) : null,
         h('div', { class: 'table-wrap fx-cands' }, h('table', { class: 'table compact' },
           h('thead', {}, h('tr', {}, ['구분', '교사', '결강', '보강', '그 시간'].map((x, i) => h('th', { class: i > 1 ? 'num' : '' }, x)))),
-          h('tbody', {}, list.map((c) => h('tr', { class: `click st-${c.status} ${c.sameSubject ? 'same' : ''} ${e.who && nameOf(e.who) === c.name ? 'picked' : ''}`, onclick: async () => {
+          h('tbody', {}, h('tr', { class: `click st-free fx-subt-row ${e.who === SUB_TEACHER ? 'picked' : ''}`, onclick: () => assign(SUB_TEACHER) },
+            h('td', {}, h('span', { class: 'fx-st free' }, '강사')), h('td', {}, h('b', {}, `🧑‍🏫 ${SUB_TEACHER}`)), h('td', { class: 'num' }, '-'), h('td', { class: 'num' }, counts.get(SUB_TEACHER)?.sub || 0), h('td', { class: 'num' }, '보결 전담')),
+            list.map((c) => h('tr', { class: `click st-${c.status} ${c.sameSubject ? 'same' : ''} ${e.who && nameOf(e.who) === c.name ? 'picked' : ''}`, onclick: async () => {
             if ((c.status === 'busy' || c.status === 'absent') && !(await confirmBox(`${c.name} 선생님은 이 시간에 ${c.status === 'absent' ? '부재(복무·출장)' : c.taken ? '다른 보결이' : '수업이'} 있습니다. 그래도 배정할까요?`))) return;
             assign(c.name);
           } },
             h('td', {}, h('span', { class: `fx-st ${c.status}` }, ST[c.status])), h('td', {}, h('b', {}, c.name), c.room ? h('small', { class: 'muted' }, ` ${c.room}`) : null, c.sameSubject ? h('span', { class: 'fx-tag' }, '같은 과목') : c.sameGrade ? h('span', { class: 'fx-tag g' }, '같은 학년') : null),
             h('td', { class: 'num' }, c.absentCnt || 0), h('td', { class: 'num' }, c.subCnt || 0), h('td', { class: 'num' }, c.status === 'busy' ? (c.taken ? '보결' : '수업') : c.status === 'free' ? '비어 있음' : '-')))))),
-        h('div', { class: 'fx-roles' }, ['교장', '교감', '교무', '연구'].map((r) => h('button', { class: 'btn small', onclick: () => assign(r) }, r)), custom, h('datalist', { id: 'fx-roles' }, [...ROLES, ...names].map((n) => h('option', { value: n }))), h('button', { class: 'btn small primary', onclick: () => { const v = custom.value.trim(); if (v) assign(v); } }, '지정')),
+        h('div', { class: 'fx-roles' }, h('button', { class: 'btn small fx-subt', onclick: () => assign(SUB_TEACHER) }, `🧑‍🏫 ${SUB_TEACHER}`), ['교장', '교감', '교무', '연구'].map((r) => h('button', { class: 'btn small', onclick: () => assign(r) }, r)), custom, h('datalist', { id: 'fx-roles' }, [...ROLES, ...names].map((n) => h('option', { value: n }))), h('button', { class: 'btn small primary', onclick: () => { const v = custom.value.trim(); if (v) assign(v); } }, '지정')),
         h('div', { class: 'row-actions' },
           scope === 'week' && base.who ? h('button', { class: 'btn small ghost', onclick: () => setCell({ who: '' }, '미배정으로 바꿨습니다.') }, '매주 배정 지우기') : null,
           scope === 'day' && e.changed ? h('button', { class: 'btn small', onclick: () => setDay(undefined, '원래대로 돌렸습니다.') }, '이 날 원래대로') : null,
