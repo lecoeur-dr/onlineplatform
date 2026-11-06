@@ -52,3 +52,33 @@ test('학급 하루 시간표: 전담 시간은 전담 선생님으로 표시', 
   assert.equal(homeroomTeacher(ctx, '6-2'), '황선생');
   assert.equal(classDay(ctx, '9-9'), null);
 });
+
+test('전담 시간표만 있을 때: 담임은 전담이 들어오는 시간만 비어 있음', async () => {
+  const { classDay, lessonAt, roomOrder } = await import('../public/js/substitute-logic.js');
+  const G6 = (cells) => ({ days: ['월', '화', '수', '목', '금'], periods: ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시'], cells });
+  const e = ['', '', '', '', ''];
+  const only = [
+    { data: { kind: '전담', title: '과학 전담', grid: G6([e, ['5-1', '', '', '', ''], e, e, e, e]) } },
+    { data: { kind: '전담', title: '영어 전담', grid: G6([e, e, e, ['5-1', '', '', '', ''], e, e]) } },
+  ];
+  const st = [{ name: '박진선', homeroom: '5-1' }, { name: '김과학', homeroom: '과학 전담' }];
+  const ctx = makeCtx(only, st, '2026-11-09'); // 월요일
+  assert.equal(busyAt(ctx, '박진선', '1교시'), true);
+  assert.equal(busyAt(ctx, '박진선', '2교시'), false); // 과학 전담 시간
+  assert.equal(busyAt(ctx, '박진선', '4교시'), false); // 영어 전담 시간
+  assert.equal(lessonAt(ctx, '박진선', '3교시').subject, '담임 수업');
+  assert.equal(busyAt(ctx, '김과학', '2교시'), true);
+  assert.equal(busyAt(ctx, '김과학', '1교시'), false);
+  const day = classDay(ctx, '5-1');
+  assert.equal(day.length, 6);
+  assert.deepEqual(day.map((x) => x.specialist || '-'), ['-', '김과학', '-', '영어 전담', '-', '-']);
+  assert.equal(day[1].subject, '과학');
+  const tue = classDay(makeCtx(only, st, '2026-11-10'), '5-1'); // 화요일: 전담 없음 → 6교시 모두 담임 수업
+  assert.equal(tue.length, 6); assert.ok(tue.every((x) => x.need && !x.specialist));
+  // 공강 후보: 2교시엔 박진선 공강
+  const c = candidates(ctx, { period: '2교시', cls: '6-2', absentName: '황선생' });
+  assert.equal(c.find((x) => x.name === '박진선').status, 'free');
+  assert.equal(candidates(ctx, { period: '1교시', cls: '6-2' }).find((x) => x.name === '박진선').status, 'busy');
+  // 학년반 순
+  assert.deepEqual(['과학 전담', '', '6-1', '1-2', '1-10', '1-1'].sort((a, b) => roomOrder(a) - roomOrder(b)), ['1-1', '1-2', '1-10', '6-1', '과학 전담', '']);
+});

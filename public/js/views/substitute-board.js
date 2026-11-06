@@ -1,11 +1,11 @@
 // 🔁 보결 배정 보드 — 나이스 결보강 등록을 벤치마킹하되 창을 열지 않고 한 화면에서
 //   ① 그 날 부재 교사(복무·출장 + 직접 추가) → ② 그 교사의 결강 수업(시간표) → ③ 그 교시 공강 교사 후보를 바로 아래에 펼쳐 고르기
 import { h, api, clear, toast, confirmBox, today, addDays, fmtDate } from '../ui.js';
-import { state, canEdit, myName } from '../state.js';
+import { state, canEdit, myName, remember } from '../state.js';
 import { openRecordForm } from '../form.js';
 import { activeOn } from './timetable.js';
 import { SUB_TEACHER } from '../substitute-plan.js';
-import { makeCtx, absentLessons, candidates, subCounts, coversPeriod } from '../substitute-logic.js';
+import { makeCtx, absentLessons, candidates, subCounts, coversPeriod, roomOrder } from '../substitute-logic.js';
 
 const pnum = (x) => Number(String(x || '').match(/\d+/)?.[0]) || 0;
 const periodLabel = (p) => (pnum(p) ? `${pnum(p)}교시` : String(p || ''));
@@ -90,6 +90,8 @@ export function substituteBoard(rows, trips, tts, reload, opts = {}) {
     const taken = subAt(line.period);
     const list = candidates(ctx, { period: line.period, cls: line.cls, subject: line.subject, absentName: absName, absentees: absentAt(line.period), counts })
       .map((c) => (taken.has(c.name) && c.name !== line.rec?.data.substitute && c.status !== 'absent' ? { ...c, status: 'busy', taken: true } : c));
+    const sortBy = remember('sub_sort') || 'avail';
+    if (sortBy === 'class') list.sort((a, b) => roomOrder(a.room) - roomOrder(b.room) || a.name.localeCompare(b.name, 'ko'));
     const groups = ['free', 'unknown', 'busy', 'absent'].map((k) => [k, list.filter((c) => c.status === k)]).filter(([, l]) => l.length);
     const pick = async (c) => {
       if (c.status === 'busy' && !(await confirmBox(`${c.name} 선생님은 ${periodLabel(line.period)}에 ${c.taken ? '다른 보결이' : '수업이'} 있습니다. 그래도 배정할까요?`))) return;
@@ -99,7 +101,8 @@ export function substituteBoard(rows, trips, tts, reload, opts = {}) {
     return h('div', { class: 'sb-pick' },
       h('div', { class: 'sb-pick-head' },
         h('strong', {}, `${periodLabel(line.period)} ${line.cls || ''} ${line.subject || ''} — 들어갈 선생님 고르기`),
-        h('span', { class: 'muted small' }, ' 공강 → 같은 과목·같은 학년 → 보강 적은 순'),
+        h('span', { class: 'muted small' }, sortBy === 'class' ? ' 공강 → … 각 묶음 안에서 학년반 순' : ' 공강 → 같은 과목·같은 학년 → 보강 적은 순'),
+        h('button', { class: 'link-btn small', onclick: () => { remember('sub_sort', sortBy === 'class' ? 'avail' : 'class'); reload(); } }, sortBy === 'class' ? '↕ 가능한 순으로' : '↕ 학년반 순으로'),
         h('span', { class: 'grow' }),
         h('button', { class: 'link-btn small', onclick: () => { ui.open = ''; reload(); } }, '닫기')),
       h('div', { class: 'sb-group free' }, h('div', { class: 'sb-cands' }, h('button', { class: 'sb-cand free sb-subt', onclick: () => save(line, absName, info, SUB_TEACHER) }, h('span', { class: 'sb-name' }, `🧑‍🏫 ${SUB_TEACHER}`), h('span', { class: 'sb-cnt' }, `보강 ${counts.get(SUB_TEACHER)?.sub || 0}`)))),
@@ -110,7 +113,7 @@ export function substituteBoard(rows, trips, tts, reload, opts = {}) {
           c.room ? h('span', { class: 'sb-room' }, c.room) : null,
           c.sameSubject ? h('span', { class: 'sb-tag subj' }, '같은 과목') : null,
           c.sameGrade ? h('span', { class: 'sb-tag grade' }, '같은 학년') : null,
-          c.taken ? h('span', { class: 'sb-tag' }, '다른 보결') : null,
+          c.taken ? h('span', { class: 'sb-tag' }, '다른 보결') : c.lesson ? h('span', { class: 'sb-tag' }, `${c.lesson.cls} ${c.lesson.subject}`) : null,
           h('span', { class: 'sb-cnt' }, `보강 ${c.subCnt}`)))))) : h('p', { class: 'muted small' }, '선생님 명단이 없습니다. 학교 관리에서 사용자를 초대해 주세요.'));
   };
 

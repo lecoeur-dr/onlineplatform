@@ -56,13 +56,27 @@ function specialistFor(ctx, cls, period) {
 export function classDay(ctx, cls) {
   const key = roomKey(cls);
   const r = ctx.classTT.get(key);
-  if (!r) return null;
+  const spLabel = (sk) => (sk ? ctx.teacherOfRoom.get(sk) || ctx.specTT.get(sk)?.data.title || sk.replace(/-/g, ' ') : '');
+  if (!r) {
+    // 학급 시간표가 없으면 전담 시간표로: 전담이 들어오는 교시는 전담, 나머지는 담임 수업(보결 필요)
+    if (!isClass(key) || ![...ctx.specTT.values()].some((t) => (t.data.grid?.cells || []).some((row) => (row || []).some((c) => classesIn(c).includes(key))))) return null; // 어느 요일에든 전담이 들어오는 반
+    return specPeriods(ctx).map((p) => {
+      const sk = specialistFor(ctx, key, p);
+      return { period: p, subject: sk ? subjectOfSpecialist(ctx.specTT.get(sk)?.data.title || sk.replace(/-/g, ' ')) : '', specialist: spLabel(sk), need: true };
+    });
+  }
   return periodsOf(r).map((p) => {
     const subject = cellAt(r, ctx.day, p);
     const sk = subject ? specialistFor(ctx, key, p) : null;
-    const label = sk ? ctx.teacherOfRoom.get(sk) || ctx.specTT.get(sk)?.data.title || sk.replace(/-/g, ' ') : '';
-    return { period: p, subject, specialist: label };
+    return { period: p, subject, specialist: spLabel(sk), need: !!subject };
   });
+}
+const isClass = (key) => /^\d-\d{1,2}$/.test(key);
+// 전담 시간표들의 교시 (가장 긴 것), 없으면 1~6교시
+function specPeriods(ctx) {
+  let best = [];
+  for (const t of ctx.specTT.values()) if (periodsOf(t).length > best.length) best = periodsOf(t);
+  return best.length ? best : ['1교시', '2교시', '3교시', '4교시', '5교시', '6교시'];
 }
 export const homeroomTeacher = (ctx, cls) => ctx.teacherOfRoom.get(roomKey(cls)) || '';
 
@@ -82,12 +96,30 @@ export function lessonsOf(ctx, name) {
     }
     return out;
   }
+  // 학급 시간표 없이 전담 시간표만 있을 때: 담임은 전담이 자기 반에 들어오는 시간만 비고, 나머지는 수업
+  if (isClass(key) && ctx.specTT.size) {
+    return specPeriods(ctx).filter((p) => !specialistFor(ctx, key, p)).map((p) => ({ period: p, cls: key, subject: '담임 수업' }));
+  }
   if (ctx.specTT.has(key)) {
     const r = ctx.specTT.get(key);
     return periodsOf(r).map((p) => ({ p, t: cellAt(r, ctx.day, p) })).filter((x) => x.t)
       .map((x) => ({ period: x.p, cls: classesIn(x.t)[0] || x.t, subject: subjectOfSpecialist(room) || x.t }));
   }
   return null;
+}
+
+// 그 교시에 이 교사가 하는 수업 (없으면 null, 모르면 undefined)
+export function lessonAt(ctx, name, period) {
+  const ls = lessonsOf(ctx, name);
+  if (!ls) return undefined;
+  return ls.find((l) => pnum(l.period) === pnum(period)) || null;
+}
+
+// 학년반 순서: 1-1, 1-2 … 6-3, 그다음 전담·기타 직함, 맨 뒤 미지정
+export function roomOrder(room) {
+  const m = String(room || '').match(/^(\d)\s*-\s*(\d{1,2})$/);
+  if (m) return Number(m[1]) * 100 + Number(m[2]);
+  return room ? 1000 : 2000;
 }
 
 // 그 교시에 이 교사가 수업 중인지: true / false / null(모름)
@@ -124,7 +156,8 @@ export function candidates(ctx, { period, cls, subject, absentName, absentees = 
     const status = absentees.has(s.name) ? 'absent' : busy === null ? 'unknown' : busy ? 'busy' : 'free';
     const room = ctx.roomOf.get(s.name) || '';
     const c = counts.get(s.name) || { absent: 0, sub: 0 };
-    return { name: s.name, room, status, sameGrade: !!grade && room.startsWith(`${grade}-`), sameSubject: !!subject && subjectOfSpecialist(room) === subject, absentCnt: c.absent, subCnt: c.sub };
+    const lesson = status === 'busy' ? lessonAt(ctx, s.name, period) : null;
+    return { name: s.name, room, status, lesson, sameGrade: !!grade && room.startsWith(`${grade}-`), sameSubject: !!subject && subjectOfSpecialist(room) === subject, absentCnt: c.absent, subCnt: c.sub };
   }).sort((a, b) => rank[a.status] - rank[b.status] || (b.sameSubject - a.sameSubject) || (b.sameGrade - a.sameGrade) || a.subCnt - b.subCnt || a.name.localeCompare(b.name, 'ko'));
 }
 
