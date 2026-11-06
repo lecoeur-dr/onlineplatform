@@ -18,7 +18,7 @@ export function staffResolver() {
   const staff = (state.staff || []).filter((s) => s.name);
   const byRoom = new Map(staff.filter((s) => s.homeroom).map((s) => [String(s.homeroom).replace(/\s/g, ''), s.name]));
   const names = staff.map((s) => s.name);
-  return { names, nameOf: (w) => byRoom.get(w) || w, label: (w) => (byRoom.get(w) ? `${w} ${byRoom.get(w)}` : w) };
+  return { names, nameOf: (w) => byRoom.get(w) || w, label: (w) => { const n = byRoom.get(w); return n && n !== w ? `${w} ${n}` : w; } };
 }
 
 async function savePlan(p, patch) {
@@ -175,6 +175,8 @@ export function planTab(root, d, reload, isHoliday) {
   let clashes = 0;
   const cellView = (pi, di) => {
     const ci = colInfo[di];
+    // 기간 밖·휴일·빠지는 날은 비워 둠 (누를 수 없음)
+    if (!ci.runs) return h('td', { class: 'fx-c blank' });
     const base = cellOf(p, pi, di, names);
     const e = ci.runs ? entriesOn(p, ci.date, names)[pi] : { ...base, changed: false, cancelled: false };
     const on = fxUI.cell && fxUI.cell.pi === pi && fxUI.cell.di === di;
@@ -186,6 +188,7 @@ export function planTab(root, d, reload, isHoliday) {
       kind ? h('small', {}, e.subj || '') : null,
       kind === 'sub' ? [h('b', {}, e.cancelled ? '없음' : e.who ? label(e.who) : '미배정'), clash ? h('i', { class: 'fx-clash' }, `⚠ ${clash}`) : null] : kind === 'class' ? h('b', { class: 'cls' }, e.who || '전담') : h('b', { class: 'none' }, ''));
   };
+  if (fxUI.cell && !colInfo[fxUI.cell.di]?.runs) fxUI.cell = null;
   // 오른쪽: 고른 칸의 후보 교사
   const panel = () => {
     if (!fxUI.cell) return h('div', { class: 'fx-panel empty' }, h('p', {}, '👈 표에서 칸을 누르면 그 시간에 들어갈 수 있는 선생님(공강 먼저)이 여기 나옵니다.'), h('p', { class: 'muted small' }, '빨강 = 보결 · 검정 = 전담 · 주황 = 아직 미배정'));
@@ -290,7 +293,12 @@ export function planTab(root, d, reload, isHoliday) {
         h('table', { class: 'fx-grid fx-week' },
           h('thead', {}, h('tr', {}, h('th', { class: 'fx-corner' }, cls), colInfo.map((c, di) => h('th', { class: `${c.runs ? '' : 'off'} ${c.date === t ? 'today' : ''}` }, h('div', {}, PLAN_DAYS[di]), h('small', {}, md(c.date)), !c.runs ? h('em', {}, c.hol || (c.out ? '기간 밖' : c.skip ? '빠지는 날' : '')) : null)))),
           h('tbody', {}, g.periods.map((per, pi) => h('tr', {}, h('th', {}, per), PLAN_DAYS.map((_, di) => cellView(pi, di)))))),
-        h('div', { class: 'fx-load2' }, [...load].sort((a, b) => b[1] - a[1]).map(([w, n]) => h('span', { class: 'fx-chip' }, `${label(w)} ${n}`))),
+        (() => {
+          // 이 주 실제로 운영하는 날만 (기간 밖·휴일 제외)
+          const m = new Map();
+          week.forEach((x) => { if (runsOn(p, x, isHoliday)) entriesOn(p, x, names).forEach((e) => { if (e.kind === 'sub' && !e.cancelled && e.who) m.set(e.who, (m.get(e.who) || 0) + 1); }); });
+          return h('div', { class: 'fx-load2' }, m.size ? h('span', { class: 'muted small' }, `이 주(${weekLabel}): `) : null, [...m].sort((a, b) => b[1] - a[1]).map(([w, n]) => h('span', { class: 'fx-chip' }, `${label(w)} ${n}`)));
+        })(),
         h('details', { class: 'fx-paste' }, h('summary', {}, '빠지는 날 · 엑셀 붙여넣기'),
           h('p', { class: 'muted small' }, '학사일정의 휴일·방학은 자동으로 빠집니다. 그 밖에 운영하지 않는 날만 넣으세요.'),
           h('div', { class: 'chips-row' }, (p.data.skip || []).map((x) => h('span', { class: 'tag' }, md(x), editable ? h('button', { class: 'link-btn small', onclick: () => save({ skip: p.data.skip.filter((z) => z !== x) }) }, ' ✕') : null))),

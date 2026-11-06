@@ -1654,3 +1654,5 @@ body.cb-full .bottom-bar, body.cb-full .fab { display: none !important; }
 .fx-mode button { white-space: nowrap; }
 .fx-weektools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--primary-soft); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
 .fx-chip.future { opacity: .55; border: 1px dashed currentColor; }
+.fx-c.blank { cursor: default; background: repeating-linear-gradient(45deg, var(--panel-2) 0 6px, transparent 6px 12px); }
+.fx-c.blank:hover { background: repeating-linear-gradient(45deg, var(--panel-2) 0 6px, transparent 6px 12px); }
