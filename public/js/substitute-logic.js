@@ -49,6 +49,23 @@ function specialistFor(ctx, cls, period) {
   return null;
 }
 
+/**
+ * 그 학급의 그 날 시간표: [{ period, subject, specialist }] — specialist = 그 교시를 맡는 전담(선생님 이름 또는 전담 시간표 제목), 없으면 ''
+ *   학급 시간표가 없으면 null
+ */
+export function classDay(ctx, cls) {
+  const key = roomKey(cls);
+  const r = ctx.classTT.get(key);
+  if (!r) return null;
+  return periodsOf(r).map((p) => {
+    const subject = cellAt(r, ctx.day, p);
+    const sk = subject ? specialistFor(ctx, key, p) : null;
+    const label = sk ? ctx.teacherOfRoom.get(sk) || ctx.specTT.get(sk)?.data.title || sk.replace(/-/g, ' ') : '';
+    return { period: p, subject, specialist: label };
+  });
+}
+export const homeroomTeacher = (ctx, cls) => ctx.teacherOfRoom.get(roomKey(cls)) || '';
+
 // 교사 한 명의 그 날 수업 목록 [{ period, cls, subject }]  (모르면 null)
 export function lessonsOf(ctx, name) {
   const room = ctx.roomOf.get(name);

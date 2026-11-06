@@ -208,7 +208,7 @@ export async function substitutesView(root) {
   if (tab !== 'day') {
     const body = h('div', {});
     clear(root, tabs, body);
-    if (tab === 'plan') planTab(body, d, reload); else countTab(body, d, isHoliday, reload);
+    if (tab === 'plan') planTab(body, d, reload, isHoliday); else countTab(body, d, isHoliday, reload);
     return;
   }
   const me = myName();

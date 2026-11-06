@@ -43,3 +43,12 @@ test('조퇴 교시 범위: 적힌 교시만 부재로 봄', async () => {
   assert.equal(coversPeriod('3교시', '3교시'), true);
   assert.equal(coversPeriod('14:00~16:40', '6교시'), true);
 });
+
+test('학급 하루 시간표: 전담 시간은 전담 선생님으로 표시', async () => {
+  const { classDay, homeroomTeacher } = await import('../public/js/substitute-logic.js');
+  const ctx = makeCtx(tts, staff, '2026-10-28');
+  const day = classDay(ctx, '6-2');
+  assert.deepEqual(day.map((x) => `${x.subject}:${x.specialist}`), ['국어:', '수학:', '과학:김과학', '사회:']);
+  assert.equal(homeroomTeacher(ctx, '6-2'), '황선생');
+  assert.equal(classDay(ctx, '9-9'), null);
+});

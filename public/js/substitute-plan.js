@@ -25,7 +25,12 @@ export function parseCell(text, names = [], force = '') {
   return kind === 'sub' ? { kind, who: s.replace(/\s/g, ''), subj: '' } : { kind, who: '', subj: s };
 }
 // 저장된 칸 { text, force } → 해석
-export const cellOf = (plan, pi, di, names) => { const c = plan.data.grid?.cells?.[pi]?.[di]; return parseCell(c?.text ?? c ?? '', names, c?.force || ''); };
+//   새 형식 { kind, subj, who } (시간표에서 불러온 칸) / 예전 형식 { text, force } 둘 다 읽음
+export const cellOf = (plan, pi, di, names) => {
+  const c = plan.data.grid?.cells?.[pi]?.[di];
+  if (c && typeof c === 'object' && 'kind' in c) return { kind: c.kind || '', who: c.who || '', subj: c.subj || '' };
+  return parseCell(c?.text ?? c ?? '', names, c?.force || '');
+};
 
 // 학사일정의 휴일·방학 (그 날 수업 없음)
 export function holidayChecker(events = []) {
@@ -58,7 +63,7 @@ export function entriesOn(plan, date, names = []) {
     const o = ov[pi];
     if (o === undefined) return { pi, period, ...base, changed: false, cancelled: false };
     if (o === null || o.cancel) return { pi, period, ...base, changed: true, cancelled: true };
-    return { pi, period, kind: 'sub', who: o.who || base.who, subj: o.subj ?? base.subj, changed: true, cancelled: false, was: base.who };
+    return { pi, period, kind: o.kind || 'sub', who: o.who ?? base.who, subj: o.subj ?? base.subj, changed: true, cancelled: false, was: base.who };
   });
 }
 
@@ -99,10 +104,20 @@ export function tally({ plans = [], records = [], from, to, today, isHoliday = (
 // 한 주 계획의 교사별 보결 시수 (표 옆 요약)
 export function weeklyLoad(plan, names = []) {
   const m = new Map();
+  let unassigned = 0;
   const g = plan.data.grid || {};
-  (g.periods || []).forEach((_, pi) => (g.days || []).forEach((__, di) => { const c = cellOf(plan, pi, di, names); if (c.kind === 'sub' && c.who) m.set(c.who, (m.get(c.who) || 0) + 1); }));
+  (g.periods || []).forEach((_, pi) => (g.days || []).forEach((__, di) => { const c = cellOf(plan, pi, di, names); if (c.kind !== 'sub') return; if (c.who) m.set(c.who, (m.get(c.who) || 0) + 1); else unassigned++; }));
+  m.unassigned = unassigned;
   return m;
 }
+
+// 그 날이 들어 있는 주의 월~금 날짜
+export function weekOf(date) {
+  const wd = WD.indexOf(weekdayOf(date));
+  const mon = addDay(date, wd === 0 ? 1 : 1 - wd);
+  return PLAN_DAYS.map((_, i) => addDay(mon, i));
+}
+export { addDay };
 
 // 엑셀·한글에서 복사한 표(탭/줄) → 칸 글자 [교시][요일]. 첫 줄이 요일 머리글, 첫 칸이 교시면 건너뜀
 export function parsePasted(text) {
