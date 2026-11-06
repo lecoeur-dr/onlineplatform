@@ -70,3 +70,18 @@ test('보결전담강사는 보결로 인식', () => {
   assert.deepEqual(parseCell('보결전담강사'), { kind: 'sub', who: '보결전담강사', subj: '' });
   assert.deepEqual(parseCell('수(보결전담강사)'), { kind: 'sub', who: '보결전담강사', subj: '수' });
 });
+
+test('시간표에서 불러온 전담 칸에 체(교장)이라 적으면 교장 보결, 예정도 월별로', () => {
+  const p = plan();
+  p.data.grid.cells[3][1] = { kind: 'class', subj: '체(교장)', who: '체육 전담' };
+  p.data.grid.cells[0][1] = { kind: 'class', subj: '과', who: '과학 전담' };
+  p.data.grid.cells[0][0] = { kind: 'sub', subj: '', who: '윤수인' };
+  const m = weeklyLoad(p);
+  assert.equal(m.get('교장'), 3);
+  assert.equal(m.get('윤수인'), 1);
+  const t = tally({ plans: [p], from: '2026-11-01', to: '2026-11-30', today: '2026-11-06' });
+  assert.equal(t.get('윤수인').fixed, 1); // 11/2(월) 실시
+  assert.equal(t.get('윤수인').planned, 1); // 11/9(월) 예정 (기간 11/13까지)
+  assert.equal(t.get('윤수인').pmonths['2026-11'], 1);
+  assert.equal(t.get('윤수인').plog[0].date, '2026-11-09');
+});

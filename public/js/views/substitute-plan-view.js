@@ -136,6 +136,7 @@ export function planTab(root, d, reload, isHoliday) {
   }
   if (!p.data.grid?.cells) p.data.grid = emptyGrid();
   const g = p.data.grid;
+  const mode = p.data.mode || 'all'; // all = 전체 기간 같은 표, week = 주마다 따로
   const t = today();
   const start = p.data.start || t; const end = p.data.end || yearEnd();
   if (!fxUI.week) fxUI.week = weekOf(t < start ? start : t > end ? end : t)[0];
@@ -193,7 +194,8 @@ export function planTab(root, d, reload, isHoliday) {
     const period = g.periods[pi];
     const base = cellOf(p, pi, di, names);
     const e = ci.runs ? entriesOn(p, date, names)[pi] : { ...base };
-    const scope = ci.runs ? remember('fx_scope') || 'week' : 'week';
+    const scopeKey = mode === 'week' ? 'fx_scope_w' : 'fx_scope';
+    const scope = ci.runs ? remember(scopeKey) || (mode === 'week' ? 'day' : 'week') : 'week';
     const setCell = (patch, msg) => { const c = { ...base, ...patch }; g.cells[pi][di] = c; save({ grid: g }, msg); };
     const setDay = (val, msg) => { const ov = { ...(p.data.overrides || {}) }; const day = { ...(ov[date] || {}) }; if (val === undefined) delete day[pi]; else day[pi] = val; if (Object.keys(day).length) ov[date] = day; else delete ov[date]; save({ overrides: ov }, msg); };
     const doAssign = (who) => (scope === 'day' ? setDay({ who, kind: 'sub' }, `${md(date)} ${period} → ${label(who)} (이 날만)`) : setCell({ kind: 'sub', who }, `매주 ${PLAN_DAYS[di]} ${period} → ${label(who)}`));
@@ -224,7 +226,7 @@ export function planTab(root, d, reload, isHoliday) {
         h('input', { value: base.subj || '', placeholder: '과목', style: { width: '90px' }, onchange: (ev) => setCell({ subj: ev.target.value.trim() }) }),
         base.kind === 'class' ? h('input', { value: base.who || '', placeholder: '전담 선생님', style: { width: '120px' }, onchange: (ev) => setCell({ who: ev.target.value.trim() }) }) : null) : null,
       editable && base.kind !== 'class' ? [
-        ci.runs ? h('div', { class: 'fx-scope' }, h('span', { class: 'muted small' }, '배정 범위 '), h('div', { class: 'seg' }, [['week', `🔁 매주 ${PLAN_DAYS[di]} ${period}`], ['day', `📅 ${md(date)}만`]].map(([k, l]) => h('button', { class: scope === k ? 'on' : '', onclick: () => { remember('fx_scope', k); redraw(); } }, l)))) : null,
+        ci.runs ? h('div', { class: 'fx-scope' }, h('span', { class: 'muted small' }, '배정 범위 '), h('div', { class: 'seg' }, (mode === 'week' ? [['day', `📅 이 주 ${md(date)}만`], ['week', `🔁 전체 기간 매주 ${PLAN_DAYS[di]}`]] : [['week', `🔁 매주 ${PLAN_DAYS[di]} ${period}`], ['day', `📅 ${md(date)}만`]]).map(([k, l]) => h('button', { class: scope === k ? 'on' : '', onclick: () => { remember(scopeKey, k); redraw(); } }, l)))) : null,
         h('div', { class: 'fx-sort' }, h('span', { class: 'muted small' }, '정렬 '), h('div', { class: 'seg' }, [['avail', '가능한 순'], ['class', '학년반 순 (1-1부터)']].map(([k, l]) => h('button', { class: sortBy === k ? 'on' : '', onclick: () => { remember('sub_sort', k); redraw(); } }, l)))),
         h('div', { class: 'table-wrap fx-cands' }, h('table', { class: 'table compact' },
           h('thead', {}, h('tr', {}, ['구분', '교사', '결강', '보강', '그 시간'].map((x, i) => h('th', { class: i > 1 ? 'num' : '' }, x)))),
@@ -252,7 +254,12 @@ export function planTab(root, d, reload, isHoliday) {
       h('span', { class: 'grow' }),
       editable ? h('button', { class: 'btn', onclick: create }, '+ 고정 보결표') : null),
     h('div', { class: 'fx-title' }, h('h3', {}, cls), h('span', { class: 'muted' }, `${fmtDate(start)} ~ ${fmtDate(end)}`), p.data.note ? h('span', { class: 'tag ghost' }, p.data.note) : null,
-      h('span', { class: 'fx-wk' }, `주당 보결 `, h('b', {}, total), '시간', load.unassigned ? h('em', {}, ` · 미배정 ${load.unassigned}`) : null, h('span', { class: 'fx-clashn' })),
+      (() => {
+        // 이 주 실제 배정 (휴일 빼고, 이 주만 바꾼 것 반영)
+        let n = 0; let un = 0;
+        week.forEach((x) => { if (runsOn(p, x, isHoliday)) entriesOn(p, x, names).forEach((e) => { if (e.kind === 'sub' && !e.cancelled) { if (e.who) n++; else un++; } }); });
+        return h('span', { class: 'fx-wk' }, mode === 'week' ? '이 주 보결 ' : '주당 보결 ', h('b', {}, mode === 'week' ? n : total), '시간', (mode === 'week' ? un : load.unassigned) ? h('em', {}, ` · 미배정 ${mode === 'week' ? un : load.unassigned}`) : null, h('span', { class: 'fx-clashn' }));
+      })(),
       h('span', { class: 'grow' }),
       editable ? h('button', { class: 'btn small', title: '학급 시간표에서 과목·전담을 다시 불러옵니다 (고른 보결 교사는 그대로)', onclick: async () => { const { grid, found } = gridFromTimetable(d, p); if (!found) { toast(`${cls} 학급 시간표가 없습니다. 수업 → 시간표에서 먼저 넣어 주세요.`, 'error'); return; } save({ grid }, '시간표를 다시 불러왔습니다.'); } }, '📥 시간표 다시 불러오기') : null,
       editable ? h('button', { class: 'btn small', onclick: () => openRecordForm('subPlans', p, { onSaved: reload }) }, '기간·이름') : null,
@@ -261,7 +268,23 @@ export function planTab(root, d, reload, isHoliday) {
       h('button', { class: 'btn small', onclick: () => { fxUI.week = addDay(week[0], -7); redraw(); } }, '◀ 이전 주'),
       h('strong', {}, weekLabel),
       h('button', { class: 'btn small', onclick: () => { fxUI.week = addDay(week[0], 7); redraw(); } }, '다음 주 ▶'),
-      !week.includes(t) ? h('button', { class: 'btn small ghost', onclick: () => { fxUI.week = weekOf(t)[0]; redraw(); } }, '이번 주') : null),
+      !week.includes(t) ? h('button', { class: 'btn small ghost', onclick: () => { fxUI.week = weekOf(t)[0]; redraw(); } }, '이번 주') : null,
+      h('span', { class: 'grow' }),
+      editable ? h('div', { class: 'seg fx-mode', title: '보결표를 어떻게 셋팅할지' }, [['all', '🔁 전체 기간 같은 표'], ['week', '📅 주마다 따로']].map(([k, l]) => h('button', { class: mode === k ? 'on' : '', onclick: () => { if (k !== mode) save({ mode: k }, k === 'week' ? '주마다 따로 셋팅합니다. 칸을 누르면 그 주 날짜에만 들어갑니다.' : '전체 기간 같은 표로 셋팅합니다. 칸을 누르면 매주 같은 시간에 들어갑니다.'); } }, l))) : null),
+    mode === 'week' && editable ? h('div', { class: 'fx-weektools' },
+      h('span', { class: 'muted small' }, `📅 주마다 따로: 이 주(${weekLabel}) 칸을 누르면 이 주 날짜에만 들어갑니다. 비워 둔 칸은 기본 표를 따릅니다.`),
+      h('button', { class: 'btn small', onclick: () => {
+        const ov = { ...(p.data.overrides || {}) };
+        week.forEach((date, di) => {
+          const prev = addDay(date, -7);
+          if (!runsOn(p, date, isHoliday) || !runsOn(p, prev, isHoliday)) return;
+          const day = { ...(ov[date] || {}) };
+          entriesOn(p, prev, names).forEach((e, pi) => { if (e.kind !== 'sub') return; const base = cellOf(p, pi, di, names); if (e.cancelled) day[pi] = null; else if (e.who !== base.who) day[pi] = { who: e.who, kind: 'sub' }; else delete day[pi]; });
+          if (Object.keys(day).length) ov[date] = day; else delete ov[date];
+        });
+        save({ overrides: ov }, '지난 주 배정을 이 주에 복사했습니다.');
+      } }, '⤵ 지난 주 배정 복사'),
+      h('button', { class: 'btn small ghost', onclick: async () => { if (!(await confirmBox(`${weekLabel} 이 주에만 넣은 배정을 지우고 기본 표로 돌릴까요?`))) return; const ov = { ...(p.data.overrides || {}) }; week.forEach((x) => delete ov[x]); save({ overrides: ov }, '이 주 배정을 지웠습니다.'); } }, '이 주 배정 지우기')) : null,
     h('div', { class: 'fx-editor' },
       h('div', { class: 'fx-main' },
         h('table', { class: 'fx-grid fx-week' },
@@ -292,27 +315,38 @@ export function countTab(root, d, isHoliday, reload) {
   const view = remember('fx_view') || 'teacher';
   const [from, to, rlabel] = ranges[rk] || ranges.year;
   const data = tally({ plans: d.subPlans, records: d.substitutes, from, to, today: t, isHoliday, names, resolve: nameOf });
-  const rows = [...data].map(([who, x]) => ({ who, ...x, done: x.fixed + x.extra })).filter((r) => r.done || r.planned).sort((a, b) => b.done - a.done || b.planned - a.planned || a.who.localeCompare(b.who, 'ko'));
+  // 기준: 전체 배정(예정 포함) / 오늘까지 실시만
+  const basis = remember('fx_basis') || 'all';
+  const all = basis === 'all';
+  const rows = [...data].map(([who, x]) => {
+    const months = { ...x.months };
+    if (all) for (const [m, n] of Object.entries(x.pmonths)) months[m] = (months[m] || 0) + n;
+    const fixed = x.fixed + (all ? x.fixedP : 0); const extra = x.extra + (all ? x.extraP : 0);
+    return { who, months, fixed, extra, total: fixed + extra, did: x.fixed + x.extra, planned: x.planned, log: all ? [...x.log, ...x.plog] : x.log };
+  }).filter((r) => r.total || r.planned).sort((a, b) => b.total - a.total || b.planned - a.planned || a.who.localeCompare(b.who, 'ko'));
   const months = [...new Set(rows.flatMap((r) => Object.keys(r.months)))].sort();
   const me = myName();
   const open = new Set(remember('fx_open') || []);
-  const tot = rows.reduce((a, r) => ({ f: a.f + r.fixed, e: a.e + r.extra, p: a.p + r.planned }), { f: 0, e: 0, p: 0 });
-  const max = Math.max(1, ...rows.map((r) => r.done));
+  const tot = rows.reduce((a, r) => ({ f: a.f + r.fixed, e: a.e + r.extra, d: a.d + r.did, p: a.p + r.planned }), { f: 0, e: 0, d: 0, p: 0 });
+  const max = Math.max(1, ...rows.map((r) => r.total));
+  const lastCol = all ? '그중 실시' : '예정';
+  const lastVal = (r) => (all ? r.did : r.planned);
   const csv = () => {
-    const head = ['교사', ...months.map((m) => `${Number(m.slice(5))}월`), '고정', '수시', '합계', '예정'];
-    const body = rows.map((r) => [r.who, ...months.map((m) => r.months[m] || 0), r.fixed, r.extra, r.done, r.planned]);
-    download(`보결시수_${rlabel}.csv`, '﻿' + [head, ...body].map((x) => x.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n'), 'text/csv');
+    const head = ['교사', ...months.map((m) => `${Number(m.slice(5))}월`), '고정', '수시', '합계', lastCol];
+    const body = rows.map((r) => [r.who, ...months.map((m) => r.months[m] || 0), r.fixed, r.extra, r.total, lastVal(r)]);
+    download(`보결시수_${rlabel}_${all ? '전체배정' : '실시'}.csv`, '\ufeff' + [head, ...body].map((x) => x.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n'), 'text/csv');
   };
   const seg2 = (opts, cur, key) => seg(opts, cur, (v) => { remember(key, v); reload(); });
+  const curMonth = t.slice(0, 7);
   const teacherTable = () => h('div', { class: 'table-wrap' }, h('table', { class: 'table compact fx-count' },
-    h('thead', {}, h('tr', {}, h('th', {}, '교사'), months.map((m) => h('th', { class: 'num' }, `${Number(m.slice(5))}월`)), h('th', { class: 'num' }, '고정'), h('th', { class: 'num' }, '수시'), h('th', { class: 'num fx-sum' }, '합계'), h('th', { class: 'num muted' }, '예정'))),
+    h('thead', {}, h('tr', {}, h('th', {}, '교사'), months.map((m) => h('th', { class: `num ${m > curMonth ? 'muted' : ''}` }, `${Number(m.slice(5))}월`)), h('th', { class: 'num' }, '고정'), h('th', { class: 'num' }, '수시'), h('th', { class: 'num fx-sum' }, '합계'), h('th', { class: 'num muted' }, lastCol))),
     h('tbody', {}, rows.map((r) => [
       h('tr', { class: `click ${r.who === me ? 'hl' : ''}`, onclick: () => { open.has(r.who) ? open.delete(r.who) : open.add(r.who); remember('fx_open', [...open]); reload(); } },
-        h('td', { class: 'fx-who' }, h('span', {}, open.has(r.who) ? '▾ ' : '▸ ', r.who), h('i', { class: 'fx-bar', style: { width: `${(r.done / max) * 100}%` } })),
+        h('td', { class: 'fx-who' }, h('span', {}, open.has(r.who) ? '▾ ' : '▸ ', r.who), h('i', { class: 'fx-bar', style: { width: `${(r.total / max) * 100}%` } })),
         months.map((m) => h('td', { class: 'num' }, r.months[m] || '')),
-        h('td', { class: 'num' }, r.fixed || ''), h('td', { class: 'num' }, r.extra || ''), h('td', { class: 'num fx-sum' }, h('b', {}, r.done)), h('td', { class: 'num muted' }, r.planned || '')),
-      open.has(r.who) ? h('tr', { class: 'fx-detail' }, h('td', { colspan: months.length + 5 }, r.log.length ? h('div', { class: 'fx-log' }, r.log.map((l) => h('span', { class: `fx-chip ${l.src === '수시' ? 'extra' : ''}` }, `${md(l.date)} ${String(l.period).replace('교시', '')}교시 ${l.cls}${l.subj ? `·${l.subj}` : ''}`))) : h('span', { class: 'muted' }, '아직 실시한 보결이 없습니다 (예정만 있음)'))) : null])),
-    h('tfoot', {}, h('tr', {}, h('td', { class: 'strong' }, '합계'), months.map((m) => h('td', { class: 'num strong' }, rows.reduce((a, r) => a + (r.months[m] || 0), 0))), h('td', { class: 'num strong' }, tot.f), h('td', { class: 'num strong' }, tot.e), h('td', { class: 'num strong fx-sum' }, tot.f + tot.e), h('td', { class: 'num muted' }, tot.p)))));
+        h('td', { class: 'num' }, r.fixed || ''), h('td', { class: 'num' }, r.extra || ''), h('td', { class: 'num fx-sum' }, h('b', {}, r.total)), h('td', { class: 'num muted' }, lastVal(r) || '')),
+      open.has(r.who) ? h('tr', { class: 'fx-detail' }, h('td', { colspan: months.length + 5 }, r.log.length ? h('div', { class: 'fx-log' }, r.log.map((l) => h('span', { class: `fx-chip ${l.src === '수시' ? 'extra' : ''} ${l.date > t ? 'future' : ''}` }, `${md(l.date)} ${String(l.period).replace('교시', '')}교시 ${l.cls}${l.subj ? `·${l.subj}` : ''}`))) : h('span', { class: 'muted' }, '아직 실시한 보결이 없습니다 (예정만 있음)'))) : null])),
+    h('tfoot', {}, h('tr', {}, h('td', { class: 'strong' }, '합계'), months.map((m) => h('td', { class: 'num strong' }, rows.reduce((a, r) => a + (r.months[m] || 0), 0))), h('td', { class: 'num strong' }, tot.f), h('td', { class: 'num strong' }, tot.e), h('td', { class: 'num strong fx-sum' }, tot.f + tot.e), h('td', { class: 'num muted' }, all ? tot.d : tot.p)))));
   // 날짜별: 고정 보결표마다 날짜 × 교시 (오늘까지, 최근 날짜가 위)
   const dateTable = () => d.subPlans.map((p) => {
     const a = p.data.start && p.data.start > from ? p.data.start : from;
@@ -320,7 +354,7 @@ export function countTab(root, d, isHoliday, reload) {
     const dates = [];
     for (let x = a; x <= b0; ) { if (runsOn(p, x, isHoliday)) dates.push(x); const [yy, mm, dd] = x.split('-').map(Number); const n = new Date(yy, mm - 1, dd + 1); x = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; }
     const per = p.data.grid?.periods || PERIODS;
-    const past = dates.filter((x) => x <= t).reverse(); const next = dates.filter((x) => x > t).slice(0, 5);
+    const past = dates.filter((x) => x <= t).reverse(); const next = dates.filter((x) => x > t).slice(0, all ? 400 : 5);
     const row = (x, future) => { const es = entriesOn(p, x, names); return h('tr', { class: `${x === t ? 'hl' : ''} ${future ? 'fx-future' : ''}` }, h('td', { class: 'nowrap' }, fmtDate(x)), es.map((e) => h('td', { class: `fx-dc ${e.kind} ${e.cancelled ? 'cancel' : ''} ${e.changed ? 'changed' : ''}` }, e.kind === 'sub' ? (e.cancelled ? '—' : e.who) : e.subj)), h('td', { class: 'num' }, es.filter((e) => e.kind === 'sub' && !e.cancelled).length)); };
     return h('section', { class: 'section' }, h('h3', {}, `🗓 ${p.data.title}`, h('span', { class: 'muted small' }, ` 실시 ${past.length}일`)),
       h('div', { class: 'table-wrap' }, h('table', { class: 'table compact fx-dates' },
@@ -331,13 +365,14 @@ export function countTab(root, d, isHoliday, reload) {
     h('div', { class: 'toolbar' },
       seg2([['teacher', '👩‍🏫 교사별'], ['date', '📅 날짜별']], view, 'fx_view'),
       seg2([['month', ranges.month[2]], ['s1', '1학기'], ['s2', '2학기'], ['year', '학년도']], rk, 'fx_range'),
+      seg2([['all', '전체 배정 (예정 포함)'], ['done', '오늘까지 실시']], basis, 'fx_basis'),
       h('span', { class: 'grow' }),
       view === 'teacher' && rows.length ? h('button', { class: 'btn small', onclick: csv }, '엑셀(CSV) 저장') : null),
     h('div', { class: 'fx-kpis' },
-      h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, `${rlabel} 보결 (오늘까지)`), h('div', { class: 'kpi-value' }, tot.f + tot.e, h('span', { class: 'muted small' }, ' 시간'))),
+      h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, `${rlabel} ${all ? '배정 합계' : '실시 (오늘까지)'}`), h('div', { class: 'kpi-value' }, tot.f + tot.e, h('span', { class: 'muted small' }, ' 시간'))),
       h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '고정 보결표'), h('div', { class: 'kpi-value' }, tot.f)),
       h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '수시 보결 (출장·연가 등)'), h('div', { class: 'kpi-value' }, tot.e)),
-      h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, '앞으로 예정'), h('div', { class: 'kpi-value muted' }, tot.p))),
+      h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, all ? '그중 오늘까지 실시' : '앞으로 예정'), h('div', { class: 'kpi-value muted' }, all ? tot.d : tot.p))),
     view === 'teacher' ? (rows.length ? teacherTable() : h('p', { class: 'muted' }, '이 기간에 보결 기록이 없습니다.')) : (d.subPlans.length ? dateTable() : h('p', { class: 'muted' }, '고정 보결표가 없습니다.')),
-    h('p', { class: 'hint' }, '고정 = 고정 보결표에서 날짜마다 자동 계산(휴일·빠지는 날·그 날 취소 제외) · 수시 = 하루 배정 보드에서 넣은 보결 · 예정 = 내일 이후 고정 보결. 학급(5-1)은 학교 관리에서 담임을 지정하면 선생님 이름으로 합쳐집니다. 이름을 누르면 날짜별 내역이 펼쳐집니다.'));
+    h('p', { class: 'hint' }, '고정 = 고정 보결표에서 날짜마다 자동 계산(휴일·빠지는 날·그 날 취소 제외) · 수시 = 하루 배정 보드에서 넣은 보결 · [전체 배정]은 앞으로 할 보결까지, [오늘까지 실시]는 이미 한 보결만 셉니다. 학급(5-1)은 학교 관리에서 담임을 지정하면 선생님 이름으로 합쳐집니다. 이름을 누르면 날짜별 내역이 펼쳐집니다.'));
 }

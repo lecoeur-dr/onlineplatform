@@ -30,7 +30,12 @@ export function parseCell(text, names = [], force = '') {
 //   새 형식 { kind, subj, who } (시간표에서 불러온 칸) / 예전 형식 { text, force } 둘 다 읽음
 export const cellOf = (plan, pi, di, names) => {
   const c = plan.data.grid?.cells?.[pi]?.[di];
-  if (c && typeof c === 'object' && 'kind' in c) return { kind: c.kind || '', who: c.who || '', subj: c.subj || '' };
+  if (c && typeof c === 'object' && 'kind' in c) {
+    // 과목 칸에 '체(교장)'처럼 적었으면 그 사람이 들어가는 보결
+    const m = c.kind === 'class' && String(c.subj || '').match(/^(.*?)\s*[(（]\s*(.+?)\s*[)）]$/);
+    if (m && (ROLES.includes(m[2]) || names.includes(m[2]) || /^\d-\d{1,2}$/.test(m[2]))) return { kind: 'sub', who: m[2], subj: m[1] };
+    return { kind: c.kind || '', who: c.who || '', subj: c.subj || '' };
+  }
   return parseCell(c?.text ?? c ?? '', names, c?.force || '');
 };
 
@@ -76,7 +81,8 @@ export function entriesOn(plan, date, names = []) {
  */
 export function tally({ plans = [], records = [], from, to, today, isHoliday = () => '', names = [], resolve = (w) => w }) {
   const out = new Map();
-  const get = (w) => { if (!out.has(w)) out.set(w, { fixed: 0, extra: 0, planned: 0, months: {}, log: [] }); return out.get(w); };
+  const get = (w) => { if (!out.has(w)) out.set(w, { fixed: 0, extra: 0, planned: 0, fixedP: 0, extraP: 0, months: {}, pmonths: {}, log: [], plog: [] }); return out.get(w); };
+  const future = (x, d, src, item) => { x.planned++; x[src === '고정' ? 'fixedP' : 'extraP']++; x.pmonths[d.slice(0, 7)] = (x.pmonths[d.slice(0, 7)] || 0) + 1; x.plog.push(item); };
   for (const p of plans) {
     const a = p.data.start && p.data.start > from ? p.data.start : from;
     const b = p.data.end && p.data.end < to ? p.data.end : to;
@@ -85,7 +91,7 @@ export function tally({ plans = [], records = [], from, to, today, isHoliday = (
       for (const e of entriesOn(p, d, names)) {
         if (e.kind !== 'sub' || e.cancelled || !e.who) continue;
         const x = get(resolve(e.who));
-        if (d > today) { x.planned++; continue; }
+        if (d > today) { future(x, d, '고정', { date: d, period: e.period, cls: p.data.title, subj: e.subj, src: '고정' }); continue; }
         x.fixed++; x.months[d.slice(0, 7)] = (x.months[d.slice(0, 7)] || 0) + 1;
         x.log.push({ date: d, period: e.period, cls: p.data.title, subj: e.subj, src: '고정' });
       }
@@ -95,11 +101,11 @@ export function tally({ plans = [], records = [], from, to, today, isHoliday = (
     const d = r.data.date; const w = r.data.substitute;
     if (!w || !d || d < from || d > to) continue;
     const x = get(w);
-    if (d > today) { x.planned++; continue; }
+    if (d > today) { future(x, d, '수시', { date: d, period: r.data.period, cls: r.data.className || '', subj: r.data.subject || '', src: '수시' }); continue; }
     x.extra++; x.months[d.slice(0, 7)] = (x.months[d.slice(0, 7)] || 0) + 1;
     x.log.push({ date: d, period: r.data.period, cls: r.data.className || '', subj: r.data.subject || '', src: '수시' });
   }
-  for (const x of out.values()) x.log.sort((p, q) => p.date.localeCompare(q.date) || String(p.period).localeCompare(String(q.period), 'ko', { numeric: true }));
+  for (const x of out.values()) for (const k of ['log', 'plog']) x[k].sort((p, q) => p.date.localeCompare(q.date) || String(p.period).localeCompare(String(q.period), 'ko', { numeric: true }));
   return out;
 }
 
