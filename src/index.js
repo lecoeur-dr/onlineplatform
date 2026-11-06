@@ -36,6 +36,7 @@ async function getSettings(db, schoolId) {
     neis: s.neis || null, // { atpt, code, name, office, lastSync }
     theme: s.theme || null, // { accent }
     access: s.access || {}, // 행정·예산 탭별 권한 { 탭: [이메일] }
+    subEditors: s.subEditors || [], // 보결(하루 배정·고정 보결표) 설정 권한 [이메일] — 관리자 + 여기 든 사람(교감·교무 등)
   };
 }
 
@@ -71,13 +72,17 @@ async function audit(c, action, module, recordId, detail) {
 }
 
 // 모듈별 '누구의 기록인가' : 학교 기록 → school_id, 개인 기록 → owner, 마켓 → 모두 읽기
+const SUB_MODULES = ['substitutes', 'subPlans'];
 async function tenant(c, m) {
   const user = c.get('user');
   const space = spaceOf(m);
   if (space === 'desk') return { col: 'owner', val: user.email, canEdit: true, space };
   if (space === 'market') return { col: null, val: null, canEdit: true, space };
   const mem = await requireSchool(c);
-  return { col: 'school_id', val: mem.schoolId, canEdit: (RANK[mem.role] || 0) >= RANK[MODULES[m].edit], space, member: mem };
+  let canEdit = (RANK[mem.role] || 0) >= RANK[MODULES[m].edit];
+  // 보결은 관리자 + 보결 담당자(학교 관리 → 권한에서 지정)만 고침, 나머지는 읽기 전용
+  if (canEdit && SUB_MODULES.includes(m) && mem.role !== 'admin') canEdit = (await getSettings(c.env.DB, mem.schoolId)).subEditors.includes(String(user.email).toLowerCase());
+  return { col: 'school_id', val: mem.schoolId, canEdit, space, member: mem };
 }
 
 const secretKeys = (m) => MODULES[m].fields.filter((f) => f.type === 'secret').map((f) => f.key);
@@ -1126,6 +1131,7 @@ app.put('/api/admin/settings', async (c) => {
     for (const a of MONEY_AREAS) clean[a] = [...new Set((b.access?.[a] || []).map((x) => String(x).trim().toLowerCase()).filter((x) => x.includes('@')))].slice(0, 200);
     stmts.push(putSetting(db, schoolId, 'access', clean));
   }
+  if (b.subEditors !== undefined) stmts.push(putSetting(db, schoolId, 'subEditors', [...new Set((b.subEditors || []).map((x) => String(x).trim().toLowerCase()).filter((x) => x.includes('@')))].slice(0, 50)));
   if (b.theme !== undefined) stmts.push(putSetting(db, schoolId, 'theme', { accent: String(b.theme?.accent || 'indigo').replace(/[^a-z]/g, '').slice(0, 12) }));
   if (b.schoolName) stmts.push(db.prepare('UPDATE schools SET name = ? WHERE id = ?').bind(String(b.schoolName).slice(0, 40), schoolId));
   if (stmts.length) await db.batch(stmts);

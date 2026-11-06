@@ -54,7 +54,7 @@ export function fixedToday(plans, date, { isHoliday, reload }) {
     return h('div', { class: 'fx-row' },
       h('div', { class: 'fx-head' }, h('strong', { class: 'fx-cls' }, `🗓 ${p.data.title} 고정 보결`), h('span', { class: 'fx-n' }, `보결 ${n}시간`)),
       h('div', { class: 'fx-cells' }, es.map((e) => h('button', {
-        class: `fx-cell ${e.kind} ${e.cancelled ? 'cancel' : ''} ${e.changed ? 'changed' : ''}`, disabled: !editable || e.kind !== 'sub',
+        class: `fx-cell ${e.kind} ${e.who === SUB_TEACHER && !e.cancelled ? 'ext' : ''} ${e.cancelled ? 'cancel' : ''} ${e.changed && editable && !p.data.confirmed?.[weekOf(date)[0]] ? 'changed' : ''}`, disabled: !editable || e.kind !== 'sub',
         title: e.kind === 'sub' ? (editable ? '눌러서 이 날만 바꾸기·취소' : '') : '전담 수업',
         onclick: () => editDay(p, date, e, reload),
       }, h('small', {}, e.period.replace('교시', '')), h('b', { class: e.kind === 'sub' && !e.who && !e.cancelled ? 'todo' : '' }, e.kind === 'sub' ? (e.cancelled ? '취소' : e.who ? label(e.who) : '미배정') : e.subj || '—'), e.kind === 'sub' && e.subj ? h('em', {}, e.subj) : e.kind === 'class' && e.who ? h('em', {}, e.who) : null))));
@@ -137,10 +137,12 @@ export function planTab(root, d, reload, isHoliday) {
   if (!p.data.grid?.cells) p.data.grid = emptyGrid();
   const g = p.data.grid;
   const mode = p.data.mode || 'all'; // all = 전체 기간 같은 표, week = 주마다 따로
+  const dropWeek = (mon) => { const c = { ...(p.data.confirmed || {}) }; delete c[mon]; return c; };
   const t = today();
   const start = p.data.start || t; const end = p.data.end || yearEnd();
   if (!fxUI.week) fxUI.week = weekOf(t < start ? start : t > end ? end : t)[0];
   const week = weekOf(fxUI.week);
+  const confirmed = !!p.data.confirmed?.[week[0]]; // 확정한 주는 바뀐 칸 점선을 숨김
   const save = async (patch, msg) => { try { await savePlan(p, patch); if (msg) toast(msg); redraw(); } catch (e) { toast(e.message, 'error'); } };
 
   // 보강수(실시)·결강수: 학년도 전체
@@ -183,7 +185,7 @@ export function planTab(root, d, reload, isHoliday) {
     const kind = e.kind;
     const clash = ci.runs && kind === 'sub' && !e.cancelled ? clashOf(e.who, ci.date, pi) : '';
     if (clash) clashes++;
-    return h('td', { title: clash ? `⚠ 겹침: ${clash}` : '', class: `fx-c ${kind} ${clash ? 'clash' : ''} ${ci.runs ? '' : 'off'} ${e.changed ? 'changed' : ''} ${e.cancelled ? 'cancel' : ''} ${on ? 'sel' : ''} ${kind === 'sub' && !e.who ? 'todo' : ''}`,
+    return h('td', { title: clash ? `⚠ 겹침: ${clash}` : '', class: `fx-c ${kind} ${e.who === SUB_TEACHER && !e.cancelled ? 'ext' : ''} ${clash ? 'clash' : ''} ${ci.runs ? '' : 'off'} ${e.changed && editable && !confirmed ? 'changed' : ''} ${e.cancelled ? 'cancel' : ''} ${on ? 'sel' : ''} ${kind === 'sub' && !e.who ? 'todo' : ''}`,
       onclick: () => { fxUI.cell = { pi, di }; fxUI.scroll = true; redraw(); } },
       kind ? h('small', {}, e.subj || '') : null,
       kind === 'sub' ? [h('b', {}, e.cancelled ? '없음' : e.who ? label(e.who) : '미배정'), clash ? h('i', { class: 'fx-clash' }, `⚠ ${clash}`) : null] : kind === 'class' ? h('b', { class: 'cls' }, e.who || '전담') : h('b', { class: 'none' }, ''));
@@ -200,7 +202,7 @@ export function planTab(root, d, reload, isHoliday) {
     const scopeKey = mode === 'week' ? 'fx_scope_w' : 'fx_scope';
     const scope = ci.runs ? remember(scopeKey) || (mode === 'week' ? 'day' : 'week') : 'week';
     const setCell = (patch, msg) => { const c = { ...base, ...patch }; g.cells[pi][di] = c; save({ grid: g }, msg); };
-    const setDay = (val, msg) => { const ov = { ...(p.data.overrides || {}) }; const day = { ...(ov[date] || {}) }; if (val === undefined) delete day[pi]; else day[pi] = val; if (Object.keys(day).length) ov[date] = day; else delete ov[date]; save({ overrides: ov }, msg); };
+    const setDay = (val, msg) => { const ov = { ...(p.data.overrides || {}) }; const day = { ...(ov[date] || {}) }; if (val === undefined) delete day[pi]; else day[pi] = val; if (Object.keys(day).length) ov[date] = day; else delete ov[date]; save({ overrides: ov, confirmed: dropWeek(weekOf(date)[0]) }, msg); };
     const doAssign = (who) => (scope === 'day' ? setDay({ who, kind: 'sub' }, `${md(date)} ${period} → ${label(who)} (이 날만)`) : setCell({ kind: 'sub', who }, `매주 ${PLAN_DAYS[di]} ${period} → ${label(who)}`));
     const ctx = ctxOn(date);
     // 배정 전 겹침 확인 (매주 배정이면 기간 안의 같은 요일 날짜들을 모두 확인)
@@ -251,31 +253,38 @@ export function planTab(root, d, reload, isHoliday) {
   const paste = h('textarea', { rows: 4, placeholder: '엑셀·한글에서 보결표를 복사해 붙여넣으세요 (요일 머리글·교시 칸이 있어도 됩니다)' });
   const skipIn = h('input', { type: 'date' });
   const weekLabel = `${md(week[0])}~${md(week[4])}`;
+  // 이 주 실제 배정 수 (휴일·기간 밖 빼고, 이 주만 바꾼 것 반영)
+  const wk = { n: 0, un: 0, days: 0 };
+  week.forEach((x) => { if (!runsOn(p, x, isHoliday)) return; wk.days++; entriesOn(p, x, names).forEach((e) => { if (e.kind === 'sub' && !e.cancelled) { if (e.who) wk.n++; else wk.un++; } }); });
   clear(root,
     h('div', { class: 'toolbar' },
       h('div', { class: 'fx-plans' }, plans.map((x) => h('button', { class: `chip ${x === p ? 'on' : ''}`, onclick: () => { remember('fx_sel', x.id); redraw(); } }, `${x.data.title}`, h('small', {}, ` ${md(x.data.start)}~${md(x.data.end) || ''}`)))),
       h('span', { class: 'grow' }),
       editable ? h('button', { class: 'btn', onclick: create }, '+ 고정 보결표') : null),
     h('div', { class: 'fx-title' }, h('h3', {}, cls), h('span', { class: 'muted' }, `${fmtDate(start)} ~ ${fmtDate(end)}`), p.data.note ? h('span', { class: 'tag ghost' }, p.data.note) : null,
-      (() => {
-        // 이 주 실제 배정 (휴일 빼고, 이 주만 바꾼 것 반영)
-        let n = 0; let un = 0;
-        week.forEach((x) => { if (runsOn(p, x, isHoliday)) entriesOn(p, x, names).forEach((e) => { if (e.kind === 'sub' && !e.cancelled) { if (e.who) n++; else un++; } }); });
-        return h('span', { class: 'fx-wk' }, mode === 'week' ? '이 주 보결 ' : '주당 보결 ', h('b', {}, mode === 'week' ? n : total), '시간', (mode === 'week' ? un : load.unassigned) ? h('em', {}, ` · 미배정 ${mode === 'week' ? un : load.unassigned}`) : null, h('span', { class: 'fx-clashn' }));
-      })(),
+      h('span', { class: 'fx-wk' }, '기본 표 주당 ', h('b', {}, total), '시간'),
       h('span', { class: 'grow' }),
       editable ? h('button', { class: 'btn small', title: '학급 시간표에서 과목·전담을 다시 불러옵니다 (고른 보결 교사는 그대로)', onclick: async () => { const { grid, found } = gridFromTimetable(d, p); if (!found) { toast(`${cls} 학급 시간표가 없습니다. 수업 → 시간표에서 먼저 넣어 주세요.`, 'error'); return; } save({ grid }, '시간표를 다시 불러왔습니다.'); } }, '📥 시간표 다시 불러오기') : null,
       editable ? h('button', { class: 'btn small', onclick: () => openRecordForm('subPlans', p, { onSaved: reload }) }, '기간·이름') : null,
       editable ? h('button', { class: 'btn small danger ghost', onclick: async () => { if (!(await confirmBox(`'${cls}' 고정 보결표를 지울까요? (날짜별 집계에서도 빠집니다)`))) return; await api(`/api/records/subPlans/${p.id}`, { method: 'DELETE' }); remember('fx_sel', null); reload(); } }, '삭제') : null),
+    // 주 이동 · 셋팅 방식 · 확정 — 어느 주든 같은 모양
     h('div', { class: 'fx-weeknav' },
       h('button', { class: 'btn small', onclick: () => { fxUI.week = addDay(week[0], -7); redraw(); } }, '◀ 이전 주'),
       h('strong', {}, weekLabel),
       h('button', { class: 'btn small', onclick: () => { fxUI.week = addDay(week[0], 7); redraw(); } }, '다음 주 ▶'),
-      !week.includes(t) ? h('button', { class: 'btn small ghost', onclick: () => { fxUI.week = weekOf(t)[0]; redraw(); } }, '이번 주') : null,
+      h('button', { class: 'btn small ghost', disabled: week.includes(t), onclick: () => { fxUI.week = weekOf(t)[0]; redraw(); } }, '이번 주'),
+      h('span', { class: `fx-wkstat ${confirmed ? 'ok' : ''}` }, `이 주 보결 `, h('b', {}, wk.n), '시간', wk.un ? h('em', {}, ` · 미배정 ${wk.un}`) : null, h('span', { class: 'fx-clashn' }), confirmed ? h('span', { class: 'fx-badge ok' }, '✅ 확정') : editable && wk.days ? h('span', { class: 'fx-badge' }, '작성 중') : null),
       h('span', { class: 'grow' }),
-      editable ? h('div', { class: 'seg fx-mode', title: '보결표를 어떻게 셋팅할지' }, [['all', '🔁 전체 기간 같은 표'], ['week', '📅 주마다 따로']].map(([k, l]) => h('button', { class: mode === k ? 'on' : '', onclick: () => { if (k !== mode) save({ mode: k }, k === 'week' ? '주마다 따로 셋팅합니다. 칸을 누르면 그 주 날짜에만 들어갑니다.' : '전체 기간 같은 표로 셋팅합니다. 칸을 누르면 매주 같은 시간에 들어갑니다.'); } }, l))) : null),
-    mode === 'week' && editable ? h('div', { class: 'fx-weektools' },
-      h('span', { class: 'muted small' }, `📅 주마다 따로: 이 주(${weekLabel}) 칸을 누르면 이 주 날짜에만 들어갑니다. 비워 둔 칸은 기본 표를 따릅니다.`),
+      editable ? h('div', { class: 'seg fx-mode', title: '보결표를 어떻게 셋팅할지' }, [['all', '🔁 전체 기간 같은 표'], ['week', '📅 주마다 따로']].map(([k, l]) => h('button', { class: mode === k ? 'on' : '', onclick: () => { if (k !== mode) save({ mode: k }, k === 'week' ? '주마다 따로 셋팅합니다. 칸을 누르면 그 주 날짜에만 들어갑니다.' : '전체 기간 같은 표로 셋팅합니다. 칸을 누르면 매주 같은 시간에 들어갑니다.'); } }, l))) : null,
+      editable && wk.days ? (confirmed
+        ? h('button', { class: 'btn small', onclick: () => save({ confirmed: dropWeek(week[0]) }, '확정을 풀었습니다. 다시 고칠 수 있게 바뀐 칸이 표시됩니다.') }, '확정 취소')
+        : h('button', { class: 'btn small primary fx-confirm', onclick: async () => {
+          if ((wk.un || clashes) && !(await confirmBox(`${weekLabel}에 ${wk.un ? `미배정 ${wk.un}칸` : ''}${wk.un && clashes ? ', ' : ''}${clashes ? `겹침 ${clashes}칸` : ''}이 남아 있습니다. 그래도 확정할까요?`))) return;
+          save({ confirmed: { ...(p.data.confirmed || {}), [week[0]]: true } }, `${weekLabel} 보결을 확정했습니다.`);
+        } }, '✅ 이 주 확정')) : null),
+    editable ? h('div', { class: 'fx-weektools' },
+      h('span', { class: 'muted small' }, mode === 'week' ? `📅 주마다 따로 — 칸을 누르면 이 주(${weekLabel}) 날짜에만 들어갑니다. 비워 둔 칸은 기본 표를 따릅니다.` : `🔁 전체 기간 같은 표 — 칸을 누르면 기간 내내 매주 같은 시간에 들어갑니다. 특정 날만 다르면 [이 날만]을 고르세요.`),
+      h('span', { class: 'grow' }),
       h('button', { class: 'btn small', onclick: () => {
         const ov = { ...(p.data.overrides || {}) };
         week.forEach((date, di) => {
@@ -285,9 +294,10 @@ export function planTab(root, d, reload, isHoliday) {
           entriesOn(p, prev, names).forEach((e, pi) => { if (e.kind !== 'sub') return; const base = cellOf(p, pi, di, names); if (e.cancelled) day[pi] = null; else if (e.who !== base.who) day[pi] = { who: e.who, kind: 'sub' }; else delete day[pi]; });
           if (Object.keys(day).length) ov[date] = day; else delete ov[date];
         });
-        save({ overrides: ov }, '지난 주 배정을 이 주에 복사했습니다.');
+        save({ overrides: ov, confirmed: dropWeek(week[0]) }, '지난 주 배정을 이 주에 복사했습니다.');
       } }, '⤵ 지난 주 배정 복사'),
-      h('button', { class: 'btn small ghost', onclick: async () => { if (!(await confirmBox(`${weekLabel} 이 주에만 넣은 배정을 지우고 기본 표로 돌릴까요?`))) return; const ov = { ...(p.data.overrides || {}) }; week.forEach((x) => delete ov[x]); save({ overrides: ov }, '이 주 배정을 지웠습니다.'); } }, '이 주 배정 지우기')) : null,
+      h('button', { class: 'btn small ghost', onclick: async () => { if (!(await confirmBox(`${weekLabel} 이 주에만 바꾼 배정을 지우고 기본 표로 돌릴까요?`))) return; const ov = { ...(p.data.overrides || {}) }; week.forEach((x) => delete ov[x]); save({ overrides: ov, confirmed: dropWeek(week[0]) }, '이 주에만 바꾼 배정을 지웠습니다.'); } }, '이 주 바꾼 것 지우기'))
+      : !confirmed && wk.days ? h('div', { class: 'fx-weektools ro' }, h('span', { class: 'muted small' }, '⏳ 이 주 보결은 아직 확정 전입니다. 바뀔 수 있어요.')) : null,
     h('div', { class: 'fx-editor' },
       h('div', { class: 'fx-main' },
         h('table', { class: 'fx-grid fx-week' },
@@ -297,7 +307,7 @@ export function planTab(root, d, reload, isHoliday) {
           // 이 주 실제로 운영하는 날만 (기간 밖·휴일 제외)
           const m = new Map();
           week.forEach((x) => { if (runsOn(p, x, isHoliday)) entriesOn(p, x, names).forEach((e) => { if (e.kind === 'sub' && !e.cancelled && e.who) m.set(e.who, (m.get(e.who) || 0) + 1); }); });
-          return h('div', { class: 'fx-load2' }, m.size ? h('span', { class: 'muted small' }, `이 주(${weekLabel}): `) : null, [...m].sort((a, b) => b[1] - a[1]).map(([w, n]) => h('span', { class: 'fx-chip' }, `${label(w)} ${n}`)));
+          return h('div', { class: 'fx-load2' }, m.size ? h('span', { class: 'muted small' }, `이 주(${weekLabel}): `) : null, [...m].sort((a, b) => b[1] - a[1]).map(([w, n]) => h('span', { class: `fx-chip ${w === SUB_TEACHER ? 'ext' : ''}` }, `${w === SUB_TEACHER ? '🧑‍🏫 ' : ''}${label(w)} ${n}`)));
         })(),
         h('details', { class: 'fx-paste' }, h('summary', {}, '빠지는 날 · 엑셀 붙여넣기'),
           h('p', { class: 'muted small' }, '학사일정의 휴일·방학은 자동으로 빠집니다. 그 밖에 운영하지 않는 날만 넣으세요.'),
@@ -350,7 +360,7 @@ export function countTab(root, d, isHoliday, reload) {
     h('thead', {}, h('tr', {}, h('th', {}, '교사'), months.map((m) => h('th', { class: `num ${m > curMonth ? 'muted' : ''}` }, `${Number(m.slice(5))}월`)), h('th', { class: 'num' }, '고정'), h('th', { class: 'num' }, '수시'), h('th', { class: 'num fx-sum' }, '합계'), h('th', { class: 'num muted' }, lastCol))),
     h('tbody', {}, rows.map((r) => [
       h('tr', { class: `click ${r.who === me ? 'hl' : ''}`, onclick: () => { open.has(r.who) ? open.delete(r.who) : open.add(r.who); remember('fx_open', [...open]); reload(); } },
-        h('td', { class: 'fx-who' }, h('span', {}, open.has(r.who) ? '▾ ' : '▸ ', r.who), h('i', { class: 'fx-bar', style: { width: `${(r.total / max) * 100}%` } })),
+        h('td', { class: `fx-who ${r.who === SUB_TEACHER ? 'ext' : ''}` }, h('span', {}, open.has(r.who) ? '▾ ' : '▸ ', r.who === SUB_TEACHER ? '🧑‍🏫 ' : '', r.who), h('i', { class: 'fx-bar', style: { width: `${(r.total / max) * 100}%` } })),
         months.map((m) => h('td', { class: 'num' }, r.months[m] || '')),
         h('td', { class: 'num' }, r.fixed || ''), h('td', { class: 'num' }, r.extra || ''), h('td', { class: 'num fx-sum' }, h('b', {}, r.total)), h('td', { class: 'num muted' }, lastVal(r) || '')),
       open.has(r.who) ? h('tr', { class: 'fx-detail' }, h('td', { colspan: months.length + 5 }, r.log.length ? h('div', { class: 'fx-log' }, r.log.map((l) => h('span', { class: `fx-chip ${l.src === '수시' ? 'extra' : ''} ${l.date > t ? 'future' : ''}` }, `${md(l.date)} ${String(l.period).replace('교시', '')}교시 ${l.cls}${l.subj ? `·${l.subj}` : ''}`))) : h('span', { class: 'muted' }, '아직 실시한 보결이 없습니다 (예정만 있음)'))) : null])),
@@ -363,7 +373,7 @@ export function countTab(root, d, isHoliday, reload) {
     for (let x = a; x <= b0; ) { if (runsOn(p, x, isHoliday)) dates.push(x); const [yy, mm, dd] = x.split('-').map(Number); const n = new Date(yy, mm - 1, dd + 1); x = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; }
     const per = p.data.grid?.periods || PERIODS;
     const past = dates.filter((x) => x <= t).reverse(); const next = dates.filter((x) => x > t).slice(0, all ? 400 : 5);
-    const row = (x, future) => { const es = entriesOn(p, x, names); return h('tr', { class: `${x === t ? 'hl' : ''} ${future ? 'fx-future' : ''}` }, h('td', { class: 'nowrap' }, fmtDate(x)), es.map((e) => h('td', { class: `fx-dc ${e.kind} ${e.cancelled ? 'cancel' : ''} ${e.changed ? 'changed' : ''}` }, e.kind === 'sub' ? (e.cancelled ? '—' : e.who) : e.subj)), h('td', { class: 'num' }, es.filter((e) => e.kind === 'sub' && !e.cancelled).length)); };
+    const row = (x, future) => { const es = entriesOn(p, x, names); return h('tr', { class: `${x === t ? 'hl' : ''} ${future ? 'fx-future' : ''}` }, h('td', { class: 'nowrap' }, fmtDate(x)), es.map((e) => h('td', { class: `fx-dc ${e.kind} ${e.who === SUB_TEACHER && !e.cancelled ? 'ext' : ''} ${e.cancelled ? 'cancel' : ''} ${e.changed && !p.data.confirmed?.[weekOf(x)[0]] ? 'changed' : ''}` }, e.kind === 'sub' ? (e.cancelled ? '—' : e.who) : e.subj)), h('td', { class: 'num' }, es.filter((e) => e.kind === 'sub' && !e.cancelled).length)); };
     return h('section', { class: 'section' }, h('h3', {}, `🗓 ${p.data.title}`, h('span', { class: 'muted small' }, ` 실시 ${past.length}일`)),
       h('div', { class: 'table-wrap' }, h('table', { class: 'table compact fx-dates' },
         h('thead', {}, h('tr', {}, h('th', {}, '날짜'), per.map((x) => h('th', {}, x.replace('교시', ''))), h('th', { class: 'num' }, '보결'))),

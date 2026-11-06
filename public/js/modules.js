@@ -123,7 +123,7 @@ export const MODULES = {
     ],
   },
   subPlans: {
-    label: '고정 보결표', icon: '🗓', scope: 'year', edit: 'staff', extras: ['grid', 'overrides', 'skip', 'mode'],
+    label: '고정 보결표', icon: '🗓', scope: 'year', edit: 'staff', extras: ['grid', 'overrides', 'skip', 'mode', 'confirmed'],
     fields: [
       { key: 'title', label: '대상 학급', type: 'select', list: 'classes', free: true, required: true, hint: '예) 6-2 (담임 부재 학급)' },
       { key: 'start', label: '시작일', type: 'date', required: true },

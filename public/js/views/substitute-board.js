@@ -126,7 +126,7 @@ export function substituteBoard(rows, trips, tts, reload, opts = {}) {
       h('span', { class: 'sb-cls' }, line.cls || '—'),
       h('span', { class: 'sb-subj' }, line.subject || ''),
       h('span', { class: 'grow' }),
-      sub ? h('span', { class: 'sb-assigned' }, '→ ', h('strong', {}, sub)) : h('span', { class: 'sb-need' }, '미배정'),
+      sub ? h('span', { class: `sb-assigned ${sub === SUB_TEACHER ? 'ext' : ''}` }, '→ ', h('strong', {}, sub === SUB_TEACHER ? `🧑‍🏫 ${sub}` : sub)) : h('span', { class: 'sb-need' }, '미배정'),
       editable ? h('span', { class: 'sb-acts' },
         h('button', { class: `btn small ${sub ? '' : 'primary'}`, onclick: () => { ui.open = ui.open === key ? '' : key; reload(); } }, sub ? '바꾸기' : '배정하기'),
         line.rec ? h('button', { class: 'btn small ghost', title: '사유·비고 고치기', onclick: () => openRecordForm('substitutes', line.rec, { onSaved: reload }) }, '✎') : null,

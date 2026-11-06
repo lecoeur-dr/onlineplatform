@@ -1656,3 +1656,23 @@ body.cb-full .bottom-bar, body.cb-full .fab { display: none !important; }
 .fx-chip.future { opacity: .55; border: 1px dashed currentColor; }
 .fx-c.blank { cursor: default; background: repeating-linear-gradient(45deg, var(--panel-2) 0 6px, transparent 6px 12px); }
 .fx-c.blank:hover { background: repeating-linear-gradient(45deg, var(--panel-2) 0 6px, transparent 6px 12px); }
+/* 확정·통일 툴바·보결전담강사(외부) 색 */
+.fx-wkstat { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: var(--muted); margin-left: 6px; }
+.fx-wkstat b { color: #e5484d; font-size: 18px; } .fx-wkstat em { font-style: normal; color: #d97706; font-weight: 700; }
+.fx-badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); margin-left: 6px; }
+.fx-badge.ok { background: #dff5e8; color: #157347; }
+.fx-confirm { background: #16a34a !important; border-color: #16a34a !important; }
+.fx-weektools.ro { background: var(--panel-2); }
+.fx-c.ext, .fx-cell.ext { background: #eef0ff !important; }
+.fx-c.ext b, .fx-cell.ext b, .fx-dates td.fx-dc.ext { color: #4338ca !important; font-weight: 800; }
+.fx-c.ext b::before, .fx-cell.ext b::before { content: '🧑‍🏫 '; font-size: .9em; }
+.fx-cell.ext { border-color: #a5b4fc !important; }
+.fx-chip.ext { background: #e0e7ff; color: #3730a3; font-weight: 700; }
+.fx-count td.fx-who.ext span { color: #4338ca; }
+.sb-assigned.ext strong { color: #4338ca !important; }
+.sub-ro { margin: 0 0 10px; }
+@media (prefers-color-scheme: dark) {
+  .fx-c.ext, .fx-cell.ext { background: #23264a !important; }
+  .fx-c.ext b, .fx-cell.ext b, .fx-dates td.fx-dc.ext, .sb-assigned.ext strong, .fx-count td.fx-who.ext span { color: #a5b4fc !important; }
+  .fx-chip.ext { background: #2b2f63; color: #c7d2fe; }
+}

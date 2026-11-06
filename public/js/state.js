@@ -23,11 +23,15 @@ const RANK = { viewer: 1, staff: 2, admin: 3 };
 // 행정·예산 권한: moneyTabs = 보이는 탭(공모사업 담당자는 contests 포함), moneyGrants = 관리자가 준 권한
 export const canSeeTab = (t) => !t?.access || state.me?.role === 'admin' || (state.member?.moneyTabs || []).includes(t.access);
 export const hasGrant = (a) => state.me?.role === 'admin' || (state.member?.moneyGrants || []).includes(a);
+// 보결: 관리자 + 보결 담당자(교감·교무 등)만 고침
+const SUB_EDIT = ['substitutes', 'subPlans'];
+export const canEditSubs = () => canEdit('subPlans');
 const MONEY_EDIT = { budget: ['school', 'contests'], spending: ['school', 'spend', 'contests'], purchases: ['purchases'], purchaseRequests: ['purchases'] };
 
 export function canEdit(moduleId) {
   if (spaceOf(moduleId) !== 'school') return true; // 개인 공간·마켓(본인 글)은 서버가 확인
   const base = (RANK[state.me?.role] || 0) >= RANK[MODULES[moduleId].edit];
+  if (base && SUB_EDIT.includes(moduleId) && state.me?.role !== 'admin') return (state.settings?.subEditors || []).includes(String(state.me?.email || '').toLowerCase());
   if (!base || state.me?.role === 'admin' || !MONEY_EDIT[moduleId]) return base;
   return MONEY_EDIT[moduleId].some((a) => (state.member?.moneyTabs || []).includes(a)); // 세부 범위는 서버가 확인
 }

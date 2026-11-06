@@ -204,10 +204,11 @@ export async function substitutesView(root) {
   // 탭: 하루 배정 / 고정 보결표 / 교사별 시수
   const tab = remember('sub_tab') || 'day';
   const isHoliday = holidayChecker(d.events);
+  const ro = !canEdit('subPlans') ? h('p', { class: 'alert sub-ro' }, '👀 보결은 읽기 전용입니다. 배정·고정 보결표 설정은 교감·교무(학교 관리 → 권한에서 지정한 보결 담당자)만 할 수 있습니다.') : null;
   const tabs = h('div', { class: 'toolbar sub-tabs' }, seg([['day', '📅 하루 배정'], ['plan', `🗓 고정 보결표${d.subPlans.length ? ` (${d.subPlans.length})` : ''}`], ['count', '📊 교사별 시수']], tab, (v) => { remember('sub_tab', v); reload(); }));
   if (tab !== 'day') {
     const body = h('div', {});
-    clear(root, tabs, body);
+    clear(root, tabs, ro, body);
     if (tab === 'plan') planTab(body, d, reload, isHoliday); else countTab(body, d, isHoliday, reload);
     return;
   }
@@ -224,7 +225,7 @@ export async function substitutesView(root) {
   for (const r of rows) if (r.data.substitute) counts.set(r.data.substitute, (counts.get(r.data.substitute) || 0) + 1);
   const mineCount = rows.filter((r) => r.data.substitute === me && r.data.date >= t).length;
   clear(root,
-    tabs,
+    tabs, ro,
     substituteBoard(rows, d.trips, d.timetables, reload, { fixedToday: (date) => fixedToday(d.subPlans, date, { isHoliday, reload }), fixedBusy: (date) => fixedBusy(d.subPlans, date, isHoliday) }),
     h('h3', { class: 'sb-list-title' }, '📋 보결 기록'),
     h('div', { class: 'toolbar' },
