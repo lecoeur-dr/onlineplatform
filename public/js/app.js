@@ -1,24 +1,6 @@
 import { MODULES, GROUPS, DESK_GROUPS, ROLES, APP_NAME, DESK_NAME } from './modules.js';
 import { h, api, clear, toast, modal, today, apiCtx } from './ui.js';
 import { state, setYear, isAdmin, canEdit, remember, defaultSettings, canSeeTab } from './state.js';
-import { dashboardView } from './views/dashboard.js';
-import { tableView } from './views/table.js';
-import { timetableView } from './views/timetable.js';
-import { boardView } from './views/board.js';
-import { adminView } from './views/admin.js';
-import { scheduleOverview, eventsList, tripsView, reviewView } from './views/schedule.js';
-import { classOverview, programsView, openClassesTab, substitutesView } from './views/classes.js';
-import { reservationsView } from './views/reservations.js';
-import { dutiesView } from './views/duties.js';
-import { scholarshipsView } from './views/scholarships.js';
-import { noticeOverview, noticesView, meetingsView, meetingPlansView, briefingsView } from './views/notices.js';
-import { deadlinesView } from './views/deadlines.js';
-import { moneyOverview, purchasesView, budgetView, schoolBudgetView, contestBudgetView, spendView } from './views/money.js';
-import { infoOverview, contactsView, rulesView, resourcesView, assignmentsView } from './views/info.js';
-import { collectionsView } from './views/collections.js';
-import { mealView } from './views/meal.js';
-import { DESK_VIEWS } from './views/desk.js';
-import { joinView, platformView, meView } from './views/account.js';
 import { bellButton, refreshBell } from './views/inbox.js';
 import { searchButton } from './search.js';
 import { openRecordForm } from './form.js';
@@ -26,42 +8,58 @@ import { loadNews, markSeen, noteSeen, paintBadges } from './news.js';
 import { isDemo, startDemo, exitDemo, resetDemo, demoApi } from './demo.js';
 import { applyTheme } from './theme.js';
 
+// 화면 코드는 그 화면을 열 때만 받음 (처음 접속 때 100개 넘는 파일을 한꺼번에 받지 않도록 — 휴대폰 속도)
+const lazy = (load, name) => async (...a) => (await load())[name](...a);
+const M = {
+  dashboard: () => import('./views/dashboard.js'), table: () => import('./views/table.js'), timetable: () => import('./views/timetable.js'),
+  board: () => import('./views/board.js'), admin: () => import('./views/admin.js'), schedule: () => import('./views/schedule.js'),
+  classes: () => import('./views/classes.js'), reservations: () => import('./views/reservations.js'), duties: () => import('./views/duties.js'),
+  scholarships: () => import('./views/scholarships.js'), notices: () => import('./views/notices.js'), deadlines: () => import('./views/deadlines.js'),
+  money: () => import('./views/money.js'), info: () => import('./views/info.js'), collections: () => import('./views/collections.js'),
+  meal: () => import('./views/meal.js'), account: () => import('./views/account.js'), desk: () => import('./views/desk.js'),
+};
+const tableView = lazy(M.table, 'tableView');
+const adminView = lazy(M.admin, 'adminView');
+const joinView = lazy(M.account, 'joinView');
+const platformView = lazy(M.account, 'platformView');
+const meView = lazy(M.account, 'meView');
+
 // OnlinePlatform(학교) 영역/탭 → 화면
 const VIEWS = {
-  'home/': dashboardView,
-  'schedule/overview': scheduleOverview,
-  'schedule/events': eventsList,
-  'schedule/trips': tripsView,
-  'schedule/review': reviewView,
-  'class/overview': classOverview,
-  'class/timetables': timetableView,
-  'class/programs': programsView,
-  'class/openClasses': openClassesTab,
-  'class/substitutes': substitutesView,
-  'class/reservations': reservationsView,
-  'notice/overview': noticeOverview,
-  'notice/notices': noticesView,
-  'notice/briefings': briefingsView,
-  'notice/meetingPlans': meetingPlansView,
-  'notice/meetings': meetingsView,
-  'notice/collections': collectionsView,
-  'notice/meal': mealView,
-  'notice/duties': dutiesView,
-  'notice/scholarships': scholarshipsView,
-  'money/overview': moneyOverview,
-  'money/purchases': purchasesView,
-  'money/budget': budgetView,
-  'money/school': schoolBudgetView,
-  'money/contests': contestBudgetView,
-  'money/spend': spendView,
-  'money/deadlines': deadlinesView,
+  'home/': lazy(M.dashboard, 'dashboardView'),
+  'schedule/overview': lazy(M.schedule, 'scheduleOverview'),
+  'schedule/events': lazy(M.schedule, 'eventsList'),
+  'schedule/trips': lazy(M.schedule, 'tripsView'),
+  'schedule/review': lazy(M.schedule, 'reviewView'),
+  'class/overview': lazy(M.classes, 'classOverview'),
+  'class/timetables': lazy(M.timetable, 'timetableView'),
+  'class/programs': lazy(M.classes, 'programsView'),
+  'class/openClasses': lazy(M.classes, 'openClassesTab'),
+  'class/substitutes': lazy(M.classes, 'substitutesView'),
+  'class/reservations': lazy(M.reservations, 'reservationsView'),
+  'notice/overview': lazy(M.notices, 'noticeOverview'),
+  'notice/notices': lazy(M.notices, 'noticesView'),
+  'notice/briefings': lazy(M.notices, 'briefingsView'),
+  'notice/meetingPlans': lazy(M.notices, 'meetingPlansView'),
+  'notice/meetings': lazy(M.notices, 'meetingsView'),
+  'notice/collections': lazy(M.collections, 'collectionsView'),
+  'notice/meal': lazy(M.meal, 'mealView'),
+  'notice/duties': lazy(M.duties, 'dutiesView'),
+  'notice/scholarships': lazy(M.scholarships, 'scholarshipsView'),
+  'money/overview': lazy(M.money, 'moneyOverview'),
+  'money/purchases': lazy(M.money, 'purchasesView'),
+  'money/budget': lazy(M.money, 'budgetView'),
+  'money/school': lazy(M.money, 'schoolBudgetView'),
+  'money/contests': lazy(M.money, 'contestBudgetView'),
+  'money/spend': lazy(M.money, 'spendView'),
+  'money/deadlines': lazy(M.deadlines, 'deadlinesView'),
   'money/contestInfo': (el) => tableView(el, 'contestInfo', { groupBy: 'topic' }),
-  'info/overview': infoOverview,
-  'info/assignments': assignmentsView,
-  'info/resources': resourcesView,
-  'info/contacts': contactsView,
-  'info/rules': rulesView,
-  'info/boards': boardView,
+  'info/overview': lazy(M.info, 'infoOverview'),
+  'info/assignments': lazy(M.info, 'assignmentsView'),
+  'info/resources': lazy(M.info, 'resourcesView'),
+  'info/contacts': lazy(M.info, 'contactsView'),
+  'info/rules': lazy(M.info, 'rulesView'),
+  'info/boards': lazy(M.board, 'boardView'),
 };
 
 // v1 주소(#/events 등) → v2 주소
@@ -384,7 +382,7 @@ async function route() {
     loadNews().then(() => { if (tab?.module) markSeen(tab.module); paintBadges(); });
   }
   try {
-    const view = space === 'desk' ? DESK_VIEWS[key] : VIEWS[key];
+    const view = space === 'desk' ? (await M.desk()).DESK_VIEWS[key] : VIEWS[key];
     if (!view) { location.replace(space === 'desk' ? '#/desk/home' : '#/home/'); return; }
     await view(content);
     // 검색 결과에서 고른 기록 열기
@@ -420,7 +418,15 @@ async function refresh() {
 }
 
 window.addEventListener('hashchange', () => { if (main) route(); });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // 새 버전이 배포되면(서비스 워커 교체) 한 번만 새로고침 — 휴대폰에 저장된 예전 화면 파일과 섞이지 않도록. 쓰는 중인 창이 있으면 다음 이동 때
+  const had = !!navigator.serviceWorker.controller;
+  let pending = false;
+  const reloadNow = () => { if (!document.querySelector('.modal-wrap')) location.reload(); else pending = true; };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) reloadNow(); });
+  window.addEventListener('hashchange', () => { if (pending) location.reload(); });
+}
 // 안드로이드 크롬: '홈 화면에 추가' 창을 나중에 띄울 수 있도록 보관
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); state.installPrompt = e; });
 boot();

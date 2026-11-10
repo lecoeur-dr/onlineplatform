@@ -6,14 +6,7 @@ import { openRecordForm } from '../form.js';
 import { tableView } from './table.js';
 import { seg } from './schedule.js';
 import { loadStudents, sortStudents, todoItem, lessonsOn, dowOf, ATT_COLOR, monthOf, copyText } from './desk-common.js';
-import { classBoardView } from './desk-board.js';
-import { studentCards, attendanceView, checklistsView, pointsView, studentsView, seatsView, rolesView, toolsView } from './desk-class.js';
-import { weekBoard, dailyNotesView, weeklyView, myTimetableView, progressView } from './desk-lesson.js';
-import { evalView, studentEvalView, remarksView, planDocView, standardsView } from './desk-eval.js';
-import { evalToolsView, boardView } from './desk-tools.js';
-import { workshopHome, myTools, toolRunner } from './workshop.js';
 import { portfolioView, careerView, worksheetsView, quizView, loadPrefs, savePrefs, orderPicker } from './desk-more.js';
-import { classroomView } from './classroom.js';
 
 // ---------- 내 책상 (홈): 카드 목록에서 골라 끌어오고 빼고 순서 바꾸기 (설정은 계정에 저장) ----------
 
@@ -184,38 +177,41 @@ async function todosView(root) {
     h('p', { class: 'hint' }, '반복 할 일(매일·평일·매주·매월)은 체크하면 다음 날짜로 넘어갑니다. 나만 보는 목록입니다.'));
 }
 
+// 내 책상 화면 코드도 열 때만 받음
+const lazy = (load, name) => async (...a) => (await load())[name](...a);
+const L = { board: () => import('./desk-board.js'), cls: () => import('./desk-class.js'), lesson: () => import('./desk-lesson.js'), ev: () => import('./desk-eval.js'), tools: () => import('./desk-tools.js'), shop: () => import('./workshop.js'), room: () => import('./classroom.js') };
 export const DESK_VIEWS = {
   'home/': deskHome,
-  'class/overview': studentCards,
-  'class/attendance': (el) => attendanceView(el),
-  'class/checklists': (el) => checklistsView(el),
-  'class/points': pointsView,
-  'class/students': studentsView,
-  'class/seats': (el) => seatsView(el),
-  'class/roles': rolesView,
+  'class/overview': lazy(L.cls, 'studentCards'),
+  'class/attendance': (el) => lazy(L.cls, 'attendanceView')(el),
+  'class/checklists': (el) => lazy(L.cls, 'checklistsView')(el),
+  'class/points': lazy(L.cls, 'pointsView'),
+  'class/students': lazy(L.cls, 'studentsView'),
+  'class/seats': (el) => lazy(L.cls, 'seatsView')(el),
+  'class/roles': lazy(L.cls, 'rolesView'),
   'class/portfolio': portfolioView,
   'class/career': careerView,
-  'class/board': classBoardView,
-  'class/tools': toolsView,
-  'lesson/overview': (el) => weekBoard(el),
-  'lesson/notes': dailyNotesView,
-  'lesson/weekly': (el) => weeklyView(el),
-  'lesson/board': boardView,
+  'class/board': lazy(L.board, 'classBoardView'),
+  'class/tools': lazy(L.cls, 'toolsView'),
+  'lesson/overview': (el) => lazy(L.lesson, 'weekBoard')(el),
+  'lesson/notes': lazy(L.lesson, 'dailyNotesView'),
+  'lesson/weekly': (el) => lazy(L.lesson, 'weeklyView')(el),
+  'lesson/board': lazy(L.tools, 'boardView'),
   'lesson/quiz': quizView,
   'lesson/worksheets': worksheetsView,
-  'lesson/timetable': myTimetableView,
-  'lesson/progress': progressView,
-  'eval/overview': (el) => evalView(el),
-  'eval/tools': evalToolsView,
-  'eval/plan': planDocView,
-  'eval/standards': standardsView,
-  'eval/students': studentEvalView,
-  'eval/remarks': remarksView,
+  'lesson/timetable': lazy(L.lesson, 'myTimetableView'),
+  'lesson/progress': lazy(L.lesson, 'progressView'),
+  'eval/overview': (el) => lazy(L.ev, 'evalView')(el),
+  'eval/tools': lazy(L.tools, 'evalToolsView'),
+  'eval/plan': lazy(L.ev, 'planDocView'),
+  'eval/standards': lazy(L.ev, 'standardsView'),
+  'eval/students': lazy(L.ev, 'studentEvalView'),
+  'eval/remarks': lazy(L.ev, 'remarksView'),
   'record/overview': notesView,
   'record/counsels': counselsView,
   'record/todos': todosView,
-  'market/overview': workshopHome,
-  'market/mine': myTools,
-  'market/classroom': classroomView,
-  'market/run': toolRunner,
+  'market/overview': lazy(L.shop, 'workshopHome'),
+  'market/mine': lazy(L.shop, 'myTools'),
+  'market/classroom': lazy(L.room, 'classroomView'),
+  'market/run': lazy(L.shop, 'toolRunner'),
 };
