@@ -13,6 +13,7 @@ const SYN = {
   category: ['분류', '구분', '종류', '품목'], title: ['자료명', '제목', '이름', '명칭', '사이트명'], url: ['링크', '주소', 'url', '사이트주소', '바로가기', '홈페이지'],
   note: ['비고', '설명', '메모', '참고'], section: ['영역', '장', '대분류'], group: ['구분', '항목', '중분류'], rule: ['규정', '사무', '업무', '전결사항'],
   detail: ['세부', '시간', '세부내용', '시간세부'], process: ['절차', '결재', '전결', '결재절차', '전결권자'],
+  round: ['회차', '선정회차', '위원회회차', '선정위원회회차', '차수'], date: ['선정일', '날짜', '일자', '선정일자', '위원회날짜'],
   program: ['장학금사업', '사업', '장학금종류', '사업종류', '장학사업'], grade: ['학년'], cls: ['반'], num: ['번호', '출석번호'], amount: ['장학금', '금액', '지급액', '장학금액'], reason: ['선정사유', '사유', '추천사유'],
   site: ['사이트', '사이트장소', '업체명', '사이트명', '기관', '장소'], account: ['아이디', 'id', '계정'], password: ['비밀번호', '비번', 'pw', '패스워드'],
 };
@@ -65,6 +66,7 @@ export function openFileImport(moduleId, { reload } = {}) {
       map.forEach((k, i) => { if (k && r[i] !== undefined && String(r[i]).trim()) d[k] = d[k] ? `${d[k]} ${String(r[i]).trim()}` : String(r[i]).trim(); });
       if (!Object.keys(d).length) return null;
       for (const k of CARRY) if (map.includes(k) && !d[k] && prev[k]) d[k] = prev[k];
+      if (d.date) { const m = d.date.match(/(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/); if (m) d.date = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`; }
       if (d.url) { const u = d.url.match(/https?:\/\/\S+/); d.url = u ? u[0] : /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(d.url) ? `https://${d.url}` : d.url; }
       prev = d;
       const missing = fields.filter((f) => f.required && !d[f.key]).map((f) => f.label);

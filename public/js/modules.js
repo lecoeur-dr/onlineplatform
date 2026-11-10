@@ -158,6 +158,8 @@ export const MODULES = {
   scholarships: {
     label: '장학생', icon: '🎓', scope: 'year', edit: 'staff',
     fields: [
+      { key: 'round', label: '선정위원회 회차', type: 'text', hint: '예) 제1회 (장학생선정위원회 회차)' },
+      { key: 'date', label: '선정일', type: 'date', hint: '위원회 날짜 또는 선정일' },
       { key: 'program', label: '장학금 사업', type: 'select', list: 'scholarshipPrograms', free: true, required: true, hint: '예) ○○장학회 장학금' },
       { key: 'grade', label: '학년', type: 'select', options: ['1', '2', '3', '4', '5', '6'], required: true },
       { key: 'cls', label: '반', type: 'number', required: true },

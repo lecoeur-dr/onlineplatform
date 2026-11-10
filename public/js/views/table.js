@@ -87,9 +87,9 @@ function render(root, moduleId, rows, opts = {}) {
     const gf = def.fields.find((f) => f.key === opts.groupBy);
     body = [...groups].map(([k, list]) => [
       h('tr', { class: 'group-row' }, h('td', { colspan: cols.length },
-        h('strong', {}, k), h('span', { class: 'muted' }, ` · ${list.length}건`),
+        h('strong', {}, opts.groupLabel ? opts.groupLabel(k, list) : k), h('span', { class: 'muted' }, ` · ${list.length}건`),
         sums.map((f) => h('span', { class: 'muted' }, ` · ${f.label} ${won(total(list, f))}`)),
-        editable && !opts.noGroupAdd ? h('button', { class: 'link-btn', onclick: () => openRecordForm(moduleId, null, { defaults: { ...(opts.defaults || {}), [opts.groupBy]: k === '(구분 없음)' ? '' : k }, onSaved: reload }) }, `+ 이 ${gf?.label || '묶음'}에 추가`) : null)),
+        editable && !opts.noGroupAdd ? h('button', { class: 'link-btn', onclick: () => openRecordForm(moduleId, null, { defaults: { ...(opts.defaults || {}), [opts.groupBy]: k === '(구분 없음)' ? '' : k, ...(opts.groupDefaults?.(k, list) || {}) }, onSaved: reload }) }, `+ 이 ${gf?.label || '묶음'}에 추가`) : null)),
       list.map(row)]);
   } else body = shown.map(row);
 

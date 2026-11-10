@@ -1684,6 +1684,6 @@ body.cb-full .bottom-bar, body.cb-full .fab { display: none !important; }
 .sch-card.on { border-color: var(--primary); background: var(--primary-soft); } .sch-card.on span { color: var(--primary); }
 .sch-grades { overflow-x: auto; max-width: 100%; } .sch-grades .seg button { white-space: nowrap; }
 .sch-box td { word-break: keep-all; }
-.sch-box td:nth-child(1), .sch-box td:nth-child(2), .sch-box td:nth-child(3), .sch-box td:nth-child(4), .sch-box td:nth-child(5) { white-space: nowrap; }
+.sch-box td { white-space: nowrap; }
 @media (max-width: 700px) { .sch-sum { grid-template-columns: 1fr 1fr; } .sch-card b { font-size: 18px; } }
-.sch-box td:nth-child(6) { min-width: 180px; }
+.sch-box td:last-child { min-width: 180px; white-space: normal; }
