@@ -611,7 +611,7 @@ app.post('/api/records/:module', async (c) => {
 });
 
 // 📥 학교 정보 메뉴(업무분장·자료실·내선번호·위임전결·바로가기·계정)에 한글·엑셀 표를 한 번에 넣기
-const BULK_MODULES = ['assignments', 'resources', 'contacts', 'rules', 'links', 'secrets'];
+const BULK_MODULES = ['assignments', 'resources', 'contacts', 'rules', 'links', 'secrets', 'scholarships'];
 app.post('/api/records/:module/bulk', async (c) => {
   const m = requireModule(c);
   if (!BULK_MODULES.includes(m)) return c.json({ error: '이 메뉴는 표로 한 번에 넣을 수 없습니다.' }, 400);

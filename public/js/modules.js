@@ -28,6 +28,7 @@ export const DEFAULT_LISTS = {
   resourceCategories: ['공문 서식', '업무 양식', '매뉴얼·지침', '수업 자료', '기타'],
   specialists: [],
   budgetCategories: ['일반수용비', '운영수당', '강사수당', '여비', '업무추진비', '임차료', '일반용역비', '자산취득비', '도서구입비', '기타'],
+  scholarshipPrograms: ['교육청 장학금', '학교 장학금', '지역 장학회', '동문회 장학금', '기업·단체 장학금', '기타'],
   subjects: ['국어', '수학', '사회', '과학', '영어', '도덕', '실과', '체육', '음악', '미술', '바른 생활', '슬기로운 생활', '즐거운 생활', '창의적 체험활동'],
 };
 
@@ -152,6 +153,18 @@ export const MODULES = {
       { key: 'className', label: '학급', type: 'select', list: 'classes', free: true },
       { key: 'purpose', label: '용도', type: 'text', hint: '예) 과학 실험, 학부모 상담' },
       { key: 'note', label: '비고', type: 'text' },
+    ],
+  },
+  scholarships: {
+    label: '장학생', icon: '🎓', scope: 'year', edit: 'staff',
+    fields: [
+      { key: 'program', label: '장학금 사업', type: 'select', list: 'scholarshipPrograms', free: true, required: true, hint: '예) ○○장학회 장학금' },
+      { key: 'grade', label: '학년', type: 'select', options: ['1', '2', '3', '4', '5', '6'], required: true },
+      { key: 'cls', label: '반', type: 'number', required: true },
+      { key: 'num', label: '번호', type: 'number' },
+      { key: 'name', label: '이름', type: 'text', required: true },
+      { key: 'amount', label: '장학금', type: 'money', sum: true, hint: '금액(원). 물품이면 비고처럼 사유에 적기' },
+      { key: 'reason', label: '선정 사유', type: 'textarea', enc: true, hint: '암호화해 저장합니다. 가정 형편 등 민감한 내용은 꼭 필요한 만큼만' },
     ],
   },
   duties: {
@@ -723,6 +736,7 @@ export const GROUPS = [
     { id: 'collections', label: '취합', module: 'collections' },
     { id: 'meal', label: '급식 의견', module: 'mealPolls' },
     { id: 'duties', label: '담당 배정', module: 'duties' },
+    { id: 'scholarships', label: '장학생', module: 'scholarships' },
     { id: 'meetingPlans', label: '회의', module: 'meetingPlans' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },

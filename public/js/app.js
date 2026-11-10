@@ -10,6 +10,7 @@ import { scheduleOverview, eventsList, tripsView, reviewView } from './views/sch
 import { classOverview, programsView, openClassesTab, substitutesView } from './views/classes.js';
 import { reservationsView } from './views/reservations.js';
 import { dutiesView } from './views/duties.js';
+import { scholarshipsView } from './views/scholarships.js';
 import { noticeOverview, noticesView, meetingsView, meetingPlansView, briefingsView } from './views/notices.js';
 import { deadlinesView } from './views/deadlines.js';
 import { moneyOverview, purchasesView, budgetView, schoolBudgetView, contestBudgetView, spendView } from './views/money.js';
@@ -46,6 +47,7 @@ const VIEWS = {
   'notice/collections': collectionsView,
   'notice/meal': mealView,
   'notice/duties': dutiesView,
+  'notice/scholarships': scholarshipsView,
   'money/overview': moneyOverview,
   'money/purchases': purchasesView,
   'money/budget': budgetView,

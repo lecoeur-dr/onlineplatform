@@ -1676,3 +1676,14 @@ body.cb-full .bottom-bar, body.cb-full .fab { display: none !important; }
   .fx-c.ext b, .fx-cell.ext b, .fx-dates td.fx-dc.ext, .sb-assigned.ext strong, .fx-count td.fx-who.ext span { color: #a5b4fc !important; }
   .fx-chip.ext { background: #2b2f63; color: #c7d2fe; }
 }
+/* 🎓 장학생 */
+.sch-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.sch-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; text-align: left; min-width: 0; }
+.sch-card span { font-size: 13px; color: var(--muted); font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sch-card b { font-size: 22px; } .sch-card small { color: var(--muted); }
+.sch-card.on { border-color: var(--primary); background: var(--primary-soft); } .sch-card.on span { color: var(--primary); }
+.sch-grades { overflow-x: auto; max-width: 100%; } .sch-grades .seg button { white-space: nowrap; }
+.sch-box td { word-break: keep-all; }
+.sch-box td:nth-child(1), .sch-box td:nth-child(2), .sch-box td:nth-child(3), .sch-box td:nth-child(4), .sch-box td:nth-child(5) { white-space: nowrap; }
+@media (max-width: 700px) { .sch-sum { grid-template-columns: 1fr 1fr; } .sch-card b { font-size: 18px; } }
+.sch-box td:nth-child(6) { min-width: 180px; }
