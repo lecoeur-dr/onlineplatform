@@ -1,7 +1,7 @@
 // 앱처럼 설치(홈 화면 추가)를 위한 최소 서비스 워커
 // - 화면 파일(js/css/아이콘)은 저장본을 바로 쓰고 뒤에서 새 버전을 받아 둠. 배포마다 CACHE 이름을 바꿔 예전 것은 지움
 // - 로그인·데이터(/api, /auth)는 절대 캐시하지 않음 (학교 정보가 기기에 남지 않도록)
-const CACHE = 'gy-shell-v71';
+const CACHE = 'gy-shell-v72';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {

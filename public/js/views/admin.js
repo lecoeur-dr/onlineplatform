@@ -7,7 +7,7 @@ import { swatches, applyTheme } from '../theme.js';
 import { smartTab } from './smart-tab.js';
 
 let tab = 'users';
-const TABS = { users: '👥 사용자·초대', access: '🔐 권한 (예산·보결)', settings: '⚙️ 설정', smart: '🪄 새 학기 가져오기', audit: '🕘 변경 기록', import: '📄 기존 시트', copy: '📋 연도 복사', backup: '💾 백업' };
+const TABS = { users: '👥 사용자·초대', access: '🔐 권한 (예산·보결·서명)', settings: '⚙️ 설정', smart: '🪄 새 학기 가져오기', audit: '🕘 변경 기록', import: '📄 기존 시트', copy: '📋 연도 복사', backup: '💾 백업' };
 
 // 휴대폰에서 넓은 표 → 줄마다 카드로 (머리글을 각 칸 앞에 이름표로 붙임)
 export function stackTables(root) {
@@ -42,11 +42,13 @@ async function accessTab(root, refreshApp) {
   const grants = {};
   for (const a of MONEY_ACCESS) grants[a.id] = new Set(state.settings.access?.[a.id] || []);
   const subs = new Set(state.settings.subEditors || []); // 보결 담당
+  const signs = new Set(state.settings.signEditors || []); // 회의록 서명 담당
   let q = '';
   const tbody = h('tbody', {});
   const draw = () => clear(tbody, list.filter((u) => !q || `${u.name} ${u.email} ${u.dept}`.includes(q)).map((u) => h('tr', {},
     h('td', {}, h('strong', {}, u.name || '(이름 없음)'), h('div', { class: 'muted small' }, u.email)),
     h('td', { class: 'small' }, u.dept || ''),
+    h('td', { class: 'center sub-col' }, h('input', { type: 'checkbox', checked: signs.has(u.email), title: `${u.name || u.email} · 회의록 서명`, onchange: (e) => { if (e.target.checked) signs.add(u.email); else signs.delete(u.email); dirty(); } })),
     h('td', { class: 'center sub-col' }, h('input', { type: 'checkbox', checked: subs.has(u.email), title: `${u.name || u.email} · 보결 관리`, onchange: (e) => { if (e.target.checked) subs.add(u.email); else subs.delete(u.email); dirty(); } })),
     MONEY_ACCESS.map((a) => h('td', { class: 'center' }, h('input', { type: 'checkbox', checked: grants[a.id].has(u.email), title: `${u.name || u.email} · ${a.label}`,
       onchange: (e) => { if (e.target.checked) grants[a.id].add(u.email); else grants[a.id].delete(u.email); dirty(); } }))),
@@ -54,7 +56,7 @@ async function accessTab(root, refreshApp) {
   const save = h('button', { class: 'btn primary', disabled: true, onclick: async () => {
     try {
       const access = Object.fromEntries(MONEY_ACCESS.map((a) => [a.id, [...grants[a.id]]]));
-      state.settings = await api('/api/admin/settings', { method: 'PUT', body: { access, subEditors: [...subs] } });
+      state.settings = await api('/api/admin/settings', { method: 'PUT', body: { access, subEditors: [...subs], signEditors: [...signs] } });
       save.disabled = true; toast('권한을 저장했습니다. 해당 선생님은 새로고침하면 메뉴가 바뀝니다.');
     } catch (e) { toast(e.message, 'error'); }
   } }, '저장');
@@ -63,11 +65,11 @@ async function accessTab(root, refreshApp) {
   clear(root,
     h('p', { class: 'hint' }, '🔁 보결 관리: 체크한 사람(교감·교무 등)과 관리자만 보결을 설정하고, 나머지는 읽기 전용입니다. 행정·예산 메뉴는 기본으로 관리자만 봅니다. 「공모 안내」·「기한 안내」는 모든 교직원에게 보이고, 나머지 탭은 여기서 체크한 사람에게만 열립니다. 공모사업은 [공모사업] 탭에서 담당자로 지정된 사람도 자기 사업만 볼 수 있습니다.'),
     h('div', { class: 'toolbar' }, h('input', { type: 'search', placeholder: '이름·부서 찾기', oninput: (e) => { q = e.target.value.trim(); draw(); } }), h('span', { class: 'grow' }),
-      h('span', { class: 'muted small' }, `보결 관리 ${subs.size}명 · `, MONEY_ACCESS.map((a) => `${a.label} ${grants[a.id].size}명`).join(' · ')), save),
+      h('span', { class: 'muted small' }, `회의록 서명 ${signs.size}명 · 보결 관리 ${subs.size}명 · `, MONEY_ACCESS.map((a) => `${a.label} ${grants[a.id].size}명`).join(' · ')), save),
     list.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, h('th', {}, '교직원'), h('th', {}, '부서'), h('th', { class: 'center sub-col', title: '하루 배정·고정 보결표를 고칠 수 있음 (나머지는 읽기 전용)' }, '🔁 보결 관리'), MONEY_ACCESS.map((a) => h('th', { class: 'center', title: a.hint }, a.label)), h('th', {}, ''))),
+      h('thead', {}, h('tr', {}, h('th', {}, '교직원'), h('th', {}, '부서'), h('th', { class: 'center sub-col', title: '인사자문위원회 등 회의록을 만들고 위원 서명을 받음' }, '✍️ 회의록 서명'), h('th', { class: 'center sub-col', title: '하루 배정·고정 보결표를 고칠 수 있음 (나머지는 읽기 전용)' }, '🔁 보결 관리'), MONEY_ACCESS.map((a) => h('th', { class: 'center', title: a.hint }, a.label)), h('th', {}, ''))),
       tbody)) : h('p', { class: 'muted' }, '승인된 교직원이 없습니다.'),
-    h('ul', { class: 'muted small' }, h('li', {}, h('strong', {}, '🔁 보결 관리'), ' — 하루 배정·고정 보결표를 만들고 고침 (보통 교감·교무). 체크하지 않은 교직원은 보결을 읽기 전용으로 봅니다.'), MONEY_ACCESS.map((a) => h('li', {}, h('strong', {}, a.label), ` — ${a.hint}`))));
+    h('ul', { class: 'muted small' }, h('li', {}, h('strong', {}, '✍️ 회의록 서명'), ' — 인사자문위원회 등 회의록을 만들고, 위원별 링크·비밀번호로 서명을 받고, 원본 PDF를 만듦 (보통 교감).'), h('li', {}, h('strong', {}, '🔁 보결 관리'), ' — 하루 배정·고정 보결표를 만들고 고침 (보통 교감·교무). 체크하지 않은 교직원은 보결을 읽기 전용으로 봅니다.'), MONEY_ACCESS.map((a) => h('li', {}, h('strong', {}, a.label), ` — ${a.hint}`))));
 }
 
 // 담임 학급·전담 고르기: 시간표 탭이 이 시간표로 바로 열림 (설정의 학급·전담 목록)

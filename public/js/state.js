@@ -26,6 +26,8 @@ export const hasGrant = (a) => state.me?.role === 'admin' || (state.member?.mone
 // 보결: 관리자 + 보결 담당자(교감·교무 등)만 고침
 const SUB_EDIT = ['substitutes', 'subPlans'];
 export const canEditSubs = () => canEdit('subPlans');
+// 회의록 전자서명 관리: 관리자 + 담당자
+export const canManageSign = () => state.me?.role === 'admin' || (state.settings?.signEditors || []).includes(String(state.me?.email || '').toLowerCase());
 const MONEY_EDIT = { budget: ['school', 'contests'], spending: ['school', 'spend', 'contests'], purchases: ['purchases'], purchaseRequests: ['purchases'] };
 
 export function canEdit(moduleId) {

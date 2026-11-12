@@ -739,6 +739,7 @@ export const GROUPS = [
     { id: 'meal', label: '급식 의견', module: 'mealPolls' },
     { id: 'duties', label: '담당 배정', module: 'duties' },
     { id: 'scholarships', label: '장학생', module: 'scholarships' },
+    { id: 'signs', label: '✍️ 회의록 서명' },
     { id: 'meetingPlans', label: '회의', module: 'meetingPlans' },
     { id: 'meetings', label: '회의록', module: 'meetings' },
   ] },

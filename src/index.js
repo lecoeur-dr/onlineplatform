@@ -8,6 +8,7 @@ import { presetQuestions, tallyOf, checkAnswers } from '../public/js/collect.js'
 import { isSubtotalRow } from '../public/js/budget-groups.js';
 import { checkMeal, mealResults, gradesOf, optionsOf, maxPickOf, recCountOf } from '../public/js/meal.js';
 import { notify, pushReady, sendPush } from './push.js';
+import { mountSign } from './sign.js';
 
 const app = new Hono();
 const RANK = { viewer: 1, staff: 2, admin: 3 };
@@ -36,6 +37,7 @@ async function getSettings(db, schoolId) {
     neis: s.neis || null, // { atpt, code, name, office, lastSync }
     theme: s.theme || null, // { accent }
     access: s.access || {}, // 행정·예산 탭별 권한 { 탭: [이메일] }
+    signEditors: s.signEditors || [], // 회의록 전자서명 관리 [이메일] — 관리자 + 여기 든 사람(교감 등)
     subEditors: s.subEditors || [], // 보결(하루 배정·고정 보결표) 설정 권한 [이메일] — 관리자 + 여기 든 사람(교감·교무 등)
   };
 }
@@ -1131,6 +1133,7 @@ app.put('/api/admin/settings', async (c) => {
     for (const a of MONEY_AREAS) clean[a] = [...new Set((b.access?.[a] || []).map((x) => String(x).trim().toLowerCase()).filter((x) => x.includes('@')))].slice(0, 200);
     stmts.push(putSetting(db, schoolId, 'access', clean));
   }
+  if (b.signEditors !== undefined) stmts.push(putSetting(db, schoolId, 'signEditors', [...new Set((b.signEditors || []).map((x) => String(x).trim().toLowerCase()).filter((x) => x.includes('@')))].slice(0, 50)));
   if (b.subEditors !== undefined) stmts.push(putSetting(db, schoolId, 'subEditors', [...new Set((b.subEditors || []).map((x) => String(x).trim().toLowerCase()).filter((x) => x.includes('@')))].slice(0, 50)));
   if (b.theme !== undefined) stmts.push(putSetting(db, schoolId, 'theme', { accent: String(b.theme?.accent || 'indigo').replace(/[^a-z]/g, '').slice(0, 12) }));
   if (b.schoolName) stmts.push(db.prepare('UPDATE schools SET name = ? WHERE id = ?').bind(String(b.schoolName).slice(0, 40), schoolId));
@@ -1402,6 +1405,9 @@ async function scheduled(_event, env, ctx) {
 }
 
 // 위에 없는 /api 주소 (맨 마지막에 둬야 다른 주소를 가리지 않음)
+// ✍️ 회의록 전자서명
+mountSign(app, { requireSchool, getSettings, err, encryptText, decryptText });
+
 app.all('/api/*', (c) => c.json({ error: '없는 주소입니다.' }, 404));
 
 export default { fetch: app.fetch, scheduled };

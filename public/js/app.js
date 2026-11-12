@@ -16,7 +16,7 @@ const M = {
   classes: () => import('./views/classes.js'), reservations: () => import('./views/reservations.js'), duties: () => import('./views/duties.js'),
   scholarships: () => import('./views/scholarships.js'), notices: () => import('./views/notices.js'), deadlines: () => import('./views/deadlines.js'),
   money: () => import('./views/money.js'), info: () => import('./views/info.js'), collections: () => import('./views/collections.js'),
-  meal: () => import('./views/meal.js'), account: () => import('./views/account.js'), desk: () => import('./views/desk.js'),
+  meal: () => import('./views/meal.js'), sign: () => import('./views/sign.js'), account: () => import('./views/account.js'), desk: () => import('./views/desk.js'),
 };
 const tableView = lazy(M.table, 'tableView');
 const adminView = lazy(M.admin, 'adminView');
@@ -46,6 +46,7 @@ const VIEWS = {
   'notice/meal': lazy(M.meal, 'mealView'),
   'notice/duties': lazy(M.duties, 'dutiesView'),
   'notice/scholarships': lazy(M.scholarships, 'scholarshipsView'),
+  'notice/signs': lazy(M.sign, 'signView'),
   'money/overview': lazy(M.money, 'moneyOverview'),
   'money/purchases': lazy(M.money, 'purchasesView'),
   'money/budget': lazy(M.money, 'budgetView'),

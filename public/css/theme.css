@@ -1687,3 +1687,41 @@ body.cb-full .bottom-bar, body.cb-full .fab { display: none !important; }
 .sch-box td { white-space: nowrap; }
 @media (max-width: 700px) { .sch-sum { grid-template-columns: 1fr 1fr; } .sch-card b { font-size: 18px; } }
 .sch-box td:last-child { min-width: 180px; white-space: normal; }
+
+/* ✍️ 회의록 서명 */
+.sg-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.sg-card { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 14px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+.sg-card:hover { border-color: var(--primary); }
+.sg-card strong { font-size: 16px; line-height: 1.35; }
+.sg-top { display: flex; gap: 6px; flex-wrap: wrap; }
+.sg-prog { height: 7px; border-radius: 9px; background: var(--panel-2); overflow: hidden; } .sg-prog i { display: block; height: 100%; background: var(--primary); }
+.sg-form textarea { font: inherit; }
+.sg-members { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+.sg-mrow { display: grid; grid-template-columns: 28px 110px minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.sg-ord { font-weight: 800; text-align: center; color: var(--muted); }
+.sg-mbtn { display: flex; gap: 2px; }
+.sg-pw { font-size: 18px; letter-spacing: 3px; font-family: ui-monospace, Menlo, monospace; }
+.sg-detail { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+.sg-doc-wrap { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 8px; overflow: auto; }
+.sg-mt tr.done td { background: color-mix(in srgb, var(--ok) 6%, transparent); }
+.sg-sigthumb { height: 34px; max-width: 110px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+.sg-acts { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.sg-pdfs { margin-top: 10px; } .sg-log { margin-top: 10px; } .sg-log summary { cursor: pointer; font-weight: 700; }
+/* 회의록 문서 (미리보기·PDF): 항상 흰 종이에 검정 글씨 */
+.sg-doc { color: #111; background: #fff; font-family: 'Pretendard Variable', 'Malgun Gothic', sans-serif; padding: 28px 30px; font-size: 14px; line-height: 1.65; }
+.sg-doc h1 { text-align: center; font-size: 22px; margin: 4px 0 18px; letter-spacing: 1px; }
+.sg-doc h2 { text-align: center; font-size: 18px; margin: 4px 0 12px; } .sg-doc h3 { font-size: 15px; margin: 16px 0 6px; }
+.sg-tbl { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.sg-tbl th, .sg-tbl td { border: 1px solid #333; padding: 7px 9px; vertical-align: top; color: #111; }
+.sg-tbl th { background: #f1f1f4; width: 90px; text-align: center; font-weight: 700; white-space: nowrap; }
+.sg-pre { white-space: pre-wrap; min-height: 60px; }
+.sg-confirm { text-align: center; margin: 18px 0 4px; } .sg-date { text-align: center; margin: 0 0 10px; font-weight: 700; } .sg-school { text-align: center; font-size: 18px; font-weight: 800; margin-top: 18px; letter-spacing: 2px; }
+.sg-signs th { width: auto; } .sg-signs td { text-align: center; vertical-align: middle; height: 54px; }
+.sg-sigcell img { max-height: 46px; max-width: 160px; }
+.sg-proof td, .sg-proof th { font-size: 12px; text-align: left; }
+.sg-doc .mono { font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+.sg-stage { position: fixed; left: -10000px; top: 0; width: 794px; background: #fff; }
+.sg-page { width: 794px; min-height: 1123px; background: #fff; }
+@media (max-width: 1000px) { .sg-detail { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .sg-mrow { grid-template-columns: 24px 1fr 1fr; } .sg-mrow input:last-of-type { grid-column: 2 / -1; } .sg-mbtn { grid-column: 2 / -1; justify-content: flex-end; } .sg-doc { padding: 16px; } }
+.sg-purge { background: #e5484d !important; color: #fff !important; border-color: #e5484d !important; }
